@@ -1,0 +1,291 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Free CV Audit | Work Waves Career Services</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.16/mammoth.browser.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .spinner {
+            border-top-color: #3b82f6; /* Blue-500 */
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        #drop-zone {
+            border: 2px dashed #4b5563; /* Gray-600 */
+            transition: border-color 0.3s, background-color 0.3s;
+        }
+        #drop-zone.drag-over {
+            border-color: #3b82f6; /* Blue-500 */
+            background-color: #1f2937; /* Gray-800 */
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-slate-200">
+
+    <div class="container mx-auto px-4 py-8 md:py-12">
+        <!-- Header Section -->
+        <header class="text-center mb-8 md:mb-12">
+            <!-- Embedded SVG Logo -->
+            <div class="mx-auto h-auto w-48 mb-6">
+                 <svg viewBox="0 0 200 150" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Diamond Shape -->
+                    <path d="M 100 0 L 150 50 L 100 100 L 50 50 Z" fill="none" stroke="white" stroke-width="2"/>
+                    <!-- Waves -->
+                    <path d="M 65 40 Q 85 30, 100 40 T 135 40" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M 60 55 Q 80 45, 100 55 T 140 55" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M 68 70 Q 88 60, 103 70 T 138 70" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                    <!-- Text -->
+                    <text x="100" y="125" font-family="Inter, sans-serif" font-size="14" font-weight="300" fill="white" text-anchor="middle" letter-spacing="4">WORK WAVES</text>
+                    <text x="100" y="145" font-family="Inter, sans-serif" font-size="8" font-weight="300" fill="white" text-anchor="middle" letter-spacing="2">BY COPYARABIA</text>
+                </svg>
+            </div>
+            
+            <p class="text-lg md:text-xl text-slate-400 mt-2">Get Your Free, Instant ATS-Friendly CV Audit</p>
+        </header>
+
+        <main class="max-w-4xl mx-auto">
+            <!-- Main Card -->
+            <div id="main-card" class="bg-gray-800 rounded-xl shadow-lg p-6 md:p-10 border border-gray-700">
+
+                <!-- Upload Section -->
+                <div id="upload-section">
+                    <h2 class="text-2xl font-bold text-center text-white mb-2">Upload Your CV</h2>
+                    <p class="text-center text-slate-400 mb-6">Upload a .PDF or .DOCX file to see how an Applicant Tracking System (ATS) sees your CV.</p>
+
+                    <div id="drop-zone" class="relative rounded-lg p-8 text-center cursor-pointer bg-gray-900 hover:border-blue-500">
+                        <input type="file" id="cv-upload" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".pdf,.docx">
+                        <div class="flex flex-col items-center justify-center">
+                            <svg class="w-12 h-12 text-gray-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l-3.75 3.75M12 9.75l3.75 3.75M3 19.5h18" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                            </svg>
+                            <p class="font-semibold text-slate-300">Drag & drop your file here</p>
+                            <p class="text-slate-500 text-sm mt-1">or click to browse</p>
+                            <p id="file-name" class="mt-4 text-sm font-medium text-blue-400"></p>
+                        </div>
+                    </div>
+                    <div class="text-center mt-6">
+                        <button id="audit-button" class="bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed" disabled>
+                            Audit My CV
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Loading Section -->
+                <div id="loading-section" class="hidden text-center py-12">
+                    <div class="spinner w-12 h-12 rounded-full border-4 border-gray-700 mx-auto"></div>
+                    <p id="loading-text" class="mt-6 text-lg font-medium text-slate-300">Auditing your CV...</p>
+                    <p id="loading-subtext" class="text-slate-400">Our AI is analyzing your document for ATS compatibility. This may take a moment.</p>
+                </div>
+
+                <!-- Results Section -->
+                <div id="results-section" class="hidden">
+                    <h2 class="text-2xl md:text-3xl font-bold text-center text-white mb-6">Your CV Audit Results</h2>
+                    <div id="audit-output" class="prose prose-invert max-w-none rounded-lg bg-gray-900 p-6">
+                        <!-- AI generated content will go here -->
+                    </div>
+                    
+                    <!-- Call to Action Section -->
+                    <div class="mt-8 bg-gray-900 border-l-4 border-blue-500 p-6 rounded-r-lg text-center">
+                        <h3 class="text-xl font-bold text-white">Feeling Overwhelmed?</h3>
+                        <p class="mt-2 text-slate-300">Fixing these ATS issues is complex and time-consuming. An expert-written CV guarantees you'll get past the bots and into the hands of a hiring manager.</p>
+                        <a href="https://wa.me/9613690148?text=Hello!%20I%20just%20used%20the%20Free%20CV%20Audit%20tool%20and%20would%20like%20to%20learn%20more%20about%20your%20professional%20CV%20writing%20services." id="cta-link" target="_blank" class="mt-4 inline-block bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 transition-colors">
+                            Let Our Experts Fix This For You
+                        </a>
+                    </div>
+                </div>
+                 <!-- Error Message Box -->
+                <div id="error-box" class="hidden mt-4 bg-red-900 border border-red-700 text-red-300 px-4 py-3 rounded-lg relative" role="alert">
+                    <strong class="font-bold">Error:</strong>
+                    <span class="block sm:inline" id="error-message"></span>
+                </div>
+
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="text-center mt-8 md:mt-12">
+            <p class="text-sm text-slate-500">&copy; 2025 Work Waves Career Services. All rights reserved.</p>
+        </footer>
+    </div>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.worker.min.js';
+
+        const dropZone = document.getElementById('drop-zone');
+        const cvUpload = document.getElementById('cv-upload');
+        const auditButton = document.getElementById('audit-button');
+        const fileNameDisplay = document.getElementById('file-name');
+        
+        const uploadSection = document.getElementById('upload-section');
+        const loadingSection = document.getElementById('loading-section');
+        const resultsSection = document.getElementById('results-section');
+        const auditOutput = document.getElementById('audit-output');
+        const errorBox = document.getElementById('error-box');
+        const errorMessage = document.getElementById('error-message');
+        
+        let cvFile = null;
+
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('drag-over'); });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+        });
+        cvUpload.addEventListener('change', (e) => { if (e.target.files.length > 0) handleFile(e.target.files[0]); });
+        
+        function handleFile(file) {
+            const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+            if (file && allowedTypes.includes(file.type)) {
+                cvFile = file;
+                fileNameDisplay.textContent = file.name;
+                auditButton.disabled = false;
+                hideError();
+            } else {
+                cvFile = null;
+                fileNameDisplay.textContent = '';
+                auditButton.disabled = true;
+                showError("Invalid file type. Please upload a PDF or DOCX file.");
+            }
+        }
+        
+        auditButton.addEventListener('click', async () => {
+            if (!cvFile) return;
+
+            uploadSection.classList.add('hidden');
+            loadingSection.classList.remove('hidden');
+            resultsSection.classList.add('hidden');
+            hideError();
+
+            try {
+                let text = '';
+                if (cvFile.type === 'application/pdf') {
+                    text = await extractTextFromPdf(cvFile);
+                } else {
+                    text = await extractTextFromDocx(cvFile);
+                }
+
+                if (text.trim().length < 50) {
+                   throw new Error("Could not extract enough text. The file might be empty, corrupted, or image-based.");
+                }
+
+                const auditResult = await getAuditFeedback(text);
+                auditOutput.innerHTML = auditResult.replace(/\n\n/g, '<p>').replace(/\n/g, '<br>');
+                loadingSection.classList.add('hidden');
+                resultsSection.classList.remove('hidden');
+
+            } catch (error) {
+                console.error('Audit Error:', error);
+                loadingSection.classList.add('hidden');
+                uploadSection.classList.remove('hidden');
+                showError(error.message || "An unexpected error occurred during the audit.");
+            }
+        });
+
+        async function extractTextFromPdf(file) {
+            const reader = new FileReader();
+            return new Promise((resolve, reject) => {
+                reader.onload = async (event) => {
+                    try {
+                        const typedarray = new Uint8Array(event.target.result);
+                        const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                        let text = '';
+                        for (let i = 1; i <= pdf.numPages; i++) {
+                            const page = await pdf.getPage(i);
+                            const content = await page.getTextContent();
+                            text += content.items.map(item => item.str).join(' ');
+                        }
+                        resolve(text);
+                    } catch (error) { reject(new Error("Could not read the PDF. It may be corrupted.")); }
+                };
+                reader.onerror = () => reject(new Error("Failed to read the file."));
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        async function extractTextFromDocx(file) {
+            const reader = new FileReader();
+            return new Promise((resolve, reject) => {
+                reader.onload = async (event) => {
+                    try {
+                        const { value } = await mammoth.extractRawText({ arrayBuffer: event.target.result });
+                        resolve(value);
+                    } catch (error) { reject(new Error("Could not read the DOCX file. It may be corrupted.")); }
+                };
+                reader.onerror = () => reject(new Error("Failed to read the file."));
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        // --- SECURE API CALL to our Netlify Function ---
+        async function getAuditFeedback(cvText) {
+            // FIX: The backend function only exists when deployed.
+            // This check now returns a mock response in preview environments instead of throwing an error.
+            if (!window.location.hostname.endsWith('netlify.app') && window.location.hostname !== 'localhost') {
+                console.warn("Using mock audit response in preview environment.");
+                await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate network delay
+                return `<strong>Note: This is a sample report for preview purposes. The full audit will be performed on the live website.</strong>
+
+Upon initial analysis, your CV presents several critical issues that will significantly hinder its performance in modern Applicant Tracking Systems (ATS).
+
+**Formatting & Structural Flaws:**
+Your CV appears to use a multi-column layout and potentially includes graphical elements for section breaks. While visually appealing, this structure is a primary cause of ATS parsing failure. The system will read the columns out of order, garbling your work history and skills into an incoherent block of text, effectively making you appear unqualified. A complete structural rebuild into a single, linear column is required to ensure basic parsability.
+
+**Keyword Optimization Deficiencies:**
+The document lacks the keyword density and specificity required to rank highly in an ATS for target roles like 'Project Manager' or 'Software Engineer'. For example, crucial industry-specific skills and qualification acronyms are sparse. Without this precise keyword alignment, your CV is functionally invisible to recruiters searching the ATS database, meaning you will not be considered for relevant opportunities.
+
+**Impact & Accomplishment Metrics:**
+Your work experience descriptions focus on responsibilities rather than quantifiable achievements. Phrases like "Responsible for managing team projects" are weak and fail to demonstrate value. Modern systems and hiring managers scan for metrics (e.g., "Increased team efficiency by 25% by implementing Agile methodologies"). The absence of such data makes your contributions seem intangible and less impactful than those of other candidates.
+
+In summary, while the content of your CV may be strong, its current structure and phrasing are not optimized for the automated systems used by over 90% of companies today. Rectifying these issues requires more than simple text edits; it necessitates a technical understanding of ATS protocols. We strongly recommend expert intervention to ensure your application is correctly processed and seen by decision-makers.`;
+            }
+            
+            // This URL points to our secure backend function. It will work correctly once deployed.
+            const functionUrl = '/.netlify/functions/audit';
+
+            try {
+                const response = await fetch(functionUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cvText: cvText })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `Server error: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                return result.audit;
+
+            } catch (error) {
+                 console.error("Function call error:", error);
+                 if (error instanceof SyntaxError) {
+                     throw new Error("Received an invalid response from the server. This can happen if the backend function has an error.");
+                 }
+                 throw new Error(error.message || "Could not connect to the audit service.");
+            }
+        }
+        
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorBox.classList.remove('hidden');
+        }
+
+        function hideError() {
+            errorBox.classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
