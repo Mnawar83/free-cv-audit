@@ -232,24 +232,7 @@
         async function getAuditFeedback(cvText) {
             // FIX: The backend function only exists when deployed.
             // This check now returns a mock response in preview environments instead of throwing an error.
-            if if (false && !window.location.hostname.endsWith('netlify.app') && window.location.hostname !== 'localhost' && window.location.hostname !== 'freecvaudit.com') {'netlify.app') && window.location.hostname !== 'localhost' && window.location.hostname !== 'freecvaudit.com') {
-                console.warn("Using mock audit response in preview environment.");
-                await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate network delay
-                return `<strong>Note: This is a sample report for preview purposes. The full audit will be performed on the live website.</strong>
-
-Upon initial analysis, your CV presents several critical issues that will significantly hinder its performance in modern Applicant Tracking Systems (ATS).
-
-**Formatting & Structural Flaws:**
-Your CV appears to use a multi-column layout and potentially includes graphical elements for section breaks. While visually appealing, this structure is a primary cause of ATS parsing failure. The system will read the columns out of order, garbling your work history and skills into an incoherent block of text, effectively making you appear unqualified. A complete structural rebuild into a single, linear column is required to ensure basic parsability.
-
-**Keyword Optimization Deficiencies:**
-The document lacks the keyword density and specificity required to rank highly in an ATS for target roles like 'Project Manager' or 'Software Engineer'. For example, crucial industry-specific skills and qualification acronyms are sparse. Without this precise keyword alignment, your CV is functionally invisible to recruiters searching the ATS database, meaning you will not be considered for relevant opportunities.
-
-**Impact & Accomplishment Metrics:**
-Your work experience descriptions focus on responsibilities rather than quantifiable achievements. Phrases like "Responsible for managing team projects" are weak and fail to demonstrate value. Modern systems and hiring managers scan for metrics (e.g., "Increased team efficiency by 25% by implementing Agile methodologies"). The absence of such data makes your contributions seem intangible and less impactful than those of other candidates.
-
-In summary, while the content of your CV may be strong, its current structure and phrasing are not optimized for the automated systems used by over 90% of companies today. Rectifying these issues requires more than simple text edits; it necessitates a technical understanding of ATS protocols. We strongly recommend expert intervention to ensure your application is correctly processed and seen by decision-makers.`;
-            }
+        i}
             
             // This URL points to our secure backend function. It will work correctly once deployed.
             const functionUrl = '/.netlify/functions/audit';
