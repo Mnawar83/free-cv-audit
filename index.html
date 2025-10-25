@@ -249,7 +249,7 @@
                 }
                 
                 const result = await response.json();
-                return result.audit;
+                return result.audit || result.auditResult;
 
             } catch (error) {
                  console.error("Function call error:", error);
