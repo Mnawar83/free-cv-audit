@@ -232,7 +232,7 @@
         async function getAuditFeedback(cvText) {
             // FIX: The backend function only exists when deployed.
             // This check now returns a mock response in preview environments instead of throwing an error.
-            if (!window.location.hostname.endsWith('netlify.app') && window.location.hostname !== 'localhost)  && window.location.hostname !== 'freecvaudit.com') {
+            if if (false && !window.location.hostname.endsWith('netlify.app') && window.location.hostname !== 'localhost' && window.location.hostname !== 'freecvaudit.com') {'netlify.app') && window.location.hostname !== 'localhost' && window.location.hostname !== 'freecvaudit.com') {
                 console.warn("Using mock audit response in preview environment.");
                 await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate network delay
                 return `<strong>Note: This is a sample report for preview purposes. The full audit will be performed on the live website.</strong>
