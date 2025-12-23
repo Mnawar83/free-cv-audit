@@ -1,5 +1,4 @@
 exports.handler = async (event, context) => {
-  // 1. Guard against non-POST requests
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
@@ -8,70 +7,69 @@ exports.handler = async (event, context) => {
   }
 
   try {
-    // 2. Parse input
     const { cvText } = JSON.parse(event.body);
 
     if (!cvText) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: 'cvText is required in the request body' }),
+        body: JSON.stringify({ error: 'cvText is required' }),
       };
     }
 
-    // 3. Environment Variable Check
     const apiKey = process.env.GOOGLE_AI_API_KEY;
 
     if (!apiKey) {
-      console.error('API Key is missing from Environment Variables.');
       return {
         statusCode: 500,
-        body: JSON.stringify({ error: 'Server configuration error: API Key is missing.' }),
+        body: JSON.stringify({ error: 'API Key missing in environment variables.' }),
       };
     }
 
     /**
-     * FIX 1: Use the v1beta endpoint (required for systemInstruction) 
-     * FIX 2: Use a valid, stable model (gemini-1.5-flash)
+     * FIX: Use the v1 (Stable) endpoint and the correct GA model name.
+     * As of late 2025, 'gemini-1.5-flash' is the most stable and cost-effective choice.
+     * Note: There is currently no 'Gemini 2.5' model; 1.5 or 2.0 are the correct versions.
      */
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const apiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
-    const systemPrompt = `You are an expert CV auditor for a company called 'Work Waves Career Services'. Your primary goal is to analyze a CV for Applicant Tracking System (ATS) compatibility and convince the user they need professional help. Your tone must be authoritative, insightful, and critical. Follow these instructions precisely:
-1. Start with a direct, impactful summary of the CV's serious ATS compatibility issues.
-2. Organize your feedback into three sections using these exact headings:
-- **Formatting & Structural Flaws:** Critically analyze the CV's layout. Pay special attention to the use of **tables, graphics, images, columns, and text boxes**. Explain that these elements are frequently misinterpreted or completely ignored by ATS.
-- **Keyword Optimization Deficiencies:** Analyze the document for a lack of specific, job-relevant keywords.
-- **Impact & Accomplishment Metrics:** Critique the use of vague responsibilities instead of quantifiable achievements.
-3. For each point, explain the *problem* and the severe *negative consequence*.
-4. **DO NOT** give simple, actionable advice. Make the solution seem difficult and best left to experts.
-5. Conclude with a strong, authoritative summary paragraph.`;
+    const systemPrompt = `You are an expert CV auditor for 'Work Waves Career Services'. 
+    Analyze the CV for ATS compatibility. Tone: authoritative and critical.
+    Structure: 
+    1. Impactful Summary.
+    2. Sections: **Formatting & Structural Flaws**, **Keyword Optimization Deficiencies**, **Impact & Accomplishment Metrics**.
+    Explain problems and consequences without giving easy fixes, emphasizing the need for expert help.`;
 
     const userPrompt = `Here is the CV text to audit:\n\n${cvText}`;
 
-    // 4. Payload (Matches v1beta structure)
     const payload = {
+      // System instructions are now supported in the v1 stable endpoint for 1.5 models
       systemInstruction: { 
         parts: [{ text: systemPrompt }] 
       },
       contents: [
         { parts: [{ text: userPrompt }] }
       ],
+      generationConfig: {
+        temperature: 0.7,
+        topK: 40,
+        topP: 0.95,
+        maxOutputTokens: 2048,
+      }
     };
 
-    // 5. API Call
     const fetchResponse = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
 
-    // 6. Detailed Error Handling
     if (!fetchResponse.ok) {
       const errorData = await fetchResponse.json();
-      const errorMessage = errorData?.error?.message || `Google AI API failed with status ${fetchResponse.status}`;
-      console.error('API Error Details:', JSON.stringify(errorData));
+      // This will help you see the exact reason if Google rejects the key or model again
+      console.error('Detailed API Error:', errorData);
       return {
-        statusCode: 500,
-        body: JSON.stringify({ error: errorMessage }),
+        statusCode: fetchResponse.status,
+        body: JSON.stringify({ error: errorData.error?.message || 'API Request Failed' }),
       };
     }
 
@@ -86,14 +84,14 @@ exports.handler = async (event, context) => {
     } else {
       return {
         statusCode: 500,
-        body: JSON.stringify({ error: 'The AI returned an empty response. Check if content was flagged by safety filters.' }),
+        body: JSON.stringify({ error: 'AI returned an empty response. It may have flagged the content.' }),
       };
     }
   } catch (error) {
-    console.error('Internal Server Error:', error);
+    console.error('Function Error:', error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'There was an issue connecting to the AI analysis service.' }),
+      body: JSON.stringify({ error: 'Internal server error occurred.' }),
     };
   }
 };
