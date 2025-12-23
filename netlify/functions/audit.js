@@ -1,5 +1,5 @@
 exports.handler = async (event, context) => {
-  // Only allow POST requests
+  // 1. Guard against non-POST requests
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
@@ -8,6 +8,7 @@ exports.handler = async (event, context) => {
   }
 
   try {
+    // 2. Parse input
     const { cvText } = JSON.parse(event.body);
 
     if (!cvText) {
@@ -17,19 +18,22 @@ exports.handler = async (event, context) => {
       };
     }
 
+    // 3. Environment Variable Check
     const apiKey = process.env.GOOGLE_AI_API_KEY;
 
     if (!apiKey) {
-      console.error('API Key is not configured.');
+      console.error('API Key is missing from Environment Variables.');
       return {
         statusCode: 500,
         body: JSON.stringify({ error: 'Server configuration error: API Key is missing.' }),
       };
     }
 
-    // FIX: Updated to the stable Gemini 2.5 Flash-Lite model string
-    // Also switched from v1beta to v1 for production stability
-    const apiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`;
+    /**
+     * FIX 1: Use the v1beta endpoint (required for systemInstruction) 
+     * FIX 2: Use a valid, stable model (gemini-1.5-flash)
+     */
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
     const systemPrompt = `You are an expert CV auditor for a company called 'Work Waves Career Services'. Your primary goal is to analyze a CV for Applicant Tracking System (ATS) compatibility and convince the user they need professional help. Your tone must be authoritative, insightful, and critical. Follow these instructions precisely:
 1. Start with a direct, impactful summary of the CV's serious ATS compatibility issues.
@@ -43,21 +47,28 @@ exports.handler = async (event, context) => {
 
     const userPrompt = `Here is the CV text to audit:\n\n${cvText}`;
 
+    // 4. Payload (Matches v1beta structure)
     const payload = {
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ parts: [{ text: userPrompt }] }],
+      systemInstruction: { 
+        parts: [{ text: systemPrompt }] 
+      },
+      contents: [
+        { parts: [{ text: userPrompt }] }
+      ],
     };
 
+    // 5. API Call
     const fetchResponse = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
 
+    // 6. Detailed Error Handling
     if (!fetchResponse.ok) {
       const errorData = await fetchResponse.json();
       const errorMessage = errorData?.error?.message || `Google AI API failed with status ${fetchResponse.status}`;
-      console.error('Google AI API Error:', errorMessage);
+      console.error('API Error Details:', JSON.stringify(errorData));
       return {
         statusCode: 500,
         body: JSON.stringify({ error: errorMessage }),
@@ -75,7 +86,7 @@ exports.handler = async (event, context) => {
     } else {
       return {
         statusCode: 500,
-        body: JSON.stringify({ error: 'The AI returned an empty response.' }),
+        body: JSON.stringify({ error: 'The AI returned an empty response. Check if content was flagged by safety filters.' }),
       };
     }
   } catch (error) {
