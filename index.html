@@ -119,10 +119,13 @@
                                 <div id="paypal-button-card" class="min-h-[44px]"></div>
                             </div>
                         </div>
-                        <a id="download-link" href="assets/revised-cv-sample.pdf" download class="mt-4 inline-flex items-center justify-center bg-emerald-600 text-white font-bold py-3 px-8 rounded-lg opacity-50 pointer-events-none transition-colors" aria-disabled="true">
+                        <a id="download-link" href="#" class="mt-4 inline-flex items-center justify-center bg-emerald-600 text-white font-bold py-3 px-8 rounded-lg opacity-50 pointer-events-none transition-colors" aria-disabled="true">
                             Download Revised CV (PDF)
                         </a>
                         <p id="download-note" class="mt-2 text-xs text-slate-500">Complete payment to unlock your download.</p>
+                        <button id="retry-download" type="button" class="hidden mt-3 text-xs text-blue-300 hover:text-blue-200 underline">
+                            Retry generating your revised CV
+                        </button>
                     </div>
                 </div>
                  <!-- Error Message Box -->
@@ -152,6 +155,7 @@
         const paypalButtonCardContainer = document.getElementById('paypal-button-card');
         const downloadLink = document.getElementById('download-link');
         const downloadNote = document.getElementById('download-note');
+        const retryDownloadButton = document.getElementById('retry-download');
         
         const uploadSection = document.getElementById('upload-section');
         const loadingSection = document.getElementById('loading-section');
@@ -165,6 +169,20 @@
         let paypalButtonsRendered = false;
         let paypalConfigCache = null;
         let paypalConfigError = null;
+        let extractedCvText = '';
+        let revisedCvBlobUrl = null;
+        let paymentCompleted = false;
+        let isGeneratingPdf = false;
+
+        const storedCvText = sessionStorage.getItem('cvText');
+        if (storedCvText) {
+            extractedCvText = storedCvText;
+        }
+
+        const storedPaymentCompleted = sessionStorage.getItem('paymentCompleted');
+        if (storedPaymentCompleted === 'true') {
+            paymentCompleted = true;
+        }
 
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
         dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('drag-over'); });
@@ -211,6 +229,8 @@
                    throw new Error("Could not extract enough text. The file might be empty, corrupted, or image-based.");
                 }
 
+                extractedCvText = text;
+                sessionStorage.setItem('cvText', text);
                 const auditResult = await getAuditFeedback(text);
                 auditOutput.innerHTML = auditResult.replace(/\n\n/g, '<p>').replace(/\n/g, '<br>');
                 loadingSection.classList.add('hidden');
@@ -306,11 +326,75 @@
             if (isLocked) {
                 downloadLink.classList.add('opacity-50', 'pointer-events-none');
                 downloadLink.setAttribute('aria-disabled', 'true');
+                downloadLink.setAttribute('href', '#');
+                downloadLink.removeAttribute('download');
+                if (revisedCvBlobUrl) {
+                    URL.revokeObjectURL(revisedCvBlobUrl);
+                    revisedCvBlobUrl = null;
+                }
                 downloadNote.textContent = 'Complete payment to unlock your download.';
             } else {
                 downloadLink.classList.remove('opacity-50', 'pointer-events-none');
                 downloadLink.setAttribute('aria-disabled', 'false');
+                if (revisedCvBlobUrl) {
+                    downloadLink.href = revisedCvBlobUrl;
+                }
+                downloadLink.setAttribute('download', 'revised-cv.pdf');
                 downloadNote.textContent = 'Your revised CV PDF is ready to download.';
+            }
+            updateRetryVisibility();
+        }
+
+        function updateRetryVisibility() {
+            if (!retryDownloadButton) return;
+            if (paymentCompleted && !revisedCvBlobUrl && !isGeneratingPdf) {
+                retryDownloadButton.classList.remove('hidden');
+                if (downloadNote) {
+                    downloadNote.textContent = 'Payment received. Generate your revised CV to download.';
+                }
+            } else {
+                retryDownloadButton.classList.add('hidden');
+            }
+        }
+
+        async function generateRevisedPdf(cvText) {
+            if (!cvText) {
+                throw new Error('Unable to generate the revised CV. Please run the audit again.');
+            }
+            if (isGeneratingPdf) return;
+            isGeneratingPdf = true;
+            downloadNote.textContent = 'Preparing your revised CV PDF...';
+            updateRetryVisibility();
+            try {
+                const response = await fetch('/.netlify/functions/generate-pdf', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cvText }),
+                });
+
+                if (!response.ok) {
+                    let message = 'Unable to generate the revised CV.';
+                    try {
+                        const errorData = await response.json();
+                        if (errorData?.error) {
+                            message = errorData.error;
+                        }
+                    } catch (parseError) {
+                        console.warn('Generate PDF error response could not be parsed.', parseError);
+                    }
+                    throw new Error(message);
+                }
+
+                const pdfBlob = await response.blob();
+                if (revisedCvBlobUrl) {
+                    URL.revokeObjectURL(revisedCvBlobUrl);
+                }
+                revisedCvBlobUrl = URL.createObjectURL(pdfBlob);
+                downloadLink.href = revisedCvBlobUrl;
+                downloadLink.setAttribute('download', 'revised-cv.pdf');
+            } finally {
+                isGeneratingPdf = false;
+                updateRetryVisibility();
             }
         }
 
@@ -415,20 +499,34 @@
                 };
 
                 const handleApprove = async (data) => {
-                    const response = await fetch('/.netlify/functions/paypal-capture-order', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ orderID: data.orderID }),
-                    });
-                    if (!response.ok) {
-                        const errorData = await response.json();
-                        throw new Error(errorData.error || 'Unable to capture PayPal order.');
-                    }
-                    const captureResult = await response.json();
-                    if (captureResult.status === 'COMPLETED') {
-                        setDownloadLocked(false);
-                    } else {
-                        showError('Payment is still processing. Please wait for confirmation.');
+                    try {
+                        const response = await fetch('/.netlify/functions/paypal-capture-order', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ orderID: data.orderID }),
+                        });
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.error || 'Unable to capture PayPal order.');
+                        }
+                        const captureResult = await response.json();
+                        if (captureResult.status === 'COMPLETED') {
+                            paymentCompleted = true;
+                            sessionStorage.setItem('paymentCompleted', 'true');
+                            try {
+                                await generateRevisedPdf(extractedCvText);
+                                setDownloadLocked(false);
+                            } catch (error) {
+                                console.error('PDF generation error:', error);
+                                showError(error.message || 'Unable to generate your revised CV yet.');
+                                updateRetryVisibility();
+                            }
+                        } else {
+                            showError('Payment is still processing. Please wait for confirmation.');
+                        }
+                    } catch (error) {
+                        console.error('PayPal capture error:', error);
+                        showError(error.message || 'Unable to finalize payment. Please try again.');
                     }
                 };
 
@@ -481,6 +579,20 @@
         }
 
         hydratePayPalPricing();
+        updateRetryVisibility();
+
+        if (retryDownloadButton) {
+            retryDownloadButton.addEventListener('click', async () => {
+                try {
+                    await generateRevisedPdf(extractedCvText);
+                    setDownloadLocked(false);
+                } catch (error) {
+                    console.error('Retry PDF generation error:', error);
+                    showError(error.message || 'Unable to generate your revised CV yet.');
+                    updateRetryVisibility();
+                }
+            });
+        }
     </script>
 </body>
 </html>
