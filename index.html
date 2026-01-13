@@ -100,13 +100,13 @@
                         <h3 class="text-xl font-bold text-white">Download Your Revised CV (PDF)</h3>
                         <p class="mt-2 text-slate-300">
                             Get the professionally revised, ATS-ready version of your CV based on this audit for
-                            <span class="font-semibold text-white">USD 1.99</span>.
+                            <span class="font-semibold text-white" id="payment-price">USD 1.99</span>.
                         </p>
                         <p class="mt-2 text-slate-400 text-sm">
-                            Pay securely via PayPal or debit/credit card through the PayPal payment gateway.
+                            Pay securely through the PayPal checkout experience (PayPal balance or card).
                         </p>
                         <button id="payment-button" class="mt-4 inline-flex items-center justify-center bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 transition-colors">
-                            Pay $1.99 &amp; Download PDF
+                            Pay USD 1.99 &amp; Download PDF
                         </button>
                         <a id="download-link" href="assets/revised-cv-sample.pdf" download class="mt-4 inline-flex items-center justify-center bg-emerald-600 text-white font-bold py-3 px-8 rounded-lg opacity-50 pointer-events-none transition-colors" aria-disabled="true">
                             Download Revised CV (PDF)
@@ -144,24 +144,16 @@
             <div class="flex items-start justify-between">
                 <div>
                     <h3 class="text-xl font-bold text-white">Secure Checkout</h3>
-                    <p class="mt-1 text-sm text-slate-400">Pay USD 1.99 with PayPal or card to unlock your revised CV.</p>
+                    <p class="mt-1 text-sm text-slate-400">Pay <span id="payment-modal-price">USD 1.99</span> with PayPal or card to unlock your revised CV.</p>
                 </div>
                 <button id="payment-close" class="text-slate-400 hover:text-white" aria-label="Close payment dialog">
                     ✕
                 </button>
             </div>
-            <div class="mt-6 grid gap-3">
-                <a href="https://www.paypal.com/cgi-bin/webscr?cmd=_xclick&business=copywriter@copyarabia.com&item_name=Revised+CV+PDF&amount=1.99&currency_code=USD" target="_blank" rel="noreferrer" class="w-full rounded-lg bg-blue-600 py-3 text-center font-semibold text-white hover:bg-blue-700">
-                    Pay with PayPal
-                </a>
-                <a href="https://www.paypal.com/cgi-bin/webscr?cmd=_xclick&business=copywriter@copyarabia.com&item_name=Revised+CV+PDF&amount=1.99&currency_code=USD&landingpage=Billing" target="_blank" rel="noreferrer" class="w-full rounded-lg bg-slate-700 py-3 text-center font-semibold text-white hover:bg-slate-600">
-                    Pay with Debit/Credit Card
-                </a>
-                <button id="confirm-payment" class="w-full rounded-lg border border-emerald-500 py-3 font-semibold text-emerald-300 hover:bg-emerald-500/10">
-                    I've completed payment
-                </button>
+            <div class="mt-6 grid gap-4">
+                <div id="paypal-button-container" class="min-h-[44px]"></div>
+                <p class="text-xs text-slate-500">PayPal checkout is powered by the PayPal API. Your payment unlocks the download instantly.</p>
             </div>
-            <p class="mt-4 text-xs text-slate-500">Once your PayPal checkout is complete, return here to download your revised CV PDF. Replace the payment email with your live PayPal business account.</p>
         </div>
     </div>
 
@@ -176,7 +168,7 @@
         const paymentButton = document.getElementById('payment-button');
         const paymentModal = document.getElementById('payment-modal');
         const paymentClose = document.getElementById('payment-close');
-        const confirmPayment = document.getElementById('confirm-payment');
+        const paypalButtonContainer = document.getElementById('paypal-button-container');
         const downloadLink = document.getElementById('download-link');
         const downloadNote = document.getElementById('download-note');
         
@@ -188,6 +180,9 @@
         const errorMessage = document.getElementById('error-message');
         
         let cvFile = null;
+        let paypalSdkLoading = null;
+        let paypalButtonsRendered = false;
+        let paypalConfigCache = null;
 
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
         dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('drag-over'); });
@@ -340,6 +335,7 @@
             if (!paymentModal) return;
             paymentModal.classList.remove('hidden');
             paymentModal.classList.add('flex');
+            initializePayPalButtons();
         }
 
         function closePaymentModal() {
@@ -362,12 +358,121 @@
             });
         }
 
-        if (confirmPayment) {
-            confirmPayment.addEventListener('click', () => {
-                setDownloadLocked(false);
-                closePaymentModal();
-            });
+        async function fetchPayPalConfig() {
+            if (paypalConfigCache) return paypalConfigCache;
+            const response = await fetch('/.netlify/functions/paypal-config');
+            if (!response.ok) {
+                throw new Error('Unable to load PayPal configuration.');
+            }
+            paypalConfigCache = await response.json();
+            return paypalConfigCache;
         }
+
+        async function hydratePayPalPricing() {
+            try {
+                const config = await fetchPayPalConfig();
+                const formattedPrice = `${config.currency || 'USD'} ${config.amount || '1.99'}`;
+                const priceElements = [
+                    document.getElementById('payment-price'),
+                    document.getElementById('payment-modal-price'),
+                ];
+                priceElements.forEach((element) => {
+                    if (element) element.textContent = formattedPrice;
+                });
+                if (paymentButton) {
+                    paymentButton.textContent = `Pay ${formattedPrice} \u0026 Download PDF`;
+                }
+            } catch (error) {
+                console.warn('PayPal pricing unavailable:', error);
+            }
+        }
+
+        async function loadPayPalSdk() {
+            if (paypalSdkLoading) return paypalSdkLoading;
+            paypalSdkLoading = (async () => {
+                try {
+                    const config = await fetchPayPalConfig();
+                    if (!config?.clientId) {
+                        throw new Error('PayPal is not configured yet.');
+                    }
+                    if (window.paypal) return window.paypal;
+                    await new Promise((resolve, reject) => {
+                        const script = document.createElement('script');
+                        const params = new URLSearchParams({
+                            'client-id': config.clientId,
+                            currency: config.currency || 'USD',
+                            intent: 'capture',
+                        });
+                        script.src = `https://www.paypal.com/sdk/js?${params.toString()}`;
+                        script.async = true;
+                        script.onload = () => resolve();
+                        script.onerror = () => reject(new Error('Failed to load the PayPal SDK.'));
+                        document.head.appendChild(script);
+                    });
+                    return window.paypal;
+                } catch (error) {
+                    paypalSdkLoading = null;
+                    throw error;
+                }
+            })();
+            return paypalSdkLoading;
+        }
+
+        async function initializePayPalButtons() {
+            if (!paypalButtonContainer || paypalButtonsRendered) return;
+            try {
+                const paypalSdk = await loadPayPalSdk();
+                paypalSdk.Buttons({
+                    style: {
+                        layout: 'vertical',
+                        color: 'blue',
+                        shape: 'pill',
+                        label: 'pay',
+                    },
+                    createOrder: async () => {
+                        const response = await fetch('/.netlify/functions/paypal-create-order', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({}),
+                        });
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.error || 'Unable to create PayPal order.');
+                        }
+                        const orderData = await response.json();
+                        return orderData.id;
+                    },
+                    onApprove: async (data) => {
+                        const response = await fetch('/.netlify/functions/paypal-capture-order', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ orderID: data.orderID }),
+                        });
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.error || 'Unable to capture PayPal order.');
+                        }
+                        const captureResult = await response.json();
+                        if (captureResult.status === 'COMPLETED') {
+                            setDownloadLocked(false);
+                            closePaymentModal();
+                        } else {
+                            showError('Payment is still processing. Please wait for confirmation.');
+                        }
+                    },
+                    onError: (error) => {
+                        console.error('PayPal error:', error);
+                        showError(error.message || 'PayPal checkout failed. Please try again.');
+                    },
+                }).render('#paypal-button-container');
+                paypalButtonsRendered = true;
+            } catch (error) {
+                console.error('PayPal setup error:', error);
+                showError(error.message || 'PayPal is not available right now.');
+            }
+        }
+
+        hydratePayPalPricing();
     </script>
 </body>
 </html>
