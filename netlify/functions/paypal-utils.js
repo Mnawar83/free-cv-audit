@@ -6,8 +6,8 @@ function getPayPalBaseUrl() {
     return process.env.PAYPAL_BASE_URL;
   }
   return process.env.PAYPAL_ENV === 'live'
-    ? 'https://api-m.paypal.com'
-    : 'https://api-m.sandbox.paypal.com';
+    ? 'https://api.paypal.com'
+    : 'https://api.sandbox.paypal.com';
 }
 
 function assertPayPalConfigured() {
