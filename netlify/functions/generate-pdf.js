@@ -13,22 +13,38 @@ function buildPdfBuffer(text) {
   const lineHeight = 16;
   const startX = 72;
   const startY = 720;
+  const maxLinesPerPage = 40;
+  const pages = [];
 
-  const contentLines = lines.map((line, index) => {
-    const position = index === 0 ? `${startX} ${startY} Td` : `0 -${lineHeight} Td`;
-    return `${position} (${escapePdfText(line)}) Tj`;
-  });
-
-  const stream = `BT\n/F1 ${fontSize} Tf\n${contentLines.join('\n')}\nET`;
-  const streamLength = Buffer.byteLength(stream, 'utf8');
+  for (let i = 0; i < lines.length; i += maxLinesPerPage) {
+    const pageLines = lines.slice(i, i + maxLinesPerPage);
+    const contentLines = pageLines.map((line, index) => {
+      const position = index === 0 ? `${startX} ${startY} Td` : `0 -${lineHeight} Td`;
+      return `${position} (${escapePdfText(line)}) Tj`;
+    });
+    const stream = `BT\n/F1 ${fontSize} Tf\n${contentLines.join('\n')}\nET`;
+    pages.push({
+      stream,
+      streamLength: Buffer.byteLength(stream, 'utf8'),
+    });
+  }
 
   const objects = [
     '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj',
-    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj',
-    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj',
-    `4 0 obj\n<< /Length ${streamLength} >>\nstream\n${stream}\nendstream\nendobj`,
-    '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj',
+    `2 0 obj\n<< /Type /Pages /Kids [${pages.map((_, index) => `${3 + index * 2} 0 R`).join(' ')}] /Count ${pages.length} >>\nendobj`,
   ];
+
+  pages.forEach((page, index) => {
+    const pageObjectId = 3 + index * 2;
+    const contentObjectId = pageObjectId + 1;
+    objects.push(
+      `${pageObjectId} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents ${contentObjectId} 0 R /Resources << /Font << /F1 ${3 + pages.length * 2} 0 R >> >> >>\nendobj`,
+      `${contentObjectId} 0 obj\n<< /Length ${page.streamLength} >>\nstream\n${page.stream}\nendstream\nendobj`,
+    );
+  });
+
+  const fontObjectId = 3 + pages.length * 2;
+  objects.push(`${fontObjectId} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj`);
 
   let pdf = '%PDF-1.4\n';
   const offsets = [0];
@@ -39,12 +55,12 @@ function buildPdfBuffer(text) {
   });
 
   const xrefStart = Buffer.byteLength(pdf, 'utf8');
-  pdf += 'xref\n0 6\n';
+  pdf += `xref\n0 ${objects.length + 1}\n`;
   pdf += '0000000000 65535 f \n';
-  for (let i = 1; i <= 5; i += 1) {
+  for (let i = 1; i <= objects.length; i += 1) {
     pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
   }
-  pdf += `trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
 
   return Buffer.from(pdf, 'utf8');
 }

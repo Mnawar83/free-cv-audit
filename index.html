@@ -442,11 +442,12 @@
                     if (window.paypal) return window.paypal;
                     await new Promise((resolve, reject) => {
                         const script = document.createElement('script');
-                        const params = new URLSearchParams({
-                            'client-id': config.clientId,
-                            currency: config.currency || 'USD',
-                            intent: 'capture',
-                        });
+                    const params = new URLSearchParams({
+                        'client-id': config.clientId,
+                        currency: config.currency || 'USD',
+                        intent: 'capture',
+                        'disable-funding': 'paylater',
+                    });
                         script.src = `https://www.paypal.com/sdk/js?${params.toString()}`;
                         script.async = true;
                         script.onload = () => resolve();
@@ -466,7 +467,7 @@
             if (!paypalButtonContainer || paypalButtonsRendered) return;
             try {
                 const paypalSdk = await loadPayPalSdk();
-                paypalSdk.Buttons({
+                const buttonsInstance = paypalSdk.Buttons({
                     style: {
                         layout: 'vertical',
                         color: 'blue',
@@ -508,10 +509,12 @@
                         console.error('PayPal error:', error);
                         showError(error.message || 'PayPal checkout failed. Please try again.');
                     },
-                }).render('#paypal-button-container');
+                });
+                await buttonsInstance.render('#paypal-button-container');
                 paypalButtonsRendered = true;
             } catch (error) {
                 console.error('PayPal setup error:', error);
+                paypalButtonsRendered = false;
                 showError(error.message || 'PayPal is not available right now.');
             }
         }
