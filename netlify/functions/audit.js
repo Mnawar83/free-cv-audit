@@ -8,13 +8,8 @@ exports.handler = async (event, context) => {
     if (!cvText) return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
 
     const apiKey = process.env.GOOGLE_AI_API_KEY;
-
-    /**
-     * FIX 1: Use the v1beta endpoint to support 'systemInstruction'.
-     * FIX 2: Use an active 2025 model string like 'gemini-2.5-flash-lite' 
-     * or the brand new 'gemini-3-flash'.
-     */
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`;
+    const { buildGoogleAiUrl } = require('./google-ai');
+    const apiUrl = buildGoogleAiUrl(apiKey);
 
     const systemPrompt = `You are an expert CV auditor for 'Work Waves Career Services'. ...`; // Your prompt here
 
