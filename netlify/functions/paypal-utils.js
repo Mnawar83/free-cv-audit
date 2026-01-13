@@ -25,25 +25,18 @@ async function getPayPalAccessToken() {
   const { clientId, clientSecret } = assertPayPalConfigured();
   const baseUrl = getPayPalBaseUrl();
   const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-  const body = new URLSearchParams({ grant_type: 'client_credentials' });
 
   const response = await fetch(`${baseUrl}/v1/oauth2/token`, {
     method: 'POST',
     headers: {
       Authorization: `Basic ${auth}`,
       'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: 'application/json',
     },
-    body,
+    body: 'grant_type=client_credentials',
   });
 
   if (!response.ok) {
-    let errorData = await response.text();
-    try {
-      errorData = JSON.parse(errorData);
-    } catch (parseError) {
-      // Keep text response for troubleshooting.
-    }
+    const errorData = await response.text();
     const error = new Error('Unable to authenticate with PayPal.');
     error.details = errorData;
     error.statusCode = 502;
