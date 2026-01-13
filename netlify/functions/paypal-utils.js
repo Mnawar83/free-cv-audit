@@ -5,9 +5,15 @@ function getPayPalBaseUrl() {
   if (process.env.PAYPAL_BASE_URL) {
     return process.env.PAYPAL_BASE_URL;
   }
-  return process.env.PAYPAL_ENV === 'live'
-    ? 'https://api.paypal.com'
-    : 'https://api.sandbox.paypal.com';
+  const env = (process.env.PAYPAL_ENV || '').toLowerCase();
+  const netlifyEnv = (process.env.NETLIFY_ENV || '').toLowerCase();
+  const nodeEnv = (process.env.NODE_ENV || '').toLowerCase();
+  const isLive = ['live', 'production', 'prod'].includes(env)
+    || netlifyEnv === 'production'
+    || nodeEnv === 'production';
+  return isLive
+    ? 'https://api-m.paypal.com'
+    : 'https://api-m.sandbox.paypal.com';
 }
 
 function assertPayPalConfigured() {
