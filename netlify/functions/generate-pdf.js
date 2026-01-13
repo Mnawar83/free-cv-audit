@@ -3,14 +3,12 @@ const { buildGoogleAiUrl } = require('./google-ai');
 const PDF_FILENAME = 'revised-cv.pdf';
 
 function encodePdfText(text) {
-  const utf16le = Buffer.from(text, 'utf16le');
-  const utf16be = Buffer.alloc(utf16le.length);
-  for (let i = 0; i < utf16le.length; i += 2) {
-    utf16be[i] = utf16le[i + 1];
-    utf16be[i + 1] = utf16le[i];
-  }
-  const withBom = Buffer.concat([Buffer.from([0xfe, 0xff]), utf16be]);
-  return withBom.toString('hex');
+  return text
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)')
+    .replace(/\t/g, '    ')
+    .replace(/[^\x20-\x7e]/g, '?');
 }
 
 function buildPdfBuffer(text) {
@@ -27,7 +25,7 @@ function buildPdfBuffer(text) {
     const pageLines = lines.slice(i, i + maxLinesPerPage);
     const contentLines = pageLines.map((line, index) => {
       const position = index === 0 ? `${startX} ${startY} Td` : `0 -${lineHeight} Td`;
-      return `${position} <${encodePdfText(line)}> Tj`;
+      return `${position} (${encodePdfText(line)}) Tj`;
     });
     const stream = `BT\n/F1 ${fontSize} Tf\n${contentLines.join('\n')}\nET`;
     pages.push({
