@@ -105,9 +105,14 @@
                         <p class="mt-2 text-slate-400 text-sm">
                             Pay securely through the PayPal checkout experience (PayPal balance or card).
                         </p>
-                        <button id="payment-button" class="mt-4 inline-flex items-center justify-center bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 transition-colors">
-                            Pay USD 1.99 &amp; Download PDF
-                        </button>
+                        <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                            <button id="payment-button-paypal" class="inline-flex items-center justify-center bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 transition-colors">
+                                Pay USD 1.99 with PayPal
+                            </button>
+                            <button id="payment-button-card" class="inline-flex items-center justify-center bg-slate-700 text-white font-bold py-3 px-8 rounded-lg hover:bg-slate-600 transition-colors">
+                                Pay USD 1.99 with Debit/Credit Card
+                            </button>
+                        </div>
                         <a id="download-link" href="assets/revised-cv-sample.pdf" download class="mt-4 inline-flex items-center justify-center bg-emerald-600 text-white font-bold py-3 px-8 rounded-lg opacity-50 pointer-events-none transition-colors" aria-disabled="true">
                             Download Revised CV (PDF)
                         </a>
@@ -165,7 +170,8 @@
         const auditButton = document.getElementById('audit-button');
         const fileNameDisplay = document.getElementById('file-name');
 
-        const paymentButton = document.getElementById('payment-button');
+        const paymentButtonPayPal = document.getElementById('payment-button-paypal');
+        const paymentButtonCard = document.getElementById('payment-button-card');
         const paymentModal = document.getElementById('payment-modal');
         const paymentClose = document.getElementById('payment-close');
         const paypalButtonContainer = document.getElementById('paypal-button-container');
@@ -183,6 +189,7 @@
         let paypalSdkLoading = null;
         let paypalButtonsRendered = false;
         let paypalConfigCache = null;
+        let paypalConfigError = null;
 
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
         dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('drag-over'); });
@@ -344,8 +351,12 @@
             paymentModal.classList.remove('flex');
         }
 
-        if (paymentButton) {
-            paymentButton.addEventListener('click', openPaymentModal);
+        if (paymentButtonPayPal) {
+            paymentButtonPayPal.addEventListener('click', openPaymentModal);
+        }
+
+        if (paymentButtonCard) {
+            paymentButtonCard.addEventListener('click', openPaymentModal);
         }
 
         if (paymentClose) {
@@ -362,7 +373,22 @@
             if (paypalConfigCache) return paypalConfigCache;
             const response = await fetch('/.netlify/functions/paypal-config');
             if (!response.ok) {
-                throw new Error('Unable to load PayPal configuration.');
+                let errorMessage = 'Unable to load PayPal configuration.';
+                if (response.status === 404) {
+                    errorMessage = 'PayPal checkout is unavailable here. Run Netlify dev or deploy the site to enable serverless functions.';
+                } else {
+                    try {
+                        const errorData = await response.json();
+                        if (errorData?.error) {
+                            errorMessage = errorData.error;
+                        }
+                    } catch (parseError) {
+                        console.warn('PayPal config error response could not be parsed.', parseError);
+                    }
+                }
+                const error = new Error(errorMessage);
+                paypalConfigError = error;
+                throw error;
             }
             paypalConfigCache = await response.json();
             return paypalConfigCache;
@@ -379,11 +405,29 @@
                 priceElements.forEach((element) => {
                     if (element) element.textContent = formattedPrice;
                 });
-                if (paymentButton) {
-                    paymentButton.textContent = `Pay ${formattedPrice} \u0026 Download PDF`;
+                if (paymentButtonPayPal) {
+                    paymentButtonPayPal.textContent = `Pay ${formattedPrice} with PayPal`;
+                }
+                if (paymentButtonCard) {
+                    paymentButtonCard.textContent = `Pay ${formattedPrice} with Debit/Credit Card`;
                 }
             } catch (error) {
                 console.warn('PayPal pricing unavailable:', error);
+                const paymentButtons = [paymentButtonPayPal, paymentButtonCard];
+                paymentButtons.forEach((button) => {
+                    if (!button) return;
+                    button.disabled = true;
+                    button.classList.add('opacity-50', 'cursor-not-allowed');
+                });
+                if (paymentButtonPayPal) {
+                    paymentButtonPayPal.textContent = 'PayPal unavailable';
+                }
+                if (paymentButtonCard) {
+                    paymentButtonCard.textContent = 'Card payments unavailable';
+                }
+                if (downloadNote) {
+                    downloadNote.textContent = 'PayPal checkout is unavailable right now. Please try again later.';
+                }
             }
         }
 
@@ -391,10 +435,10 @@
             if (paypalSdkLoading) return paypalSdkLoading;
             paypalSdkLoading = (async () => {
                 try {
-                    const config = await fetchPayPalConfig();
-                    if (!config?.clientId) {
-                        throw new Error('PayPal is not configured yet.');
-                    }
+                const config = await fetchPayPalConfig();
+                if (!config?.clientId) {
+                    throw new Error('PayPal is not configured yet.');
+                }
                     if (window.paypal) return window.paypal;
                     await new Promise((resolve, reject) => {
                         const script = document.createElement('script');
