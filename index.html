@@ -532,7 +532,11 @@
                 });
 
                 await paypalButtons.render('#paypal-button-paypal');
-                await cardButtons.render('#paypal-button-card');
+                if (cardButtons.isEligible()) {
+                    await cardButtons.render('#paypal-button-card');
+                } else if (paypalButtonCardContainer) {
+                    paypalButtonCardContainer.innerHTML = '<p class="text-xs text-slate-500">Card checkout is not available in this region.</p>';
+                }
                 paypalButtonsRendered = true;
             } catch (error) {
                 console.error('PayPal setup error:', error);
