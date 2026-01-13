@@ -1,5 +1,5 @@
-const PAYPAL_CURRENCY = 'USD';
-const PAYPAL_AMOUNT = '1.99';
+const PAYPAL_CURRENCY = process.env.PAYPAL_CURRENCY || 'USD';
+const PAYPAL_AMOUNT = process.env.PAYPAL_AMOUNT || '1.99';
 
 function getPayPalBaseUrl() {
   if (process.env.PAYPAL_BASE_URL) {
