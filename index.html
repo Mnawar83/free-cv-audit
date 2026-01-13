@@ -447,9 +447,13 @@
                             const errorData = await response.json();
                             throw new Error(errorData.error || 'Unable to capture PayPal order.');
                         }
-                        await response.json();
-                        setDownloadLocked(false);
-                        closePaymentModal();
+                        const captureResult = await response.json();
+                        if (captureResult.status === 'COMPLETED') {
+                            setDownloadLocked(false);
+                            closePaymentModal();
+                        } else {
+                            showError('Payment is still processing. Please wait for confirmation.');
+                        }
                     },
                     onError: (error) => {
                         console.error('PayPal error:', error);
