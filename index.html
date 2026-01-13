@@ -28,6 +28,12 @@
             border-color: #3b82f6; /* Blue-500 */
             background-color: #1f2937; /* Gray-800 */
         }
+        .paypal-gateway-panel {
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(17, 24, 39, 0.95));
+        }
+        .paypal-powered-text {
+            letter-spacing: 0.08em;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-slate-200">
@@ -102,16 +108,16 @@
                             Get the professionally revised, ATS-ready version of your CV based on this audit for
                             <span class="font-semibold text-white" id="payment-price">USD 1.99</span>.
                         </p>
-                        <p class="mt-2 text-slate-400 text-sm">
-                            Pay securely through the PayPal checkout experience (PayPal balance or card).
-                        </p>
-                        <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-center">
-                            <button id="payment-button-paypal" class="inline-flex items-center justify-center bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 transition-colors">
-                                Pay USD 1.99 with PayPal
-                            </button>
-                            <button id="payment-button-card" class="inline-flex items-center justify-center bg-slate-700 text-white font-bold py-3 px-8 rounded-lg hover:bg-slate-600 transition-colors">
-                                Pay USD 1.99 with Debit/Credit Card
-                            </button>
+                        <div class="mt-6 flex flex-col items-center gap-4">
+                            <div class="paypal-gateway-panel w-full max-w-md rounded-lg p-3">
+                                <div id="paypal-button-paypal" class="min-h-[44px]"></div>
+                            </div>
+                            <div class="paypal-gateway-panel w-full max-w-md rounded-lg p-3">
+                                <div id="paypal-button-card" class="min-h-[44px]"></div>
+                            </div>
+                            <p class="paypal-powered-text text-xs uppercase text-slate-500">
+                                Powered by <span class="text-blue-400 font-semibold normal-case">PayPal</span>
+                            </p>
                         </div>
                         <a id="download-link" href="assets/revised-cv-sample.pdf" download class="mt-4 inline-flex items-center justify-center bg-emerald-600 text-white font-bold py-3 px-8 rounded-lg opacity-50 pointer-events-none transition-colors" aria-disabled="true">
                             Download Revised CV (PDF)
@@ -143,25 +149,6 @@
         </footer>
     </div>
 
-    <!-- Payment Modal -->
-    <div id="payment-modal" class="fixed inset-0 hidden items-center justify-center bg-black/70 px-4">
-        <div class="w-full max-w-lg rounded-xl bg-gray-900 border border-gray-700 p-6">
-            <div class="flex items-start justify-between">
-                <div>
-                    <h3 class="text-xl font-bold text-white">Secure Checkout</h3>
-                    <p class="mt-1 text-sm text-slate-400">Pay <span id="payment-modal-price">USD 1.99</span> with PayPal or card to unlock your revised CV.</p>
-                </div>
-                <button id="payment-close" class="text-slate-400 hover:text-white" aria-label="Close payment dialog">
-                    ✕
-                </button>
-            </div>
-            <div class="mt-6 grid gap-4">
-                <div id="paypal-button-container" class="min-h-[44px]"></div>
-                <p class="text-xs text-slate-500">PayPal checkout is powered by the PayPal API. Your payment unlocks the download instantly.</p>
-            </div>
-        </div>
-    </div>
-
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.worker.min.js';
 
@@ -170,11 +157,8 @@
         const auditButton = document.getElementById('audit-button');
         const fileNameDisplay = document.getElementById('file-name');
 
-        const paymentButtonPayPal = document.getElementById('payment-button-paypal');
-        const paymentButtonCard = document.getElementById('payment-button-card');
-        const paymentModal = document.getElementById('payment-modal');
-        const paymentClose = document.getElementById('payment-close');
-        const paypalButtonContainer = document.getElementById('paypal-button-container');
+        const paypalButtonPayPalContainer = document.getElementById('paypal-button-paypal');
+        const paypalButtonCardContainer = document.getElementById('paypal-button-card');
         const downloadLink = document.getElementById('download-link');
         const downloadNote = document.getElementById('download-note');
         
@@ -240,6 +224,7 @@
                 auditOutput.innerHTML = auditResult.replace(/\n\n/g, '<p>').replace(/\n/g, '<br>');
                 loadingSection.classList.add('hidden');
                 resultsSection.classList.remove('hidden');
+                initializePayPalButtons();
 
             } catch (error) {
                 console.error('Audit Error:', error);
@@ -338,37 +323,6 @@
             }
         }
 
-        function openPaymentModal() {
-            if (!paymentModal) return;
-            paymentModal.classList.remove('hidden');
-            paymentModal.classList.add('flex');
-            initializePayPalButtons();
-        }
-
-        function closePaymentModal() {
-            if (!paymentModal) return;
-            paymentModal.classList.add('hidden');
-            paymentModal.classList.remove('flex');
-        }
-
-        if (paymentButtonPayPal) {
-            paymentButtonPayPal.addEventListener('click', openPaymentModal);
-        }
-
-        if (paymentButtonCard) {
-            paymentButtonCard.addEventListener('click', openPaymentModal);
-        }
-
-        if (paymentClose) {
-            paymentClose.addEventListener('click', closePaymentModal);
-        }
-
-        if (paymentModal) {
-            paymentModal.addEventListener('click', (event) => {
-                if (event.target === paymentModal) closePaymentModal();
-            });
-        }
-
         async function fetchPayPalConfig() {
             if (paypalConfigCache) return paypalConfigCache;
             const response = await fetch('/.netlify/functions/paypal-config');
@@ -400,33 +354,20 @@
                 const formattedPrice = `${config.currency || 'USD'} ${config.amount || '1.99'}`;
                 const priceElements = [
                     document.getElementById('payment-price'),
-                    document.getElementById('payment-modal-price'),
                 ];
                 priceElements.forEach((element) => {
                     if (element) element.textContent = formattedPrice;
                 });
-                if (paymentButtonPayPal) {
-                    paymentButtonPayPal.textContent = `Pay ${formattedPrice} with PayPal`;
-                }
-                if (paymentButtonCard) {
-                    paymentButtonCard.textContent = `Pay ${formattedPrice} with Debit/Credit Card`;
-                }
             } catch (error) {
                 console.warn('PayPal pricing unavailable:', error);
-                const paymentButtons = [paymentButtonPayPal, paymentButtonCard];
-                paymentButtons.forEach((button) => {
-                    if (!button) return;
-                    button.disabled = true;
-                    button.classList.add('opacity-50', 'cursor-not-allowed');
-                });
-                if (paymentButtonPayPal) {
-                    paymentButtonPayPal.textContent = 'PayPal unavailable';
-                }
-                if (paymentButtonCard) {
-                    paymentButtonCard.textContent = 'Card payments unavailable';
-                }
                 if (downloadNote) {
                     downloadNote.textContent = 'PayPal checkout is unavailable right now. Please try again later.';
+                }
+                if (paypalButtonPayPalContainer) {
+                    paypalButtonPayPalContainer.innerHTML = '<p class="text-sm text-slate-400">PayPal checkout is currently unavailable.</p>';
+                }
+                if (paypalButtonCardContainer) {
+                    paypalButtonCardContainer.innerHTML = '';
                 }
             }
         }
@@ -446,6 +387,7 @@
                         'client-id': config.clientId,
                         currency: config.currency || 'USD',
                         intent: 'capture',
+                        'enable-funding': 'card',
                         'disable-funding': 'paylater',
                     });
                         script.src = `https://www.paypal.com/sdk/js?${params.toString()}`;
@@ -464,53 +406,81 @@
         }
 
         async function initializePayPalButtons() {
-            if (!paypalButtonContainer || paypalButtonsRendered) return;
+            if (!paypalButtonPayPalContainer || !paypalButtonCardContainer || paypalButtonsRendered) return;
             try {
                 const paypalSdk = await loadPayPalSdk();
-                const buttonsInstance = paypalSdk.Buttons({
+                const createOrder = async () => {
+                    const response = await fetch('/.netlify/functions/paypal-create-order', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({}),
+                    });
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'Unable to create PayPal order.');
+                    }
+                    const orderData = await response.json();
+                    return orderData.id;
+                };
+
+                const handleApprove = async (data) => {
+                    const response = await fetch('/.netlify/functions/paypal-capture-order', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ orderID: data.orderID }),
+                    });
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'Unable to capture PayPal order.');
+                    }
+                    const captureResult = await response.json();
+                    if (captureResult.status === 'COMPLETED') {
+                        setDownloadLocked(false);
+                    } else {
+                        showError('Payment is still processing. Please wait for confirmation.');
+                    }
+                };
+
+                const baseButtonConfig = {
                     style: {
                         layout: 'vertical',
-                        color: 'blue',
-                        shape: 'pill',
-                        label: 'pay',
+                        color: 'gold',
+                        shape: 'rect',
+                        height: 48,
                     },
-                    createOrder: async () => {
-                        const response = await fetch('/.netlify/functions/paypal-create-order', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({}),
-                        });
-                        if (!response.ok) {
-                            const errorData = await response.json();
-                            throw new Error(errorData.error || 'Unable to create PayPal order.');
-                        }
-                        const orderData = await response.json();
-                        return orderData.id;
-                    },
-                    onApprove: async (data) => {
-                        const response = await fetch('/.netlify/functions/paypal-capture-order', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ orderID: data.orderID }),
-                        });
-                        if (!response.ok) {
-                            const errorData = await response.json();
-                            throw new Error(errorData.error || 'Unable to capture PayPal order.');
-                        }
-                        const captureResult = await response.json();
-                        if (captureResult.status === 'COMPLETED') {
-                            setDownloadLocked(false);
-                            closePaymentModal();
-                        } else {
-                            showError('Payment is still processing. Please wait for confirmation.');
-                        }
-                    },
+                    createOrder,
+                    onApprove: handleApprove,
                     onError: (error) => {
                         console.error('PayPal error:', error);
                         showError(error.message || 'PayPal checkout failed. Please try again.');
                     },
+                };
+
+                const paypalButtons = paypalSdk.Buttons({
+                    ...baseButtonConfig,
+                    fundingSource: paypalSdk.FUNDING.PAYPAL,
+                    style: {
+                        ...baseButtonConfig.style,
+                        label: 'pay',
+                    },
                 });
-                await buttonsInstance.render('#paypal-button-container');
+
+                const cardButtons = paypalSdk.Buttons({
+                    ...baseButtonConfig,
+                    fundingSource: paypalSdk.FUNDING.CARD,
+                    style: {
+                        ...baseButtonConfig.style,
+                        color: 'black',
+                        label: 'pay',
+                    },
+                });
+
+                await paypalButtons.render('#paypal-button-paypal');
+                if (cardButtons.isEligible()) {
+                    await cardButtons.render('#paypal-button-card');
+                } else if (paypalButtonCardContainer) {
+                    paypalButtonCardContainer.innerHTML = '<p class="text-xs text-slate-500">Card checkout is not available in this region.</p>';
+                }
                 paypalButtonsRendered = true;
             } catch (error) {
                 console.error('PayPal setup error:', error);
