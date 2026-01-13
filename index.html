@@ -398,6 +398,39 @@
             }
         }
 
+        async function generateRevisedPdf(cvText) {
+            if (!cvText) {
+                throw new Error('Unable to generate the revised CV. Please run the audit again.');
+            }
+            downloadNote.textContent = 'Preparing your revised CV PDF...';
+            const response = await fetch('/.netlify/functions/generate-pdf', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cvText }),
+            });
+
+            if (!response.ok) {
+                let message = 'Unable to generate the revised CV.';
+                try {
+                    const errorData = await response.json();
+                    if (errorData?.error) {
+                        message = errorData.error;
+                    }
+                } catch (parseError) {
+                    console.warn('Generate PDF error response could not be parsed.', parseError);
+                }
+                throw new Error(message);
+            }
+
+            const pdfBlob = await response.blob();
+            if (revisedCvBlobUrl) {
+                URL.revokeObjectURL(revisedCvBlobUrl);
+            }
+            revisedCvBlobUrl = URL.createObjectURL(pdfBlob);
+            downloadLink.href = revisedCvBlobUrl;
+            downloadLink.setAttribute('download', 'revised-cv.pdf');
+        }
+
         async function fetchPayPalConfig() {
             if (paypalConfigCache) return paypalConfigCache;
             const response = await fetch('/.netlify/functions/paypal-config');
