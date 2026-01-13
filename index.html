@@ -94,6 +94,25 @@
                     <div id="audit-output" class="prose prose-invert max-w-none rounded-lg bg-gray-900 p-6">
                         <!-- AI generated content will go here -->
                     </div>
+
+                    <!-- Payment Section -->
+                    <div class="mt-8 bg-gray-900 border border-blue-500/40 p-6 rounded-lg text-center">
+                        <h3 class="text-xl font-bold text-white">Download Your Revised CV (PDF)</h3>
+                        <p class="mt-2 text-slate-300">
+                            Get the professionally revised, ATS-ready version of your CV based on this audit for
+                            <span class="font-semibold text-white">USD 1.99</span>.
+                        </p>
+                        <p class="mt-2 text-slate-400 text-sm">
+                            Pay securely via PayPal or debit/credit card through the PayPal payment gateway.
+                        </p>
+                        <button id="payment-button" class="mt-4 inline-flex items-center justify-center bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 transition-colors">
+                            Pay $1.99 &amp; Download PDF
+                        </button>
+                        <a id="download-link" href="assets/revised-cv-sample.pdf" download class="mt-4 inline-flex items-center justify-center bg-emerald-600 text-white font-bold py-3 px-8 rounded-lg opacity-50 pointer-events-none transition-colors" aria-disabled="true">
+                            Download Revised CV (PDF)
+                        </a>
+                        <p id="download-note" class="mt-2 text-xs text-slate-500">Complete payment to unlock your download.</p>
+                    </div>
                     
                     <!-- Call to Action Section -->
                     <div class="mt-8 bg-gray-900 border-l-4 border-blue-500 p-6 rounded-r-lg text-center">
@@ -119,6 +138,33 @@
         </footer>
     </div>
 
+    <!-- Payment Modal -->
+    <div id="payment-modal" class="fixed inset-0 hidden items-center justify-center bg-black/70 px-4">
+        <div class="w-full max-w-lg rounded-xl bg-gray-900 border border-gray-700 p-6">
+            <div class="flex items-start justify-between">
+                <div>
+                    <h3 class="text-xl font-bold text-white">Secure Checkout</h3>
+                    <p class="mt-1 text-sm text-slate-400">Pay USD 1.99 with PayPal or card to unlock your revised CV.</p>
+                </div>
+                <button id="payment-close" class="text-slate-400 hover:text-white" aria-label="Close payment dialog">
+                    ✕
+                </button>
+            </div>
+            <div class="mt-6 grid gap-3">
+                <a href="https://www.paypal.com/cgi-bin/webscr?cmd=_xclick&business=copywriter@copyarabia.com&item_name=Revised+CV+PDF&amount=1.99&currency_code=USD" target="_blank" rel="noreferrer" class="w-full rounded-lg bg-blue-600 py-3 text-center font-semibold text-white hover:bg-blue-700">
+                    Pay with PayPal
+                </a>
+                <a href="https://www.paypal.com/cgi-bin/webscr?cmd=_xclick&business=copywriter@copyarabia.com&item_name=Revised+CV+PDF&amount=1.99&currency_code=USD&landingpage=Billing" target="_blank" rel="noreferrer" class="w-full rounded-lg bg-slate-700 py-3 text-center font-semibold text-white hover:bg-slate-600">
+                    Pay with Debit/Credit Card
+                </a>
+                <button id="confirm-payment" class="w-full rounded-lg border border-emerald-500 py-3 font-semibold text-emerald-300 hover:bg-emerald-500/10">
+                    I've completed payment
+                </button>
+            </div>
+            <p class="mt-4 text-xs text-slate-500">Once your PayPal checkout is complete, return here to download your revised CV PDF. Replace the payment email with your live PayPal business account.</p>
+        </div>
+    </div>
+
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.worker.min.js';
 
@@ -126,6 +172,13 @@
         const cvUpload = document.getElementById('cv-upload');
         const auditButton = document.getElementById('audit-button');
         const fileNameDisplay = document.getElementById('file-name');
+
+        const paymentButton = document.getElementById('payment-button');
+        const paymentModal = document.getElementById('payment-modal');
+        const paymentClose = document.getElementById('payment-close');
+        const confirmPayment = document.getElementById('confirm-payment');
+        const downloadLink = document.getElementById('download-link');
+        const downloadNote = document.getElementById('download-note');
         
         const uploadSection = document.getElementById('upload-section');
         const loadingSection = document.getElementById('loading-section');
@@ -167,6 +220,7 @@
             loadingSection.classList.remove('hidden');
             resultsSection.classList.add('hidden');
             hideError();
+            setDownloadLocked(true);
 
             try {
                 let text = '';
@@ -267,6 +321,52 @@
 
         function hideError() {
             errorBox.classList.add('hidden');
+        }
+
+        function setDownloadLocked(isLocked) {
+            if (!downloadLink || !downloadNote) return;
+            if (isLocked) {
+                downloadLink.classList.add('opacity-50', 'pointer-events-none');
+                downloadLink.setAttribute('aria-disabled', 'true');
+                downloadNote.textContent = 'Complete payment to unlock your download.';
+            } else {
+                downloadLink.classList.remove('opacity-50', 'pointer-events-none');
+                downloadLink.setAttribute('aria-disabled', 'false');
+                downloadNote.textContent = 'Your revised CV PDF is ready to download.';
+            }
+        }
+
+        function openPaymentModal() {
+            if (!paymentModal) return;
+            paymentModal.classList.remove('hidden');
+            paymentModal.classList.add('flex');
+        }
+
+        function closePaymentModal() {
+            if (!paymentModal) return;
+            paymentModal.classList.add('hidden');
+            paymentModal.classList.remove('flex');
+        }
+
+        if (paymentButton) {
+            paymentButton.addEventListener('click', openPaymentModal);
+        }
+
+        if (paymentClose) {
+            paymentClose.addEventListener('click', closePaymentModal);
+        }
+
+        if (paymentModal) {
+            paymentModal.addEventListener('click', (event) => {
+                if (event.target === paymentModal) closePaymentModal();
+            });
+        }
+
+        if (confirmPayment) {
+            confirmPayment.addEventListener('click', () => {
+                setDownloadLocked(false);
+                closePaymentModal();
+            });
         }
     </script>
 </body>
