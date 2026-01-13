@@ -390,25 +390,30 @@
         async function loadPayPalSdk() {
             if (paypalSdkLoading) return paypalSdkLoading;
             paypalSdkLoading = (async () => {
-                const config = await fetchPayPalConfig();
-                if (!config?.clientId) {
-                    throw new Error('PayPal is not configured yet.');
-                }
-                if (window.paypal) return window.paypal;
-                await new Promise((resolve, reject) => {
-                    const script = document.createElement('script');
-                    const params = new URLSearchParams({
-                        'client-id': config.clientId,
-                        currency: config.currency || 'USD',
-                        intent: 'capture',
+                try {
+                    const config = await fetchPayPalConfig();
+                    if (!config?.clientId) {
+                        throw new Error('PayPal is not configured yet.');
+                    }
+                    if (window.paypal) return window.paypal;
+                    await new Promise((resolve, reject) => {
+                        const script = document.createElement('script');
+                        const params = new URLSearchParams({
+                            'client-id': config.clientId,
+                            currency: config.currency || 'USD',
+                            intent: 'capture',
+                        });
+                        script.src = `https://www.paypal.com/sdk/js?${params.toString()}`;
+                        script.async = true;
+                        script.onload = () => resolve();
+                        script.onerror = () => reject(new Error('Failed to load the PayPal SDK.'));
+                        document.head.appendChild(script);
                     });
-                    script.src = `https://www.paypal.com/sdk/js?${params.toString()}`;
-                    script.async = true;
-                    script.onload = () => resolve();
-                    script.onerror = () => reject(new Error('Failed to load the PayPal SDK.'));
-                    document.head.appendChild(script);
-                });
-                return window.paypal;
+                    return window.paypal;
+                } catch (error) {
+                    paypalSdkLoading = null;
+                    throw error;
+                }
             })();
             return paypalSdkLoading;
         }
