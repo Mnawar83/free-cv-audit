@@ -56,10 +56,10 @@ function wrapPdfLines(lines, maxCharsPerLine) {
   return lines.flatMap((line) => {
     const expanded = sanitizePdfText(line).replace(/\t/g, '    ');
     if (expanded.length <= maxCharsPerLine) {
-      return [line];
+      return [expanded];
     }
     const wrapped = [];
-    let remaining = line;
+    let remaining = expanded;
     while (remaining.length > maxCharsPerLine) {
       const segment = remaining.slice(0, maxCharsPerLine);
       const lastSpace = segment.lastIndexOf(' ');
