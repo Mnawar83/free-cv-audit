@@ -14,8 +14,8 @@ function sanitizePdfText(text) {
     .replace(/[\u0300-\u036f]/g, '');
 
   return normalized
-    .replace(/[^\x20-\x7e]/g, ' ')
-    .replace(/ {2,}/g, ' ');
+    .replace(/[^\x09\x20-\x7e]/g, ' ')
+    ;
 }
 
 function encodePdfText(text) {
