@@ -2,13 +2,28 @@ const { buildGoogleAiUrl } = require('./google-ai');
 
 const PDF_FILENAME = 'revised-cv.pdf';
 
+function sanitizePdfText(text) {
+  const normalized = text
+    .replace(/\u00a0/g, ' ')
+    .replace(/[\u2018\u2019\u2032]/g, "'")
+    .replace(/[\u201c\u201d\u2033]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\u2026/g, '...')
+    .replace(/[\u2022\u00b7\u25aa\u25cf]/g, '*')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  return normalized
+    .replace(/[^\x09\x20-\x7e]/g, ' ')
+    .replace(/ {2,}/g, ' ');
+}
+
 function encodePdfText(text) {
-  return text
+  return sanitizePdfText(text)
     .replace(/\\/g, '\\\\')
     .replace(/\(/g, '\\(')
     .replace(/\)/g, '\\)')
-    .replace(/\t/g, '    ')
-    .replace(/[^\x20-\x7e]/g, '?');
+    .replace(/\t/g, '    ');
 }
 
 function buildPdfBuffer(text) {
