@@ -78,9 +78,10 @@ function estimateCenteredX(text, fontSize, pageWidth, minX) {
   return Math.max(minX, centered);
 }
 
-function wrapPdfLines(lines, maxCharsPerLine) {
+function wrapPdfLines(lines, getMaxCharsForLine) {
   return lines.flatMap((line, index) => {
     const rendered = renderText(line);
+    const maxCharsPerLine = getMaxCharsForLine(index);
     if (rendered.length <= maxCharsPerLine) {
       return [{ line: rendered, sourceIndex: index }];
     }
@@ -108,9 +109,13 @@ function buildPdfBuffer(text) {
   const startX = 72;
   const startY = 720;
   const pageWidth = 612;
-  const maxCharsPerLine = Math.floor((pageWidth - startX * 2) / (fontSize * 0.6));
   const originalLines = normalized.split('\n');
-  const lines = wrapPdfLines(originalLines, maxCharsPerLine);
+  const nameIndex = getNameLineIndex(originalLines);
+  const maxCharsPerBodyLine = Math.floor((pageWidth - startX * 2) / (fontSize * 0.6));
+  const maxCharsPerNameLine = Math.floor((pageWidth - startX * 2) / (nameFontSize * 0.6));
+  const lines = wrapPdfLines(originalLines, (index) =>
+    index === nameIndex ? maxCharsPerNameLine : maxCharsPerBodyLine,
+  );
   const maxLinesPerPage = 40;
   const pages = [];
   const nameIndex = getNameLineIndex(originalLines);
