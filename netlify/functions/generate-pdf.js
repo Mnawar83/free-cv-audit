@@ -200,7 +200,7 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { cvText } = JSON.parse(event.body || '{}');
+    const { cvText, cvAnalysis } = JSON.parse(event.body || '{}');
     if (!cvText) {
       return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
     }
@@ -212,9 +212,12 @@ exports.handler = async (event) => {
 Rewrite the CV for ATS compatibility and professional impact.
 Return only the revised CV content, formatted as plain text with clear section headings.`;
 
+    const analysisNote = cvAnalysis
+      ? `\n\nUse this CV analysis as reference while revising:\n${cvAnalysis}`
+      : '';
     const payload = {
       systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ parts: [{ text: `Rewrite this CV:\n\n${cvText}` }] }],
+      contents: [{ parts: [{ text: `Rewrite this CV:\n\n${cvText}${analysisNote}` }] }],
     };
 
     const fetchResponse = await fetch(apiUrl, {
