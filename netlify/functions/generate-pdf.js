@@ -58,7 +58,8 @@ function isHeadingLine(line, index, nameIndex) {
 
 function estimateCenteredX(text, fontSize, pageWidth, minX) {
   const sanitized = sanitizePdfText(text).replace(/\t/g, '    ');
-  const estimatedWidth = sanitized.length * fontSize * 0.6;
+  const rendered = transliterateToAscii(sanitized);
+  const estimatedWidth = rendered.length * fontSize * 0.6;
   const centered = (pageWidth - estimatedWidth) / 2;
   return Math.max(minX, centered);
 }
@@ -66,11 +67,12 @@ function estimateCenteredX(text, fontSize, pageWidth, minX) {
 function wrapPdfLines(lines, maxCharsPerLine) {
   return lines.flatMap((line) => {
     const expanded = sanitizePdfText(line).replace(/\t/g, '    ');
-    if (expanded.length <= maxCharsPerLine) {
-      return [expanded];
+    const rendered = transliterateToAscii(expanded);
+    if (rendered.length <= maxCharsPerLine) {
+      return [rendered];
     }
     const wrapped = [];
-    let remaining = expanded;
+    let remaining = rendered;
     while (remaining.length > maxCharsPerLine) {
       const segment = remaining.slice(0, maxCharsPerLine);
       const lastSpace = segment.lastIndexOf(' ');
