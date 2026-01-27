@@ -11,8 +11,26 @@ function sanitizePdfText(text) {
     .replace(/\*\*/g, '');
 }
 
+function transliterateToAscii(text) {
+  const normalized = text.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  const replacements = [
+    [/ß/g, 'ss'],
+    [/Æ/g, 'AE'],
+    [/æ/g, 'ae'],
+    [/Œ/g, 'OE'],
+    [/œ/g, 'oe'],
+    [/Ð/g, 'D'],
+    [/ð/g, 'd'],
+    [/Þ/g, 'Th'],
+    [/þ/g, 'th'],
+    [/Ł/g, 'L'],
+    [/ł/g, 'l'],
+  ];
+  return replacements.reduce((result, [pattern, value]) => result.replace(pattern, value), normalized);
+}
+
 function encodePdfText(text) {
-  return sanitizePdfText(text)
+  return transliterateToAscii(sanitizePdfText(text))
     .replace(/\\/g, '\\\\')
     .replace(/\(/g, '\\(')
     .replace(/\)/g, '\\)')
