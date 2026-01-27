@@ -16,7 +16,8 @@ function encodePdfText(text) {
     .replace(/\\/g, '\\\\')
     .replace(/\(/g, '\\(')
     .replace(/\)/g, '\\)')
-    .replace(/\t/g, '    ');
+    .replace(/\t/g, '    ')
+    .replace(/[^\x20-\x7E]/g, '?');
 }
 
 function getNameLineIndex(lines) {
