@@ -75,7 +75,8 @@ function buildPdfBuffer(text) {
       const lineStartX = isNameLine
         ? estimateCenteredX(line, lineFontSize, pageWidth, startX)
         : startX;
-      const position = index === 0 ? `${lineStartX} ${startY} Td` : `0 -${lineHeight} Td`;
+      const lineStartY = startY - lineHeight * index;
+      const position = `1 0 0 1 ${lineStartX} ${lineStartY} Tm`;
       return `${position}\n/${fontId} ${lineFontSize} Tf\n(${encodePdfText(line)}) Tj`;
     });
     const stream = `BT\n${contentLines.join('\n')}\nET`;
