@@ -11,6 +11,17 @@ function sanitizePdfText(text) {
     .replace(/\*\*/g, '');
 }
 
+function normalizeForDetection(text) {
+  return text
+    .replace(/\u00a0/g, ' ')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/[–—]/g, '-')
+    .replace(/\u2026/g, '...')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
 function transliterateToAscii(text) {
   const normalized = text.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
   const replacements = [
@@ -29,24 +40,28 @@ function transliterateToAscii(text) {
   return replacements.reduce((result, [pattern, value]) => result.replace(pattern, value), normalized);
 }
 
-function encodePdfText(text) {
+function renderText(text) {
   return transliterateToAscii(sanitizePdfText(text))
-    .replace(/\\/g, '\\\\')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)')
     .replace(/\t/g, '    ')
     .replace(/[^\x20-\x7E]/g, '?');
 }
 
+function encodePdfText(text) {
+  return renderText(text)
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)');
+}
+
 function getNameLineIndex(lines) {
-  return lines.findIndex((line) => line.trim().length > 0);
+  return lines.findIndex((line) => normalizeForDetection(line).trim().length > 0);
 }
 
 function isHeadingLine(line, index, nameIndex) {
   if (index === nameIndex) {
     return false;
   }
-  const trimmed = line.trim();
+  const trimmed = normalizeForDetection(line).trim();
   if (!trimmed) {
     return false;
   }
@@ -57,19 +72,17 @@ function isHeadingLine(line, index, nameIndex) {
 }
 
 function estimateCenteredX(text, fontSize, pageWidth, minX) {
-  const sanitized = sanitizePdfText(text).replace(/\t/g, '    ');
-  const rendered = transliterateToAscii(sanitized);
+  const rendered = renderText(text);
   const estimatedWidth = rendered.length * fontSize * 0.6;
   const centered = (pageWidth - estimatedWidth) / 2;
   return Math.max(minX, centered);
 }
 
 function wrapPdfLines(lines, maxCharsPerLine) {
-  return lines.flatMap((line) => {
-    const expanded = sanitizePdfText(line).replace(/\t/g, '    ');
-    const rendered = transliterateToAscii(expanded);
+  return lines.flatMap((line, index) => {
+    const rendered = renderText(line);
     if (rendered.length <= maxCharsPerLine) {
-      return [rendered];
+      return [{ line: rendered, sourceIndex: index }];
     }
     const wrapped = [];
     let remaining = rendered;
@@ -77,11 +90,11 @@ function wrapPdfLines(lines, maxCharsPerLine) {
       const segment = remaining.slice(0, maxCharsPerLine);
       const lastSpace = segment.lastIndexOf(' ');
       const splitIndex = lastSpace > 0 ? lastSpace : maxCharsPerLine;
-      wrapped.push(remaining.slice(0, splitIndex).trimEnd());
+      wrapped.push({ line: remaining.slice(0, splitIndex).trimEnd(), sourceIndex: index });
       remaining = remaining.slice(splitIndex).trimStart();
     }
     if (remaining.length > 0) {
-      wrapped.push(remaining);
+      wrapped.push({ line: remaining, sourceIndex: index });
     }
     return wrapped;
   });
@@ -96,17 +109,18 @@ function buildPdfBuffer(text) {
   const startY = 720;
   const pageWidth = 612;
   const maxCharsPerLine = Math.floor((pageWidth - startX * 2) / (fontSize * 0.6));
-  const lines = wrapPdfLines(normalized.split('\n'), maxCharsPerLine);
+  const originalLines = normalized.split('\n');
+  const lines = wrapPdfLines(originalLines, maxCharsPerLine);
   const maxLinesPerPage = 40;
   const pages = [];
-  const nameIndex = getNameLineIndex(lines);
+  const nameIndex = getNameLineIndex(originalLines);
 
   for (let i = 0; i < lines.length; i += maxLinesPerPage) {
     const pageLines = lines.slice(i, i + maxLinesPerPage);
-    const contentLines = pageLines.map((line, index) => {
-      const absoluteIndex = i + index;
-      const isNameLine = absoluteIndex === nameIndex;
-      const isHeading = isHeadingLine(line, absoluteIndex, nameIndex);
+    const contentLines = pageLines.map((lineItem, index) => {
+      const { line, sourceIndex } = lineItem;
+      const isNameLine = sourceIndex === nameIndex;
+      const isHeading = isHeadingLine(originalLines[sourceIndex], sourceIndex, nameIndex);
       const lineFontSize = isNameLine ? nameFontSize : fontSize;
       const fontId = isNameLine || isHeading ? 'F2' : 'F1';
       const lineStartX = isNameLine
