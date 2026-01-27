@@ -170,6 +170,7 @@
         let paypalConfigCache = null;
         let paypalConfigError = null;
         let extractedCvText = '';
+        let extractedCvAnalysis = '';
         let revisedCvBlobUrl = null;
         let paymentCompleted = false;
         let isGeneratingPdf = false;
@@ -177,6 +178,10 @@
         const storedCvText = sessionStorage.getItem('cvText');
         if (storedCvText) {
             extractedCvText = storedCvText;
+        }
+        const storedCvAnalysis = sessionStorage.getItem('cvAnalysis');
+        if (storedCvAnalysis) {
+            extractedCvAnalysis = storedCvAnalysis;
         }
 
         const storedPaymentCompleted = sessionStorage.getItem('paymentCompleted');
@@ -232,6 +237,8 @@
                 extractedCvText = text;
                 sessionStorage.setItem('cvText', text);
                 const auditResult = await getAuditFeedback(text);
+                extractedCvAnalysis = auditResult;
+                sessionStorage.setItem('cvAnalysis', auditResult);
                 auditOutput.innerHTML = auditResult.replace(/\n\n/g, '<p>').replace(/\n/g, '<br>');
                 loadingSection.classList.add('hidden');
                 resultsSection.classList.remove('hidden');
@@ -366,10 +373,11 @@
             downloadNote.textContent = 'Preparing your revised CV PDF...';
             updateRetryVisibility();
             try {
+                const cvAnalysis = extractedCvAnalysis || sessionStorage.getItem('cvAnalysis') || '';
                 const response = await fetch('/.netlify/functions/generate-pdf', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cvText }),
+                    body: JSON.stringify({ cvText, cvAnalysis }),
                 });
 
                 if (!response.ok) {
@@ -403,10 +411,11 @@
                 throw new Error('Unable to generate the revised CV. Please run the audit again.');
             }
             downloadNote.textContent = 'Preparing your revised CV PDF...';
+            const cvAnalysis = extractedCvAnalysis || sessionStorage.getItem('cvAnalysis') || '';
             const response = await fetch('/.netlify/functions/generate-pdf', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cvText }),
+                body: JSON.stringify({ cvText, cvAnalysis }),
             });
 
             if (!response.ok) {
