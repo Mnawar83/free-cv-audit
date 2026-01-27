@@ -1,3 +1,6 @@
+const fs = require('fs');
+const path = require('path');
+
 const { buildGoogleAiUrl } = require('./google-ai');
 
 const PDF_FILENAME = 'revised-cv.pdf';
@@ -95,7 +98,7 @@ function buildPdfBuffer(text) {
     const stream = `BT\n${contentLines.join('\n')}\nET`;
     pages.push({
       stream,
-      streamLength: Buffer.byteLength(stream, 'utf8'),
+      streamLength: Buffer.byteLength(stream, 'latin1'),
     });
   }
 
@@ -103,6 +106,18 @@ function buildPdfBuffer(text) {
     '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj',
     `2 0 obj\n<< /Type /Pages /Kids [${pages.map((_, index) => `${3 + index * 2} 0 R`).join(' ')}] /Count ${pages.length} >>\nendobj`,
   ];
+
+  const toUnicodeCmap = buildToUnicodeCmap(codePoints);
+  const regularFontBuffer = loadFontBuffer(
+    'NotoSans-Regular.ttf',
+    process.env.NOTO_SANS_REGULAR_BASE64,
+  );
+  const boldFontBuffer = loadFontBuffer(
+    'NotoSans-Bold.ttf',
+    process.env.NOTO_SANS_BOLD_BASE64,
+  );
+  const regularFontId = addFontObjects(objects, 'NotoSans-Regular', regularFontBuffer, toUnicodeCmap);
+  const boldFontId = addFontObjects(objects, 'NotoSans-Bold', boldFontBuffer, toUnicodeCmap);
 
   pages.forEach((page, index) => {
     const pageObjectId = 3 + index * 2;
@@ -124,11 +139,11 @@ function buildPdfBuffer(text) {
   const offsets = [0];
 
   objects.forEach((object) => {
-    offsets.push(Buffer.byteLength(pdf, 'utf8'));
+    offsets.push(Buffer.byteLength(pdf, 'latin1'));
     pdf += `${object}\n`;
   });
 
-  const xrefStart = Buffer.byteLength(pdf, 'utf8');
+  const xrefStart = Buffer.byteLength(pdf, 'latin1');
   pdf += `xref\n0 ${objects.length + 1}\n`;
   pdf += '0000000000 65535 f \n';
   for (let i = 1; i <= objects.length; i += 1) {
@@ -136,7 +151,7 @@ function buildPdfBuffer(text) {
   }
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
 
-  return Buffer.from(pdf, 'utf8');
+  return Buffer.from(pdf, 'latin1');
 }
 
 exports.handler = async (event) => {
