@@ -14,8 +14,8 @@ function sanitizePdfText(text) {
     .replace(/[\u0300-\u036f]/g, '');
 
   return normalized
-    .replace(/[^\x20-\x7e]/g, ' ')
-    .replace(/ {2,}/g, ' ');
+    .replace(/[^\x09\x20-\x7e]/g, ' ')
+    ;
 }
 
 function encodePdfText(text) {
@@ -26,23 +26,59 @@ function encodePdfText(text) {
     .replace(/\t/g, '    ');
 }
 
+function getNameLineIndex(lines) {
+  return lines.findIndex((line) => line.trim().length > 0);
+}
+
+function isHeadingLine(line, index, nameIndex) {
+  if (index === nameIndex) {
+    return false;
+  }
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (trimmed.endsWith(':')) {
+    return true;
+  }
+  return trimmed === trimmed.toUpperCase() && /[A-Z]/.test(trimmed);
+}
+
+function estimateCenteredX(text, fontSize, pageWidth, minX) {
+  const sanitized = sanitizePdfText(text).replace(/\t/g, '    ');
+  const estimatedWidth = sanitized.length * fontSize * 0.6;
+  const centered = (pageWidth - estimatedWidth) / 2;
+  return Math.max(minX, centered);
+}
+
 function buildPdfBuffer(text) {
   const normalized = text.replace(/\r\n/g, '\n');
   const lines = normalized.split('\n');
   const fontSize = 12;
+  const nameFontSize = 14;
   const lineHeight = 16;
   const startX = 72;
   const startY = 720;
+  const pageWidth = 612;
   const maxLinesPerPage = 40;
   const pages = [];
+  const nameIndex = getNameLineIndex(lines);
 
   for (let i = 0; i < lines.length; i += maxLinesPerPage) {
     const pageLines = lines.slice(i, i + maxLinesPerPage);
     const contentLines = pageLines.map((line, index) => {
-      const position = index === 0 ? `${startX} ${startY} Td` : `0 -${lineHeight} Td`;
-      return `${position} (${encodePdfText(line)}) Tj`;
+      const absoluteIndex = i + index;
+      const isNameLine = absoluteIndex === nameIndex;
+      const isHeading = isHeadingLine(line, absoluteIndex, nameIndex);
+      const lineFontSize = isNameLine ? nameFontSize : fontSize;
+      const fontId = isNameLine || isHeading ? 'F2' : 'F1';
+      const lineStartX = isNameLine
+        ? estimateCenteredX(line, lineFontSize, pageWidth, startX)
+        : startX;
+      const position = index === 0 ? `${lineStartX} ${startY} Td` : `0 -${lineHeight} Td`;
+      return `${position}\n/${fontId} ${lineFontSize} Tf\n(${encodePdfText(line)}) Tj`;
     });
-    const stream = `BT\n/F1 ${fontSize} Tf\n${contentLines.join('\n')}\nET`;
+    const stream = `BT\n${contentLines.join('\n')}\nET`;
     pages.push({
       stream,
       streamLength: Buffer.byteLength(stream, 'utf8'),
@@ -58,13 +94,17 @@ function buildPdfBuffer(text) {
     const pageObjectId = 3 + index * 2;
     const contentObjectId = pageObjectId + 1;
     objects.push(
-      `${pageObjectId} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents ${contentObjectId} 0 R /Resources << /Font << /F1 ${3 + pages.length * 2} 0 R >> >> >>\nendobj`,
+      `${pageObjectId} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents ${contentObjectId} 0 R /Resources << /Font << /F1 ${3 + pages.length * 2} 0 R /F2 ${4 + pages.length * 2} 0 R >> >> >>\nendobj`,
       `${contentObjectId} 0 obj\n<< /Length ${page.streamLength} >>\nstream\n${page.stream}\nendstream\nendobj`,
     );
   });
 
   const fontObjectId = 3 + pages.length * 2;
-  objects.push(`${fontObjectId} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj`);
+  const boldFontObjectId = fontObjectId + 1;
+  objects.push(
+    `${fontObjectId} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj`,
+    `${boldFontObjectId} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj`,
+  );
 
   let pdf = '%PDF-1.4\n';
   const offsets = [0];
