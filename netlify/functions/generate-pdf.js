@@ -5,6 +5,7 @@ const PDF_FILENAME = 'revised-cv.pdf';
 function sanitizePdfText(text) {
   const normalized = text
     .replace(/\u00a0/g, ' ')
+    .replace(/\*\*/g, '')
     .replace(/[\u2018\u2019\u2032]/g, "'")
     .replace(/[\u201c\u201d\u2033]/g, '"')
     .replace(/[\u2013\u2014]/g, '-')
@@ -51,15 +52,38 @@ function estimateCenteredX(text, fontSize, pageWidth, minX) {
   return Math.max(minX, centered);
 }
 
+function wrapPdfLines(lines, maxCharsPerLine) {
+  return lines.flatMap((line) => {
+    const expanded = sanitizePdfText(line).replace(/\t/g, '    ');
+    if (expanded.length <= maxCharsPerLine) {
+      return [line];
+    }
+    const wrapped = [];
+    let remaining = line;
+    while (remaining.length > maxCharsPerLine) {
+      const segment = remaining.slice(0, maxCharsPerLine);
+      const lastSpace = segment.lastIndexOf(' ');
+      const splitIndex = lastSpace > 0 ? lastSpace : maxCharsPerLine;
+      wrapped.push(remaining.slice(0, splitIndex).trimEnd());
+      remaining = remaining.slice(splitIndex).trimStart();
+    }
+    if (remaining.length > 0) {
+      wrapped.push(remaining);
+    }
+    return wrapped;
+  });
+}
+
 function buildPdfBuffer(text) {
   const normalized = text.replace(/\r\n/g, '\n');
-  const lines = normalized.split('\n');
   const fontSize = 12;
   const nameFontSize = 14;
   const lineHeight = 16;
   const startX = 72;
   const startY = 720;
   const pageWidth = 612;
+  const maxCharsPerLine = Math.floor((pageWidth - startX * 2) / (fontSize * 0.6));
+  const lines = wrapPdfLines(normalized.split('\n'), maxCharsPerLine);
   const maxLinesPerPage = 40;
   const pages = [];
   const nameIndex = getNameLineIndex(lines);
