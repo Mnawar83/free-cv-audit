@@ -657,20 +657,22 @@
 
             try {
                 const config = await fetchWhishPayConfig();
+                const externalId = Date.now();
+                sessionStorage.setItem('whishPayExternalId', externalId.toString());
+                const returnQuery = `payment=success&externalId=${externalId}`;
+                const failQuery = `payment=failed&externalId=${externalId}`;
                 const response = await fetch('/.netlify/functions/whishpay-create-payment', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         amount: config.amount,
                         currency: config.currency,
-                        successUrl: `${window.location.origin}${window.location.pathname}?payment=success`,
-                        failureUrl: `${window.location.origin}${window.location.pathname}?payment=failed`,
                         invoice: 'Revised CV download',
-                        externalId: Date.now(),
-                        successCallbackUrl: `${window.location.origin}${window.location.pathname}?payment=success`,
-                        failureCallbackUrl: `${window.location.origin}${window.location.pathname}?payment=failed`,
-                        successRedirectUrl: `${window.location.origin}${window.location.pathname}?payment=success`,
-                        failureRedirectUrl: `${window.location.origin}${window.location.pathname}?payment=failed`,
+                        externalId,
+                        successCallbackUrl: `${window.location.origin}${window.location.pathname}?${returnQuery}`,
+                        failureCallbackUrl: `${window.location.origin}${window.location.pathname}?${failQuery}`,
+                        successRedirectUrl: `${window.location.origin}${window.location.pathname}?${returnQuery}`,
+                        failureRedirectUrl: `${window.location.origin}${window.location.pathname}?${failQuery}`,
                     }),
                 });
 
@@ -699,16 +701,42 @@
             const paymentStatus = url.searchParams.get('payment');
             if (!paymentStatus) return;
             if (paymentStatus === 'success') {
-                paymentCompleted = true;
-                sessionStorage.setItem('paymentCompleted', 'true');
-                if (whishPayStatus) {
-                    whishPayStatus.textContent = 'Payment confirmed. Preparing your download...';
+                const externalId = url.searchParams.get('externalId') || sessionStorage.getItem('whishPayExternalId');
+                if (!externalId) {
+                    showError('Missing Whish Pay reference. Please try again.');
+                    return;
                 }
-                generateRevisedPdf(extractedCvText)
+                if (whishPayStatus) {
+                    whishPayStatus.textContent = 'Confirming Whish Pay payment...';
+                }
+                fetch('/.netlify/functions/whishpay-check-status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ externalId, currency: 'USD' }),
+                })
+                    .then(async (response) => {
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.error || 'Unable to confirm Whish Pay payment.');
+                        }
+                        return response.json();
+                    })
+                    .then((statusData) => {
+                        if (statusData.collectStatus !== 'success') {
+                            throw new Error('Whish Pay payment is not confirmed yet.');
+                        }
+                        paymentCompleted = true;
+                        sessionStorage.setItem('paymentCompleted', 'true');
+                        sessionStorage.removeItem('whishPayExternalId');
+                        if (whishPayStatus) {
+                            whishPayStatus.textContent = 'Payment confirmed. Preparing your download...';
+                        }
+                        return generateRevisedPdf(extractedCvText);
+                    })
                     .then(() => setDownloadLocked(false))
                     .catch((error) => {
-                        console.error('PDF generation error:', error);
-                        showError(error.message || 'Unable to generate your revised CV yet.');
+                        console.error('Whish Pay confirmation error:', error);
+                        showError(error.message || 'Unable to confirm your payment yet.');
                         updateRetryVisibility();
                     });
             } else {
@@ -717,6 +745,7 @@
                 }
             }
             url.searchParams.delete('payment');
+            url.searchParams.delete('externalId');
             window.history.replaceState({}, document.title, url.toString());
         }
 
