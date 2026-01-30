@@ -678,13 +678,11 @@
 
             try {
                 const config = await fetchWhishPayConfig();
-                const externalId = Date.now();
-                sessionStorage.setItem('whishPayExternalId', externalId.toString());
                 if (config?.currency) {
                     sessionStorage.setItem('whishPayCurrency', config.currency);
                 }
-                const returnQuery = `payment=success&externalId=${externalId}`;
-                const failQuery = `payment=failed&externalId=${externalId}`;
+                const returnQuery = 'payment=success';
+                const failQuery = 'payment=failed';
                 const response = await fetch('/.netlify/functions/whishpay-create-payment', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -692,7 +690,6 @@
                         amount: config.amount,
                         currency: config.currency,
                         invoice: 'Revised CV download',
-                        externalId,
                         successCallbackUrl: `${window.location.origin}${window.location.pathname}?${returnQuery}`,
                         failureCallbackUrl: `${window.location.origin}${window.location.pathname}?${failQuery}`,
                         successRedirectUrl: `${window.location.origin}${window.location.pathname}?${returnQuery}`,
@@ -706,6 +703,11 @@
                 }
 
                 const payload = await response.json();
+                const externalId = payload?.externalId;
+                if (!externalId) {
+                    throw new Error('Whish Pay did not return a reference ID.');
+                }
+                sessionStorage.setItem('whishPayExternalId', externalId.toString());
                 const paymentUrl = payload?.data?.collectUrl || payload?.collectUrl;
                 if (!paymentUrl) {
                     throw new Error('Whish Pay did not return a checkout link.');

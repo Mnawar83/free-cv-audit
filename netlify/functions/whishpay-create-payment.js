@@ -1,3 +1,5 @@
+const crypto = require('crypto');
+
 const {
   WHISHPAY_AMOUNT,
   WHISHPAY_CURRENCY,
@@ -6,6 +8,20 @@ const {
   getWhishPayHeaders,
   getWhishPayCreateUrl,
 } = require('./whishpay-utils');
+
+function generateExternalId() {
+  return crypto.randomInt(1_000_000_000_000, 9_999_999_999_999);
+}
+
+function appendExternalId(urlString, externalId) {
+  try {
+    const url = new URL(urlString);
+    url.searchParams.set('externalId', externalId.toString());
+    return url.toString();
+  } catch (error) {
+    return urlString;
+  }
+}
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -17,12 +33,24 @@ exports.handler = async (event) => {
     const payload = JSON.parse(event.body || '{}');
     const amount = WHISHPAY_AMOUNT;
     const currency = WHISHPAY_CURRENCY;
-    const externalId = payload.externalId || Date.now();
+    const externalId = generateExternalId();
     const invoice = payload.invoice || 'Revised CV download';
-    const successCallbackUrl = payload.successCallbackUrl || WHISHPAY_WEBSITE_URL;
-    const failureCallbackUrl = payload.failureCallbackUrl || WHISHPAY_WEBSITE_URL;
-    const successRedirectUrl = payload.successRedirectUrl || WHISHPAY_WEBSITE_URL;
-    const failureRedirectUrl = payload.failureRedirectUrl || WHISHPAY_WEBSITE_URL;
+    const successCallbackUrl = appendExternalId(
+      payload.successCallbackUrl || WHISHPAY_WEBSITE_URL,
+      externalId,
+    );
+    const failureCallbackUrl = appendExternalId(
+      payload.failureCallbackUrl || WHISHPAY_WEBSITE_URL,
+      externalId,
+    );
+    const successRedirectUrl = appendExternalId(
+      payload.successRedirectUrl || WHISHPAY_WEBSITE_URL,
+      externalId,
+    );
+    const failureRedirectUrl = appendExternalId(
+      payload.failureRedirectUrl || WHISHPAY_WEBSITE_URL,
+      externalId,
+    );
 
     const response = await fetch(getWhishPayCreateUrl(), {
       method: 'POST',
@@ -64,7 +92,7 @@ exports.handler = async (event) => {
       };
     }
 
-    return { statusCode: 200, body: JSON.stringify(data) };
+    return { statusCode: 200, body: JSON.stringify({ ...data, externalId }) };
   } catch (error) {
     return {
       statusCode: error.statusCode || 500,
