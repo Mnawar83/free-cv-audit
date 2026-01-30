@@ -57,7 +57,6 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         status: true,
         collectStatus,
-        payerPhoneNumber: data?.data?.payerPhoneNumber,
       }),
     };
   } catch (error) {
