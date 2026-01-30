@@ -6,6 +6,24 @@ function getPayPalBaseUrl() {
   return process.env.PAYPAL_BASE_URL || 'https://api-m.paypal.com';
 }
 
+function getPayPalEnvironment() {
+  const env = (process.env.PAYPAL_ENV || '').toLowerCase();
+  if (env === 'sandbox' || env === 'live') {
+    return env;
+  }
+  const baseUrl = getPayPalBaseUrl();
+  if (baseUrl.includes('sandbox')) {
+    return 'sandbox';
+  }
+  return 'live';
+}
+
+function getPayPalSdkBaseUrl() {
+  return getPayPalEnvironment() === 'sandbox'
+    ? 'https://www.sandbox.paypal.com/sdk/js'
+    : 'https://www.paypal.com/sdk/js';
+}
+
 function assertPayPalConfigured() {
   const clientId = process.env.PAYPAL_CLIENT_ID;
   const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
@@ -56,4 +74,6 @@ module.exports = {
   PAYPAL_BUYER_COUNTRY,
   assertPayPalConfigured,
   getPayPalAccessToken,
+  getPayPalEnvironment,
+  getPayPalSdkBaseUrl,
 };

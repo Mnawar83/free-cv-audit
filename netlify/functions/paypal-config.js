@@ -3,6 +3,8 @@ const {
   PAYPAL_CURRENCY,
   PAYPAL_BUYER_COUNTRY,
   assertPayPalConfigured,
+  getPayPalEnvironment,
+  getPayPalSdkBaseUrl,
 } = require('./paypal-utils');
 
 exports.handler = async (event) => {
@@ -19,6 +21,8 @@ exports.handler = async (event) => {
         currency: PAYPAL_CURRENCY,
         amount: PAYPAL_AMOUNT,
         buyerCountry: PAYPAL_BUYER_COUNTRY || undefined,
+        environment: getPayPalEnvironment(),
+        sdkBaseUrl: getPayPalSdkBaseUrl(),
       }),
     };
   } catch (error) {
