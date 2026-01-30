@@ -108,7 +108,11 @@
                         <h3 class="text-xl font-bold text-white">Download Your Revised CV (PDF)</h3>
                         <p class="mt-2 text-slate-300">
                             Get the professionally revised, ATS-ready version of your CV based on this audit for
-                            <span class="font-semibold text-white" id="payment-price">USD 1.99</span>.
+                            <span class="font-semibold text-white" id="payment-price-paypal">USD 1.99</span>
+                            via PayPal or card.
+                        </p>
+                        <p class="mt-1 text-slate-400 text-sm">
+                            Whish Pay price: <span class="font-semibold text-white" id="payment-price-whish">USD 1.99</span>.
                         </p>
                         <p class="mt-2 text-slate-400 text-sm">
                             Pay securely through PayPal, debit/credit card, or Whish Pay to unlock your download instantly.
@@ -466,7 +470,7 @@
                 const config = await fetchPayPalConfig();
                 const formattedPrice = `${config.currency || 'USD'} ${config.amount || '1.99'}`;
                 const priceElements = [
-                    document.getElementById('payment-price'),
+                    document.getElementById('payment-price-paypal'),
                 ];
                 priceElements.forEach((element) => {
                     if (element) element.textContent = formattedPrice;
@@ -644,7 +648,7 @@
                 const config = await fetchWhishPayConfig();
                 const formattedPrice = `${config.currency || 'USD'} ${config.amount || '1.99'}`;
                 const priceElements = [
-                    document.getElementById('payment-price'),
+                    document.getElementById('payment-price-whish'),
                 ];
                 priceElements.forEach((element) => {
                     if (element) element.textContent = formattedPrice;
