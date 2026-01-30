@@ -1,8 +1,27 @@
 const PAYPAL_CURRENCY = process.env.PAYPAL_CURRENCY || 'USD';
 const PAYPAL_AMOUNT = process.env.PAYPAL_AMOUNT || '1.99';
+const PAYPAL_BUYER_COUNTRY = process.env.PAYPAL_BUYER_COUNTRY || '';
 
 function getPayPalBaseUrl() {
   return process.env.PAYPAL_BASE_URL || 'https://api-m.paypal.com';
+}
+
+function getPayPalEnvironment() {
+  const env = (process.env.PAYPAL_ENV || '').toLowerCase();
+  if (env === 'sandbox' || env === 'live') {
+    return env;
+  }
+  const baseUrl = getPayPalBaseUrl();
+  if (baseUrl.includes('sandbox')) {
+    return 'sandbox';
+  }
+  return 'live';
+}
+
+function getPayPalSdkBaseUrl() {
+  return getPayPalEnvironment() === 'sandbox'
+    ? 'https://www.sandbox.paypal.com/sdk/js'
+    : 'https://www.paypal.com/sdk/js';
 }
 
 function assertPayPalConfigured() {
@@ -52,6 +71,9 @@ async function getPayPalAccessToken() {
 module.exports = {
   PAYPAL_AMOUNT,
   PAYPAL_CURRENCY,
+  PAYPAL_BUYER_COUNTRY,
   assertPayPalConfigured,
   getPayPalAccessToken,
+  getPayPalEnvironment,
+  getPayPalSdkBaseUrl,
 };

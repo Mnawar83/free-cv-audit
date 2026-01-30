@@ -505,10 +505,15 @@
                             'client-id': config.clientId,
                             currency: config.currency || 'USD',
                             intent: 'capture',
+                            components: 'buttons',
                             'enable-funding': 'card',
                             'disable-funding': 'paylater',
                         });
-                        script.src = `https://www.paypal.com/sdk/js?${params.toString()}`;
+                        if (config.buyerCountry) {
+                            params.set('buyer-country', config.buyerCountry);
+                        }
+                        const sdkBaseUrl = config.sdkBaseUrl || 'https://www.paypal.com/sdk/js';
+                        script.src = `${sdkBaseUrl}?${params.toString()}`;
                         script.async = true;
                         script.onload = () => resolve();
                         script.onerror = () => reject(new Error('Failed to load the PayPal SDK.'));

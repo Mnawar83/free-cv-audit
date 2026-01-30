@@ -1,4 +1,11 @@
-const { PAYPAL_AMOUNT, PAYPAL_CURRENCY, assertPayPalConfigured } = require('./paypal-utils');
+const {
+  PAYPAL_AMOUNT,
+  PAYPAL_CURRENCY,
+  PAYPAL_BUYER_COUNTRY,
+  assertPayPalConfigured,
+  getPayPalEnvironment,
+  getPayPalSdkBaseUrl,
+} = require('./paypal-utils');
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'GET') {
@@ -13,6 +20,9 @@ exports.handler = async (event) => {
         clientId,
         currency: PAYPAL_CURRENCY,
         amount: PAYPAL_AMOUNT,
+        buyerCountry: PAYPAL_BUYER_COUNTRY || undefined,
+        environment: getPayPalEnvironment(),
+        sdkBaseUrl: getPayPalSdkBaseUrl(),
       }),
     };
   } catch (error) {
