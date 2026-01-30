@@ -20,6 +20,11 @@ exports.handler = async (event) => {
       },
       body: JSON.stringify({
         intent: 'CAPTURE',
+        application_context: {
+          landing_page: 'GUEST_CHECKOUT',
+          user_action: 'PAY_NOW',
+          shipping_preference: 'NO_SHIPPING',
+        },
         purchase_units: [
           {
             amount: {
