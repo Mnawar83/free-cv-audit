@@ -659,6 +659,9 @@
                 const config = await fetchWhishPayConfig();
                 const externalId = Date.now();
                 sessionStorage.setItem('whishPayExternalId', externalId.toString());
+                if (config?.currency) {
+                    sessionStorage.setItem('whishPayCurrency', config.currency);
+                }
                 const returnQuery = `payment=success&externalId=${externalId}`;
                 const failQuery = `payment=failed&externalId=${externalId}`;
                 const response = await fetch('/.netlify/functions/whishpay-create-payment', {
@@ -696,7 +699,7 @@
             }
         }
 
-        function handleWhishPayReturn() {
+        async function handleWhishPayReturn() {
             const url = new URL(window.location.href);
             const paymentStatus = url.searchParams.get('payment');
             if (!paymentStatus) return;
@@ -706,13 +709,22 @@
                     showError('Missing Whish Pay reference. Please try again.');
                     return;
                 }
+                let currency = sessionStorage.getItem('whishPayCurrency');
+                if (!currency) {
+                    try {
+                        const config = await fetchWhishPayConfig();
+                        currency = config?.currency;
+                    } catch (error) {
+                        console.warn('Whish Pay config unavailable for return flow.', error);
+                    }
+                }
                 if (whishPayStatus) {
                     whishPayStatus.textContent = 'Confirming Whish Pay payment...';
                 }
                 fetch('/.netlify/functions/whishpay-check-status', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ externalId, currency: 'USD' }),
+                    body: JSON.stringify({ externalId, currency: currency || 'USD' }),
                 })
                     .then(async (response) => {
                         if (!response.ok) {
@@ -728,6 +740,7 @@
                         paymentCompleted = true;
                         sessionStorage.setItem('paymentCompleted', 'true');
                         sessionStorage.removeItem('whishPayExternalId');
+                        sessionStorage.removeItem('whishPayCurrency');
                         if (whishPayStatus) {
                             whishPayStatus.textContent = 'Payment confirmed. Preparing your download...';
                         }
