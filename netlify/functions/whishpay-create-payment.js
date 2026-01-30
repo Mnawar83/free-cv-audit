@@ -15,8 +15,8 @@ exports.handler = async (event) => {
   try {
     assertWhishPayConfigured();
     const payload = JSON.parse(event.body || '{}');
-    const amount = payload.amount || WHISHPAY_AMOUNT;
-    const currency = payload.currency || WHISHPAY_CURRENCY;
+    const amount = WHISHPAY_AMOUNT;
+    const currency = WHISHPAY_CURRENCY;
     const externalId = payload.externalId || Date.now();
     const invoice = payload.invoice || 'Revised CV download';
     const successCallbackUrl = payload.successCallbackUrl || WHISHPAY_WEBSITE_URL;
