@@ -11,7 +11,9 @@ const WHISHPAY_USER_AGENT =
 
 function assertWhishPayConfigured() {
   if (!WHISHPAY_CHANNEL || !WHISHPAY_SECRET || !WHISHPAY_WEBSITE_URL || !WHISHPAY_BASE_URL) {
-    const error = new Error('Whish Pay credentials or base URL are not configured.');
+    const error = new Error(
+      'Whish Pay env vars are required: WHISHPAY_CHANNEL, WHISHPAY_SECRET, WHISHPAY_WEBSITE_URL, WHISHPAY_BASE_URL.',
+    );
     error.statusCode = 500;
     throw error;
   }
