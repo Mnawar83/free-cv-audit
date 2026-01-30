@@ -721,10 +721,14 @@
                 if (whishPayStatus) {
                     whishPayStatus.textContent = 'Confirming Whish Pay payment...';
                 }
+                const statusPayload = { externalId };
+                if (currency) {
+                    statusPayload.currency = currency;
+                }
                 fetch('/.netlify/functions/whishpay-check-status', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ externalId, currency: currency || 'USD' }),
+                    body: JSON.stringify(statusPayload),
                 })
                     .then(async (response) => {
                         if (!response.ok) {
