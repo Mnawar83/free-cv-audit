@@ -28,10 +28,12 @@
             border-color: #3b82f6; /* Blue-500 */
             background-color: #1f2937; /* Gray-800 */
         }
-        .paypal-gateway-panel {
+        .paypal-gateway-panel,
+        .whishpay-gateway-panel {
             background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(17, 24, 39, 0.95));
         }
-        .paypal-powered-text {
+        .paypal-powered-text,
+        .whishpay-powered-text {
             letter-spacing: 0.08em;
         }
     </style>
@@ -106,10 +108,14 @@
                         <h3 class="text-xl font-bold text-white">Download Your Revised CV (PDF)</h3>
                         <p class="mt-2 text-slate-300">
                             Get the professionally revised, ATS-ready version of your CV based on this audit for
-                            <span class="font-semibold text-white" id="payment-price">USD 1.99</span>.
+                            <span class="font-semibold text-white" id="payment-price-paypal">USD 1.99</span>
+                            via PayPal or card.
+                        </p>
+                        <p class="mt-1 text-slate-400 text-sm">
+                            Whish Pay price: <span class="font-semibold text-white" id="payment-price-whish">USD 1.99</span>.
                         </p>
                         <p class="mt-2 text-slate-400 text-sm">
-                            Pay securely through PayPal to unlock your download instantly.
+                            Pay securely through PayPal, debit/credit card, or Whish Pay to unlock your download instantly.
                         </p>
                         <div class="mt-6 flex flex-col items-center gap-4">
                             <div class="paypal-gateway-panel w-full max-w-md rounded-lg p-3">
@@ -118,6 +124,13 @@
                             <div class="paypal-gateway-panel w-full max-w-md rounded-lg p-3">
                                 <div id="paypal-button-card" class="min-h-[44px]"></div>
                             </div>
+                            <div class="whishpay-gateway-panel w-full max-w-md rounded-lg p-4">
+                                <button id="whishpay-button" class="w-full rounded-md bg-emerald-500 py-3 text-sm font-semibold text-slate-900 transition hover:bg-emerald-400">
+                                    Pay with Whish Pay
+                                </button>
+                                <p class="whishpay-powered-text mt-2 text-xs uppercase text-slate-400">Powered by Whish Pay</p>
+                            </div>
+                            <p id="whishpay-status" class="text-xs text-slate-500"></p>
                         </div>
                         <a id="download-link" href="#" class="mt-4 inline-flex items-center justify-center bg-emerald-600 text-white font-bold py-3 px-8 rounded-lg opacity-50 pointer-events-none transition-colors" aria-disabled="true">
                             Download Revised CV (PDF)
@@ -153,6 +166,8 @@
 
         const paypalButtonPayPalContainer = document.getElementById('paypal-button-paypal');
         const paypalButtonCardContainer = document.getElementById('paypal-button-card');
+        const whishPayButton = document.getElementById('whishpay-button');
+        const whishPayStatus = document.getElementById('whishpay-status');
         const downloadLink = document.getElementById('download-link');
         const downloadNote = document.getElementById('download-note');
         const retryDownloadButton = document.getElementById('retry-download');
@@ -169,6 +184,7 @@
         let paypalButtonsRendered = false;
         let paypalConfigCache = null;
         let paypalConfigError = null;
+        let whishPayConfigCache = null;
         let extractedCvText = '';
         let extractedCvAnalysis = '';
         let revisedCvBlobUrl = null;
@@ -243,6 +259,7 @@
                 loadingSection.classList.add('hidden');
                 resultsSection.classList.remove('hidden');
                 initializePayPalButtons();
+                initializeWhishPayCheckout();
 
             } catch (error) {
                 console.error('Audit Error:', error);
@@ -352,6 +369,23 @@
             updateRetryVisibility();
         }
 
+        function restoreAuditResultsFromSession() {
+            const storedAnalysis = sessionStorage.getItem('cvAnalysis');
+            if (!storedAnalysis) return false;
+            extractedCvAnalysis = storedAnalysis;
+            const storedText = sessionStorage.getItem('cvText');
+            if (storedText) {
+                extractedCvText = storedText;
+            }
+            auditOutput.innerHTML = storedAnalysis.replace(/\n\n/g, '<p>').replace(/\n/g, '<br>');
+            uploadSection.classList.add('hidden');
+            loadingSection.classList.add('hidden');
+            resultsSection.classList.remove('hidden');
+            initializePayPalButtons();
+            initializeWhishPayCheckout();
+            return true;
+        }
+
         function updateRetryVisibility() {
             if (!retryDownloadButton) return;
             if (paymentCompleted && !revisedCvBlobUrl && !isGeneratingPdf) {
@@ -406,40 +440,6 @@
             }
         }
 
-        async function generateRevisedPdf(cvText) {
-            if (!cvText) {
-                throw new Error('Unable to generate the revised CV. Please run the audit again.');
-            }
-            downloadNote.textContent = 'Preparing your revised CV PDF...';
-            const cvAnalysis = extractedCvAnalysis || sessionStorage.getItem('cvAnalysis') || '';
-            const response = await fetch('/.netlify/functions/generate-pdf', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cvText, cvAnalysis }),
-            });
-
-            if (!response.ok) {
-                let message = 'Unable to generate the revised CV.';
-                try {
-                    const errorData = await response.json();
-                    if (errorData?.error) {
-                        message = errorData.error;
-                    }
-                } catch (parseError) {
-                    console.warn('Generate PDF error response could not be parsed.', parseError);
-                }
-                throw new Error(message);
-            }
-
-            const pdfBlob = await response.blob();
-            if (revisedCvBlobUrl) {
-                URL.revokeObjectURL(revisedCvBlobUrl);
-            }
-            revisedCvBlobUrl = URL.createObjectURL(pdfBlob);
-            downloadLink.href = revisedCvBlobUrl;
-            downloadLink.setAttribute('download', 'revised-cv.pdf');
-        }
-
         async function fetchPayPalConfig() {
             if (paypalConfigCache) return paypalConfigCache;
             const response = await fetch('/.netlify/functions/paypal-config');
@@ -470,7 +470,7 @@
                 const config = await fetchPayPalConfig();
                 const formattedPrice = `${config.currency || 'USD'} ${config.amount || '1.99'}`;
                 const priceElements = [
-                    document.getElementById('payment-price'),
+                    document.getElementById('payment-price-paypal'),
                 ];
                 priceElements.forEach((element) => {
                     if (element) element.textContent = formattedPrice;
@@ -493,20 +493,20 @@
             if (paypalSdkLoading) return paypalSdkLoading;
             paypalSdkLoading = (async () => {
                 try {
-                const config = await fetchPayPalConfig();
-                if (!config?.clientId) {
-                    throw new Error('PayPal is not configured yet.');
-                }
+                    const config = await fetchPayPalConfig();
+                    if (!config?.clientId) {
+                        throw new Error('PayPal is not configured yet.');
+                    }
                     if (window.paypal) return window.paypal;
                     await new Promise((resolve, reject) => {
                         const script = document.createElement('script');
-                    const params = new URLSearchParams({
-                        'client-id': config.clientId,
-                        currency: config.currency || 'USD',
-                        intent: 'capture',
-                        'enable-funding': 'card',
-                        'disable-funding': 'paylater',
-                    });
+                        const params = new URLSearchParams({
+                            'client-id': config.clientId,
+                            currency: config.currency || 'USD',
+                            intent: 'capture',
+                            'enable-funding': 'card',
+                            'disable-funding': 'paylater',
+                        });
                         script.src = `https://www.paypal.com/sdk/js?${params.toString()}`;
                         script.async = true;
                         script.onload = () => resolve();
@@ -620,8 +620,189 @@
             }
         }
 
+        async function fetchWhishPayConfig() {
+            if (whishPayConfigCache) return whishPayConfigCache;
+            const response = await fetch('/.netlify/functions/whishpay-config');
+            if (!response.ok) {
+                let errorMessage = 'Unable to load Whish Pay configuration.';
+                if (response.status === 404) {
+                    errorMessage = 'Whish Pay checkout is unavailable here. Run Netlify dev or deploy the site to enable serverless functions.';
+                } else {
+                    try {
+                        const errorData = await response.json();
+                        if (errorData?.error) {
+                            errorMessage = errorData.error;
+                        }
+                    } catch (parseError) {
+                        console.warn('Whish Pay config error response could not be parsed.', parseError);
+                    }
+                }
+                throw new Error(errorMessage);
+            }
+            whishPayConfigCache = await response.json();
+            return whishPayConfigCache;
+        }
+
+        async function hydrateWhishPayPricing() {
+            try {
+                const config = await fetchWhishPayConfig();
+                const formattedPrice = `${config.currency || 'USD'} ${config.amount || '1.99'}`;
+                const priceElements = [
+                    document.getElementById('payment-price-whish'),
+                ];
+                priceElements.forEach((element) => {
+                    if (element) element.textContent = formattedPrice;
+                });
+            } catch (error) {
+                console.warn('Whish Pay pricing unavailable:', error);
+                if (downloadNote) {
+                    downloadNote.textContent = 'Whish Pay checkout is unavailable right now. Please try again later.';
+                }
+                if (whishPayStatus) {
+                    whishPayStatus.textContent = 'Whish Pay checkout is currently unavailable.';
+                }
+                if (whishPayButton) {
+                    whishPayButton.disabled = true;
+                    whishPayButton.classList.add('cursor-not-allowed', 'opacity-60');
+                }
+            }
+        }
+
+        async function startWhishPayCheckout() {
+            if (!whishPayButton) return;
+            whishPayButton.disabled = true;
+            whishPayButton.classList.add('opacity-70');
+            if (whishPayStatus) {
+                whishPayStatus.textContent = 'Opening Whish Pay checkout...';
+            }
+
+            try {
+                const config = await fetchWhishPayConfig();
+                const externalId = Date.now();
+                sessionStorage.setItem('whishPayExternalId', externalId.toString());
+                if (config?.currency) {
+                    sessionStorage.setItem('whishPayCurrency', config.currency);
+                }
+                const returnQuery = `payment=success&externalId=${externalId}`;
+                const failQuery = `payment=failed&externalId=${externalId}`;
+                const response = await fetch('/.netlify/functions/whishpay-create-payment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        amount: config.amount,
+                        currency: config.currency,
+                        invoice: 'Revised CV download',
+                        externalId,
+                        successCallbackUrl: `${window.location.origin}${window.location.pathname}?${returnQuery}`,
+                        failureCallbackUrl: `${window.location.origin}${window.location.pathname}?${failQuery}`,
+                        successRedirectUrl: `${window.location.origin}${window.location.pathname}?${returnQuery}`,
+                        failureRedirectUrl: `${window.location.origin}${window.location.pathname}?${failQuery}`,
+                    }),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Unable to create Whish Pay checkout.');
+                }
+
+                const payload = await response.json();
+                const paymentUrl = payload?.data?.collectUrl || payload?.collectUrl;
+                if (!paymentUrl) {
+                    throw new Error('Whish Pay did not return a checkout link.');
+                }
+                window.location.href = paymentUrl;
+            } catch (error) {
+                console.error('Whish Pay error:', error);
+                showError(error.message || 'Whish Pay checkout failed. Please try again.');
+            } finally {
+                whishPayButton.disabled = false;
+                whishPayButton.classList.remove('opacity-70');
+            }
+        }
+
+        async function handleWhishPayReturn() {
+            const url = new URL(window.location.href);
+            const paymentStatus = url.searchParams.get('payment');
+            if (!paymentStatus) return;
+            const restored = restoreAuditResultsFromSession();
+            if (!restored) {
+                showError('Your audit results have expired. Please run the audit again to unlock your download.');
+            } else {
+                setDownloadLocked(true);
+            }
+            if (paymentStatus === 'success') {
+                const externalId = url.searchParams.get('externalId') || sessionStorage.getItem('whishPayExternalId');
+                if (!externalId) {
+                    showError('Missing Whish Pay reference. Please try again.');
+                    return;
+                }
+                let currency = sessionStorage.getItem('whishPayCurrency');
+                if (!currency) {
+                    try {
+                        const config = await fetchWhishPayConfig();
+                        currency = config?.currency;
+                    } catch (error) {
+                        console.warn('Whish Pay config unavailable for return flow.', error);
+                    }
+                }
+                if (whishPayStatus) {
+                    whishPayStatus.textContent = 'Confirming Whish Pay payment...';
+                }
+                const statusPayload = { externalId };
+                if (currency) {
+                    statusPayload.currency = currency;
+                }
+                fetch('/.netlify/functions/whishpay-check-status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(statusPayload),
+                })
+                    .then(async (response) => {
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.error || 'Unable to confirm Whish Pay payment.');
+                        }
+                        return response.json();
+                    })
+                    .then((statusData) => {
+                        if (statusData.collectStatus !== 'success') {
+                            throw new Error('Whish Pay payment is not confirmed yet.');
+                        }
+                        paymentCompleted = true;
+                        sessionStorage.setItem('paymentCompleted', 'true');
+                        sessionStorage.removeItem('whishPayExternalId');
+                        sessionStorage.removeItem('whishPayCurrency');
+                        if (whishPayStatus) {
+                            whishPayStatus.textContent = 'Payment confirmed. Preparing your download...';
+                        }
+                        return generateRevisedPdf(extractedCvText);
+                    })
+                    .then(() => setDownloadLocked(false))
+                    .catch((error) => {
+                        console.error('Whish Pay confirmation error:', error);
+                        showError(error.message || 'Unable to confirm your payment yet.');
+                        updateRetryVisibility();
+                    });
+            } else {
+                if (whishPayStatus) {
+                    whishPayStatus.textContent = 'Payment was cancelled or failed. Please try again.';
+                }
+            }
+            url.searchParams.delete('payment');
+            url.searchParams.delete('externalId');
+            window.history.replaceState({}, document.title, url.toString());
+        }
+
+        function initializeWhishPayCheckout() {
+            if (whishPayButton) {
+                whishPayButton.addEventListener('click', startWhishPayCheckout);
+            }
+        }
+
         hydratePayPalPricing();
+        hydrateWhishPayPricing();
         updateRetryVisibility();
+        handleWhishPayReturn();
 
         if (retryDownloadButton) {
             retryDownloadButton.addEventListener('click', async () => {
