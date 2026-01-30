@@ -775,7 +775,11 @@
                         if (whishPayStatus) {
                             whishPayStatus.textContent = 'Payment confirmed. Preparing your download...';
                         }
-                        return generateRevisedPdf(extractedCvText);
+                        return generateRevisedPdf(extractedCvText).then(() => {
+                            url.searchParams.delete('payment');
+                            url.searchParams.delete('externalId');
+                            window.history.replaceState({}, document.title, url.toString());
+                        });
                     })
                     .then(() => setDownloadLocked(false))
                     .catch((error) => {
@@ -788,9 +792,6 @@
                     whishPayStatus.textContent = 'Payment was cancelled or failed. Please try again.';
                 }
             }
-            url.searchParams.delete('payment');
-            url.searchParams.delete('externalId');
-            window.history.replaceState({}, document.title, url.toString());
         }
 
         function initializeWhishPayCheckout() {
