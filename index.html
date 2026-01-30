@@ -185,6 +185,7 @@
         let paypalConfigCache = null;
         let paypalConfigError = null;
         let whishPayConfigCache = null;
+        let whishPayListenerAttached = false;
         let extractedCvText = '';
         let extractedCvAnalysis = '';
         let revisedCvBlobUrl = null;
@@ -797,8 +798,9 @@
         }
 
         function initializeWhishPayCheckout() {
-            if (whishPayButton) {
+            if (whishPayButton && !whishPayListenerAttached) {
                 whishPayButton.addEventListener('click', startWhishPayCheckout);
+                whishPayListenerAttached = true;
             }
         }
 
