@@ -505,9 +505,13 @@
                             'client-id': config.clientId,
                             currency: config.currency || 'USD',
                             intent: 'capture',
+                            components: 'buttons',
                             'enable-funding': 'card',
                             'disable-funding': 'paylater',
                         });
+                        if (config.buyerCountry) {
+                            params.set('buyer-country', config.buyerCountry);
+                        }
                         script.src = `https://www.paypal.com/sdk/js?${params.toString()}`;
                         script.async = true;
                         script.onload = () => resolve();
