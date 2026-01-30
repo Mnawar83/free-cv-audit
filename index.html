@@ -665,7 +665,12 @@
                         currency: config.currency,
                         successUrl: `${window.location.origin}${window.location.pathname}?payment=success`,
                         failureUrl: `${window.location.origin}${window.location.pathname}?payment=failed`,
-                        description: 'Revised CV download',
+                        invoice: 'Revised CV download',
+                        externalId: Date.now(),
+                        successCallbackUrl: `${window.location.origin}${window.location.pathname}?payment=success`,
+                        failureCallbackUrl: `${window.location.origin}${window.location.pathname}?payment=failed`,
+                        successRedirectUrl: `${window.location.origin}${window.location.pathname}?payment=success`,
+                        failureRedirectUrl: `${window.location.origin}${window.location.pathname}?payment=failed`,
                     }),
                 });
 
@@ -675,7 +680,7 @@
                 }
 
                 const payload = await response.json();
-                const paymentUrl = payload.payment_url || payload.paymentUrl || payload.checkout_url || payload.url;
+                const paymentUrl = payload?.data?.collectUrl || payload?.collectUrl;
                 if (!paymentUrl) {
                     throw new Error('Whish Pay did not return a checkout link.');
                 }

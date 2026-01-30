@@ -13,27 +13,29 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { channel } = assertWhishPayConfigured();
+    assertWhishPayConfigured();
     const payload = JSON.parse(event.body || '{}');
     const amount = payload.amount || WHISHPAY_AMOUNT;
     const currency = payload.currency || WHISHPAY_CURRENCY;
-    const orderId = payload.orderId || `cv-${Date.now()}`;
-    const successUrl = payload.successUrl || WHISHPAY_WEBSITE_URL;
-    const failureUrl = payload.failureUrl || WHISHPAY_WEBSITE_URL;
-    const description = payload.description || 'Revised CV download';
+    const externalId = payload.externalId || Date.now();
+    const invoice = payload.invoice || 'Revised CV download';
+    const successCallbackUrl = payload.successCallbackUrl || WHISHPAY_WEBSITE_URL;
+    const failureCallbackUrl = payload.failureCallbackUrl || WHISHPAY_WEBSITE_URL;
+    const successRedirectUrl = payload.successRedirectUrl || WHISHPAY_WEBSITE_URL;
+    const failureRedirectUrl = payload.failureRedirectUrl || WHISHPAY_WEBSITE_URL;
 
     const response = await fetch(getWhishPayCreateUrl(), {
       method: 'POST',
       headers: getWhishPayHeaders(),
       body: JSON.stringify({
-        channel,
         amount,
         currency,
-        orderId,
-        description,
-        websiteUrl: WHISHPAY_WEBSITE_URL,
-        successUrl,
-        failureUrl,
+        invoice,
+        externalId,
+        successCallbackUrl,
+        failureCallbackUrl,
+        successRedirectUrl,
+        failureRedirectUrl,
       }),
     });
 
@@ -50,6 +52,16 @@ exports.handler = async (event) => {
       data = JSON.parse(responseText);
     } catch (parseError) {
       data = { raw: responseText };
+    }
+
+    if (data?.status !== true) {
+      return {
+        statusCode: 502,
+        body: JSON.stringify({
+          error: 'Whish Pay order creation failed.',
+          details: data?.dialog || data?.code || data,
+        }),
+      };
     }
 
     return { statusCode: 200, body: JSON.stringify(data) };
