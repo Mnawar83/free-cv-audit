@@ -1,4 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 32" role="img" aria-label="Whish logo">
-  <rect width="160" height="32" fill="none" />
-  <text x="0" y="24" font-family="Inter, sans-serif" font-size="24" font-weight="700" fill="#ffffff">Whish</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Whish Money logo">
+  <rect x="4" y="4" width="112" height="112" rx="22" ry="22" fill="#ff0a3d" />
+  <g fill="#ffffff" font-family="Inter, sans-serif">
+    <text x="60" y="62" text-anchor="middle" font-size="54" font-weight="700">W</text>
+    <text x="60" y="88" text-anchor="middle" font-size="20" font-weight="500" letter-spacing="6">WHISH</text>
+    <text x="60" y="106" text-anchor="middle" font-size="14" font-weight="500" letter-spacing="4">MONEY</text>
+  </g>
 </svg>
