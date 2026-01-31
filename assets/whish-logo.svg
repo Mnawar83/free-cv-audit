@@ -1,8 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Whish Money logo">
-  <rect x="4" y="4" width="112" height="112" rx="22" ry="22" fill="#ff0a3d" />
-  <g fill="#ffffff" font-family="Inter, sans-serif">
-    <text x="60" y="62" text-anchor="middle" font-size="54" font-weight="700">W</text>
-    <text x="60" y="88" text-anchor="middle" font-size="20" font-weight="500" letter-spacing="6">WHISH</text>
-    <text x="60" y="106" text-anchor="middle" font-size="14" font-weight="500" letter-spacing="4">MONEY</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Whish Money logo">
+  <rect x="8" y="8" width="240" height="240" rx="44" ry="44" fill="#ff0a3d" />
+  <g fill="#ffffff">
+    <path d="M46 92 L120 92 L154 116 L120 140 L46 140 L68 116 Z" />
+    <path d="M58 80 L124 80 L148 96 L124 112 L58 112 L78 96 Z" opacity="0.9" />
+    <path d="M70 68 L128 68 L144 80 L128 92 L70 92 L88 80 Z" opacity="0.8" />
+    <path d="M156 80 C174 80 188 94 188 112 C188 130 174 144 156 144 C146 144 138 140 132 134 L132 170 L112 170 L112 86 C120 74 136 66 156 66 C176 66 192 82 192 102 C192 118 182 132 168 138 C162 141 159 142 156 144 Z" />
+  </g>
+  <g fill="#ffffff" font-family="Inter, sans-serif" text-anchor="middle">
+    <text x="128" y="198" font-size="34" font-weight="600" letter-spacing="8">whish</text>
+    <text x="128" y="226" font-size="22" font-weight="500" letter-spacing="6">MONEY</text>
   </g>
 </svg>
