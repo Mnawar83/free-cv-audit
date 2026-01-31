@@ -1,6 +1,3 @@
-const fs = require('fs');
-const path = require('path');
-
 const { buildGoogleAiUrl } = require('./google-ai');
 
 const PDF_FILENAME = 'revised-cv.pdf';
@@ -118,7 +115,6 @@ function buildPdfBuffer(text) {
   );
   const maxLinesPerPage = 40;
   const pages = [];
-  const nameIndex = getNameLineIndex(originalLines);
 
   for (let i = 0; i < lines.length; i += maxLinesPerPage) {
     const pageLines = lines.slice(i, i + maxLinesPerPage);
@@ -146,18 +142,6 @@ function buildPdfBuffer(text) {
     '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj',
     `2 0 obj\n<< /Type /Pages /Kids [${pages.map((_, index) => `${3 + index * 2} 0 R`).join(' ')}] /Count ${pages.length} >>\nendobj`,
   ];
-
-  const toUnicodeCmap = buildToUnicodeCmap(codePoints);
-  const regularFontBuffer = loadFontBuffer(
-    'NotoSans-Regular.ttf',
-    process.env.NOTO_SANS_REGULAR_BASE64,
-  );
-  const boldFontBuffer = loadFontBuffer(
-    'NotoSans-Bold.ttf',
-    process.env.NOTO_SANS_BOLD_BASE64,
-  );
-  const regularFontId = addFontObjects(objects, 'NotoSans-Regular', regularFontBuffer, toUnicodeCmap);
-  const boldFontId = addFontObjects(objects, 'NotoSans-Bold', boldFontBuffer, toUnicodeCmap);
 
   pages.forEach((page, index) => {
     const pageObjectId = 3 + index * 2;
@@ -206,6 +190,12 @@ exports.handler = async (event) => {
     }
 
     const apiKey = process.env.GOOGLE_AI_API_KEY;
+    if (!apiKey) {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: 'Google AI API key is missing.' }),
+      };
+    }
     const apiUrl = buildGoogleAiUrl(apiKey);
 
     const systemPrompt = `You are an expert CV writer for Work Waves Career Services.
@@ -227,10 +217,18 @@ Return only the revised CV content, formatted as plain text with clear section h
     });
 
     if (!fetchResponse.ok) {
-      const errorData = await fetchResponse.json();
+      let errorMessage = 'AI request failed';
+      try {
+        const errorData = await fetchResponse.json();
+        if (errorData?.error?.message) {
+          errorMessage = errorData.error.message;
+        }
+      } catch (parseError) {
+        console.error('Unable to parse AI error response.', parseError);
+      }
       return {
         statusCode: 500,
-        body: JSON.stringify({ error: errorData.error?.message || 'AI request failed' }),
+        body: JSON.stringify({ error: errorMessage }),
       };
     }
 
@@ -253,6 +251,10 @@ Return only the revised CV content, formatted as plain text with clear section h
       isBase64Encoded: true,
     };
   } catch (error) {
-    return { statusCode: 500, body: JSON.stringify({ error: 'Internal Server Error' }) };
+    console.error('Generate PDF failure.', error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: error.message || 'Internal Server Error' }),
+    };
   }
 };
