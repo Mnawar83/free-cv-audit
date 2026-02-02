@@ -38,11 +38,15 @@ function getWhishPayHeaders() {
 }
 
 function getWhishPayCreateUrl() {
-  return new URL(WHISHPAY_CREATE_PATH, WHISHPAY_BASE_URL).toString();
+  const baseUrl = WHISHPAY_BASE_URL.endsWith('/') ? WHISHPAY_BASE_URL : WHISHPAY_BASE_URL + '/';
+  const path = WHISHPAY_CREATE_PATH.startsWith('/') ? WHISHPAY_CREATE_PATH.slice(1) : WHISHPAY_CREATE_PATH;
+  return new URL(path, baseUrl).toString();
 }
 
 function getWhishPayStatusUrl() {
-  return new URL(WHISHPAY_STATUS_PATH, WHISHPAY_BASE_URL).toString();
+  const baseUrl = WHISHPAY_BASE_URL.endsWith('/') ? WHISHPAY_BASE_URL : WHISHPAY_BASE_URL + '/';
+  const path = WHISHPAY_STATUS_PATH.startsWith('/') ? WHISHPAY_STATUS_PATH.slice(1) : WHISHPAY_STATUS_PATH;
+  return new URL(path, baseUrl).toString();
 }
 
 module.exports = {
