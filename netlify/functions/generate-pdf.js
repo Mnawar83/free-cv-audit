@@ -1,5 +1,5 @@
 const { buildGoogleAiUrl } = require('./google-ai');
-const { createRunId, upsertRun } = require('./run-store');
+const { LINKEDIN_UPSELL_STATUS, createRunId, getRun, upsertRun } = require('./run-store');
 
 const PDF_FILENAME = 'revised-cv.pdf';
 
@@ -241,7 +241,19 @@ Return only the revised CV content, formatted as plain text with clear section h
     }
 
     const pdfBuffer = buildPdfBuffer(revisedText);
-    const runId = incomingRunId || createRunId();
+    let runId = incomingRunId || createRunId();
+
+    if (incomingRunId) {
+      const existingRun = await getRun(incomingRunId);
+      if (
+        existingRun &&
+        existingRun.linkedin_upsell_status &&
+        existingRun.linkedin_upsell_status !== LINKEDIN_UPSELL_STATUS.NOT_STARTED
+      ) {
+        runId = createRunId();
+      }
+    }
+
     await upsertRun(runId, {
       revised_cv_text: revisedText,
       revised_cv_generated_at: new Date().toISOString(),
