@@ -68,13 +68,17 @@ exports.handler = async (event) => {
       };
     }
 
-    await updateRun(runId, (existing) => ({
+    const updatedRun = await updateRun(runId, (existing) => ({
       linkedin_whish_external_id: String(externalId),
       linkedin_upsell_status:
         existing.linkedin_upsell_status === LINKEDIN_UPSELL_STATUS.NOT_STARTED
           ? LINKEDIN_UPSELL_STATUS.PENDING_PAYMENT
           : existing.linkedin_upsell_status,
     }));
+
+    if (!updatedRun) {
+      return { statusCode: 404, body: JSON.stringify({ error: 'Run not found.' }) };
+    }
 
     return { statusCode: 200, body: JSON.stringify({ ...data, externalId }) };
   } catch (error) {
