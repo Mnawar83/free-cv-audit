@@ -6,5 +6,8 @@
   "private": true,
   "dependencies": {
     "docx": "^9.5.1"
+  },
+  "scripts": {
+    "test:linkedin-upsell-flow": "node tests/linkedin-upsell-flow.test.js"
   }
 }
