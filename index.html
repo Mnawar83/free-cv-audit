@@ -287,6 +287,18 @@
                 showError("Invalid file type. Please upload a PDF or DOCX file.");
             }
         }
+
+        function resetRunStateForNewAudit() {
+            currentRunId = '';
+            sessionStorage.removeItem('runId');
+            sessionStorage.removeItem('paymentCompleted');
+            sessionStorage.removeItem('linkedinWhishExternalId');
+            paymentCompleted = false;
+            linkedinButtonsRendered = false;
+            if (linkedinUpsellCard) {
+                linkedinUpsellCard.classList.add('hidden');
+            }
+        }
         
         auditButton.addEventListener('click', async () => {
             if (!cvFile) return;
@@ -296,6 +308,7 @@
             resultsSection.classList.add('hidden');
             hideError();
             setDownloadLocked(true);
+            resetRunStateForNewAudit();
 
             try {
                 let text = '';
