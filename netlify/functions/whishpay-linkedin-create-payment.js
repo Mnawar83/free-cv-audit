@@ -51,7 +51,23 @@ exports.handler = async (event) => {
       return { statusCode: 502, body: JSON.stringify({ error: 'Whish Pay order creation failed.', details: responseText }) };
     }
 
-    const data = JSON.parse(responseText);
+    let data = {};
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      data = { raw: responseText };
+    }
+
+    if (data?.status !== true) {
+      return {
+        statusCode: 502,
+        body: JSON.stringify({
+          error: 'Whish Pay order creation failed.',
+          details: data?.dialog || data?.code || data,
+        }),
+      };
+    }
+
     return { statusCode: 200, body: JSON.stringify({ ...data, externalId }) };
   } catch (error) {
     return { statusCode: error.statusCode || 500, body: JSON.stringify({ error: error.message || 'Whish Pay order creation failed.' }) };
