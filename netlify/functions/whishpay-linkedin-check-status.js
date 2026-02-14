@@ -63,7 +63,10 @@ exports.handler = async (event) => {
     }
 
     const collectStatus = data?.data?.collectStatus;
-    if (collectStatus === 'PAID') {
+    const normalizedCollectStatus = String(collectStatus || '').toLowerCase();
+    const isPaidStatus = normalizedCollectStatus === 'paid' || normalizedCollectStatus === 'success';
+
+    if (isPaidStatus) {
       await updateRun(runId, () => ({
         linkedin_upsell_status: LINKEDIN_UPSELL_STATUS.PAID,
         linkedin_payment_provider: 'WHISH',
@@ -72,7 +75,7 @@ exports.handler = async (event) => {
       }));
     }
 
-    return { statusCode: 200, body: JSON.stringify({ status: true, collectStatus }) };
+    return { statusCode: 200, body: JSON.stringify({ status: true, collectStatus, isPaidStatus }) };
   } catch (error) {
     return { statusCode: error.statusCode || 500, body: JSON.stringify({ error: error.message || 'Whish Pay status check failed.' }) };
   }

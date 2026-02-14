@@ -1030,7 +1030,7 @@
                 body: JSON.stringify({ runId, externalId }),
             });
             const verifyData = await verifyResponse.json();
-            if (!verifyResponse.ok || verifyData.collectStatus !== 'PAID') {
+            if (!verifyResponse.ok || (verifyData.collectStatus !== 'PAID' && verifyData.collectStatus !== 'success' && verifyData.isPaidStatus !== true)) {
                 showError(verifyData.error || 'LinkedIn Whish payment is not confirmed yet.');
                 return;
             }
