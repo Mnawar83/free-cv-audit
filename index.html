@@ -432,7 +432,9 @@
 
         async function readJsonSafely(response) {
             try {
-                return await response.json();
+                const text = await response.text();
+                if (!text || !text.trim()) return {};
+                return JSON.parse(text);
             } catch (error) {
                 return {};
             }
@@ -640,10 +642,10 @@
                         body: JSON.stringify({}),
                     });
                     if (!response.ok) {
-                        const errorData = await response.json();
+                        const errorData = await readJsonSafely(response);
                         throw new Error(errorData.error || 'Unable to create PayPal order.');
                     }
-                    const orderData = await response.json();
+                    const orderData = await readJsonSafely(response);
                     return orderData.id;
                 };
 
@@ -655,10 +657,10 @@
                             body: JSON.stringify({ orderID: data.orderID }),
                         });
                         if (!response.ok) {
-                            const errorData = await response.json();
+                            const errorData = await readJsonSafely(response);
                             throw new Error(errorData.error || 'Unable to capture PayPal order.');
                         }
-                        const captureResult = await response.json();
+                        const captureResult = await readJsonSafely(response);
                         if (captureResult.status === 'COMPLETED') {
                             paymentCompleted = true;
                             sessionStorage.setItem('paymentCompleted', 'true');
@@ -805,11 +807,11 @@
                 });
 
                 if (!response.ok) {
-                    const errorData = await response.json();
+                    const errorData = await readJsonSafely(response);
                     throw new Error(errorData.error || 'Unable to create Whish Pay checkout.');
                 }
 
-                const payload = await response.json();
+                const payload = await readJsonSafely(response);
                 const externalId = payload?.externalId;
                 if (!externalId) {
                     throw new Error('Whish Pay did not return a reference ID.');
@@ -871,10 +873,10 @@
                 })
                     .then(async (response) => {
                         if (!response.ok) {
-                            const errorData = await response.json();
+                            const errorData = await readJsonSafely(response);
                             throw new Error(errorData.error || 'Unable to confirm Whish Pay payment.');
                         }
-                        return response.json();
+                        return readJsonSafely(response);
                     })
                     .then((statusData) => {
                         if (statusData.collectStatus !== 'success') {
@@ -1081,33 +1083,37 @@
 
 
         async function handleLinkedinWhishReturn() {
-            const url = new URL(window.location.href);
-            const linkedinPaymentStatus = url.searchParams.get('linkedinPayment');
-            if (linkedinPaymentStatus !== 'success') return;
-            const runId = url.searchParams.get('runId') || currentRunId;
-            const externalId = sessionStorage.getItem('linkedinWhishExternalId') || url.searchParams.get('externalId');
-            if (!runId || !externalId) return;
-            const verifyResponse = await fetch('/.netlify/functions/whishpay-linkedin-check-status', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ runId, externalId }),
-            });
-            const verifyData = await verifyResponse.json();
-            if (!verifyResponse.ok || (verifyData.collectStatus !== 'PAID' && verifyData.collectStatus !== 'success' && verifyData.isPaidStatus !== true)) {
-                showError(verifyData.error || 'LinkedIn Whish payment is not confirmed yet.');
-                return;
-            }
             try {
+                const url = new URL(window.location.href);
+                const linkedinPaymentStatus = url.searchParams.get('linkedinPayment');
+                if (linkedinPaymentStatus !== 'success') return;
+                const restored = restoreAuditResultsFromSession();
+                if (!restored) {
+                    showError('Your audit results have expired. Please run the audit again to continue.');
+                    return;
+                }
+                const runId = url.searchParams.get('runId') || currentRunId;
+                const externalId = sessionStorage.getItem('linkedinWhishExternalId') || url.searchParams.get('externalId');
+                if (!runId || !externalId) return;
+                const verifyResponse = await fetch('/.netlify/functions/whishpay-linkedin-check-status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ runId, externalId }),
+                });
+                const verifyData = await readJsonSafely(verifyResponse);
+                if (!verifyResponse.ok || (verifyData.collectStatus !== 'PAID' && verifyData.collectStatus !== 'success' && verifyData.isPaidStatus !== true)) {
+                    showError(verifyData.error || 'LinkedIn Whish payment is not confirmed yet.');
+                    return;
+                }
                 await generateLinkedInDocxForRun(runId);
+                linkedinUpsellCard.classList.remove('hidden');
+                linkedinUpsellStatus.textContent = 'Payment confirmed. LinkedIn Word file is ready.';
+                url.searchParams.delete('linkedinPayment');
+                url.searchParams.delete('runId');
+                window.history.replaceState({}, document.title, url.toString());
             } catch (error) {
-                showError(error.message || 'LinkedIn Word generation failed.');
-                return;
+                showError(error.message || 'LinkedIn Whish payment handling failed. Please try again.');
             }
-            linkedinUpsellCard.classList.remove('hidden');
-            linkedinUpsellStatus.textContent = 'Payment confirmed. LinkedIn Word file is ready.';
-            url.searchParams.delete('linkedinPayment');
-            url.searchParams.delete('runId');
-            window.history.replaceState({}, document.title, url.toString());
         }
 
 
