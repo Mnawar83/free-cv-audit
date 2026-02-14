@@ -3,5 +3,8 @@
   "version": "1.0.0",
   "description": "Free CV Audit - static site and Netlify functions",
   "license": "MIT",
-  "private": true
+  "private": true,
+  "dependencies": {
+    "docx": "^9.5.1"
+  }
 }
