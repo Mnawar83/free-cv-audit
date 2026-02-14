@@ -67,6 +67,8 @@ async function writeStoreToDurable(store, etag) {
   const headers = getDurableHeaders();
   if (etag) {
     headers['If-Match'] = etag;
+  } else {
+    headers['If-None-Match'] = '*';
   }
 
   const response = await fetch(RUN_STORE_DURABLE_URL, {
