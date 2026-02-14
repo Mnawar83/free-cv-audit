@@ -14,7 +14,8 @@ function generateExternalId() {
 
 function appendExternalId(urlString, externalId) {
   try {
-    const url = new URL(urlString);
+    const baseUrl = WHISHPAY_WEBSITE_URL || 'http://localhost';
+    const url = new URL(urlString, baseUrl);
     url.searchParams.set('externalId', externalId.toString());
     return url.toString();
   } catch (error) {
