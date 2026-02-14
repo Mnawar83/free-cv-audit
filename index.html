@@ -798,6 +798,8 @@
             const url = new URL(window.location.href);
             const paymentStatus = url.searchParams.get('payment');
             if (!paymentStatus) return;
+            if (paymentStatus.startsWith('linkedin_')) return;
+            if (paymentStatus !== 'success' && paymentStatus !== 'failed') return;
             const restored = restoreAuditResultsFromSession();
             if (!restored) {
                 showError('Your audit results have expired. Please run the audit again to unlock your download.');
