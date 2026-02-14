@@ -944,54 +944,62 @@
         async function initializeLinkedInUpsell() {
             if (!paymentCompleted || !currentRunId || !linkedinUpsellCard) return;
             linkedinUpsellCard.classList.remove('hidden');
+
+            let data = null;
             try {
                 const response = await fetch(`/.netlify/functions/linkedin-upsell-status?runId=${encodeURIComponent(currentRunId)}`);
                 if (!response.ok) throw new Error('Unable to load LinkedIn upsell status.');
-                const data = await response.json();
-                if ((data.status === 'PAID' || data.status === 'GENERATED') && data.downloadUrl) {
-                    linkedinDownloadLink.classList.remove('hidden');
-                    linkedinDownloadLink.href = data.downloadUrl;
-                    linkedinUpsellStatus.textContent = 'Already unlocked. Download your LinkedIn Word file.';
-                    linkedinGenerateButton.classList.add('hidden');
-                    linkedinPayPalButtonsContainer.innerHTML = '';
-                    linkedinWhishButton.classList.add('hidden');
+                data = await response.json();
+            } catch (error) {
+                console.warn('LinkedIn upsell status unavailable; continuing with checkout options.', error);
+                linkedinUpsellStatus.textContent = '';
+            }
+
+            if (data && (data.status === 'PAID' || data.status === 'GENERATED') && data.downloadUrl) {
+                linkedinDownloadLink.classList.remove('hidden');
+                linkedinDownloadLink.href = data.downloadUrl;
+                linkedinUpsellStatus.textContent = 'Already unlocked. Download your LinkedIn Word file.';
+                linkedinGenerateButton.classList.add('hidden');
+                linkedinPayPalButtonsContainer.innerHTML = '';
+                linkedinWhishButton.classList.add('hidden');
+                return;
+            }
+
+            if (data && (data.status === 'PAID' || data.status === 'GENERATED') && !data.downloadUrl) {
+                showLinkedInGenerationRetryState();
+                return;
+            }
+
+            linkedinWhishButton.onclick = async () => {
+                const providedLinkedInUrl = linkedinUrlInput.value.trim();
+                if (!looksLikeLinkedInUrl(providedLinkedInUrl)) {
+                    showError('Please provide a valid LinkedIn profile URL.');
                     return;
                 }
-
-                if ((data.status === 'PAID' || data.status === 'GENERATED') && !data.downloadUrl) {
-                    showLinkedInGenerationRetryState();
-                    return;
-                }
-
-                linkedinWhishButton.onclick = async () => {
-                    const providedLinkedInUrl = linkedinUrlInput.value.trim();
-                    if (!looksLikeLinkedInUrl(providedLinkedInUrl)) {
-                        showError('Please provide a valid LinkedIn profile URL.');
+                await fetch('/.netlify/functions/linkedin-upsell-init', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ runId: currentRunId, providedLinkedInUrl }),
+                });
+                const response = await fetch('/.netlify/functions/whishpay-linkedin-create-payment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ runId: currentRunId, successRedirectUrl: `${window.location.origin}${window.location.pathname}?linkedinPayment=success&runId=${encodeURIComponent(currentRunId)}`, failureRedirectUrl: `${window.location.origin}${window.location.pathname}?linkedinPayment=failed&runId=${encodeURIComponent(currentRunId)}` }),
+                });
+                const payload = await response.json();
+                if (!response.ok) {
+                    if (response.status === 409) {
+                        showLinkedInGenerationRetryState();
                         return;
                     }
-                    await fetch('/.netlify/functions/linkedin-upsell-init', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ runId: currentRunId, providedLinkedInUrl }),
-                    });
-                    const response = await fetch('/.netlify/functions/whishpay-linkedin-create-payment', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ runId: currentRunId, successRedirectUrl: `${window.location.origin}${window.location.pathname}?linkedinPayment=success&runId=${encodeURIComponent(currentRunId)}`, failureRedirectUrl: `${window.location.origin}${window.location.pathname}?linkedinPayment=failed&runId=${encodeURIComponent(currentRunId)}` }),
-                    });
-                    const payload = await response.json();
-                    if (!response.ok) {
-                        if (response.status === 409) {
-                            showLinkedInGenerationRetryState();
-                            return;
-                        }
-                        throw new Error(payload.error || 'Unable to start Whish payment.');
-                    }
-                    sessionStorage.setItem('linkedinWhishExternalId', payload.externalId);
-                    window.location.href = payload?.data?.collectUrl || payload?.collectUrl;
-                };
+                    throw new Error(payload.error || 'Unable to start Whish payment.');
+                }
+                sessionStorage.setItem('linkedinWhishExternalId', payload.externalId);
+                window.location.href = payload?.data?.collectUrl || payload?.collectUrl;
+            };
 
-                if (!linkedinButtonsRendered) {
+            if (!linkedinButtonsRendered) {
+                try {
                     const sdk = await loadPayPalSdk();
                     await sdk.Buttons({
                         createOrder: async () => {
@@ -1019,11 +1027,11 @@
                             }
                             return createData.orderID;
                         },
-                        onApprove: async (data) => {
+                        onApprove: async (payload) => {
                             const captureResponse = await fetch('/.netlify/functions/paypal-linkedin-capture-order', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ runId: currentRunId, orderID: data.orderID }),
+                                body: JSON.stringify({ runId: currentRunId, orderID: payload.orderID }),
                             });
                             const captureData = await captureResponse.json();
                             if (!captureResponse.ok || !captureData.ok) throw new Error(captureData.error || 'PayPal capture failed.');
@@ -1036,16 +1044,16 @@
                         },
                     }).render('#linkedin-paypal-buttons');
                     linkedinButtonsRendered = true;
+                } catch (error) {
+                    console.warn('PayPal SDK unavailable for LinkedIn upsell.', error);
+                    linkedinPayPalButtonsContainer.innerHTML = '<p class="text-slate-600">PayPal is currently unavailable. You can still complete checkout with Whish Pay below.</p>';
                 }
-
-
-
-                const link = document.getElementById('linkedin-skip-link');
-                if (link) link.onclick = (e) => { e.preventDefault(); linkedinUpsellCard.classList.add('hidden'); };
-            } catch (error) {
-                linkedinUpsellStatus.textContent = error.message || 'LinkedIn upsell unavailable.';
             }
+
+            const link = document.getElementById('linkedin-skip-link');
+            if (link) link.onclick = (e) => { e.preventDefault(); linkedinUpsellCard.classList.add('hidden'); };
         }
+
 
         async function handleLinkedinWhishReturn() {
             const url = new URL(window.location.href);
