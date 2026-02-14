@@ -1,4 +1,5 @@
 const { buildGoogleAiUrl } = require('./google-ai');
+const { createRunId, upsertRun } = require('./run-store');
 
 const PDF_FILENAME = 'revised-cv.pdf';
 
@@ -184,7 +185,7 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { cvText, cvAnalysis } = JSON.parse(event.body || '{}');
+    const { cvText, cvAnalysis, runId: incomingRunId } = JSON.parse(event.body || '{}');
     if (!cvText) {
       return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
     }
@@ -240,12 +241,18 @@ Return only the revised CV content, formatted as plain text with clear section h
     }
 
     const pdfBuffer = buildPdfBuffer(revisedText);
+    const runId = incomingRunId || createRunId();
+    await upsertRun(runId, {
+      revised_cv_text: revisedText,
+      revised_cv_generated_at: new Date().toISOString(),
+    });
 
     return {
       statusCode: 200,
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${PDF_FILENAME}"`,
+        'x-run-id': runId,
       },
       body: pdfBuffer.toString('base64'),
       isBase64Encoded: true,
