@@ -276,6 +276,7 @@
         function handleFile(file) {
             const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
             if (file && allowedTypes.includes(file.type)) {
+                resetRunStateForNewAudit({ clearAuditArtifacts: true });
                 cvFile = file;
                 fileNameDisplay.textContent = file.name;
                 auditButton.disabled = false;
@@ -288,7 +289,7 @@
             }
         }
 
-        function resetRunStateForNewAudit() {
+        function resetRunStateForNewAudit({ clearAuditArtifacts = false } = {}) {
             currentRunId = '';
             sessionStorage.removeItem('runId');
             sessionStorage.removeItem('paymentCompleted');
@@ -297,6 +298,16 @@
             linkedinButtonsRendered = false;
             if (linkedinUpsellCard) {
                 linkedinUpsellCard.classList.add('hidden');
+            }
+            if (clearAuditArtifacts) {
+                extractedCvText = '';
+                extractedCvAnalysis = '';
+                sessionStorage.removeItem('cvText');
+                sessionStorage.removeItem('cvAnalysis');
+                if (linkedinDownloadLink) {
+                    linkedinDownloadLink.classList.add('hidden');
+                    linkedinDownloadLink.removeAttribute('href');
+                }
             }
         }
         
@@ -308,7 +319,7 @@
             resultsSection.classList.add('hidden');
             hideError();
             setDownloadLocked(true);
-            resetRunStateForNewAudit();
+            resetRunStateForNewAudit({ clearAuditArtifacts: true });
 
             try {
                 let text = '';
@@ -811,12 +822,13 @@
             const url = new URL(window.location.href);
             const paymentStatus = url.searchParams.get('payment');
             if (!paymentStatus) return;
-            if (paymentStatus.startsWith('linkedin_')) return;
-            if (paymentStatus !== 'success' && paymentStatus !== 'failed') return;
             const restored = restoreAuditResultsFromSession();
             if (!restored) {
                 showError('Your audit results have expired. Please run the audit again to unlock your download.');
-            } else {
+            }
+            if (paymentStatus.startsWith('linkedin_')) return;
+            if (paymentStatus !== 'success' && paymentStatus !== 'failed') return;
+            if (restored) {
                 setDownloadLocked(true);
             }
             if (paymentStatus === 'success') {
