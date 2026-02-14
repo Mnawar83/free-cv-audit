@@ -17,7 +17,7 @@ const MAX_CONFLICT_RETRIES = 5;
 let mutationQueue = Promise.resolve();
 
 function isProductionRuntime() {
-  return process.env.CONTEXT === 'production' || process.env.NETLIFY === 'true';
+  return process.env.CONTEXT === 'production';
 }
 
 function getDefaultStore() {
@@ -67,6 +67,8 @@ async function writeStoreToDurable(store, etag) {
   const headers = getDurableHeaders();
   if (etag) {
     headers['If-Match'] = etag;
+  } else {
+    headers['If-None-Match'] = '*';
   }
 
   const response = await fetch(RUN_STORE_DURABLE_URL, {
