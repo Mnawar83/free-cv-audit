@@ -930,7 +930,7 @@
                     return;
                 }
 
-                if (data.status === 'PAID' && !data.downloadUrl) {
+                if ((data.status === 'PAID' || data.status === 'GENERATED') && !data.downloadUrl) {
                     showLinkedInGenerationRetryState();
                     return;
                 }
