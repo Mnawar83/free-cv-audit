@@ -1009,7 +1009,7 @@
                     const response = await fetch('/.netlify/functions/whishpay-linkedin-create-payment', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ runId: currentRunId, successRedirectUrl: `${window.location.origin}${window.location.pathname}?payment=linkedin_success&runId=${encodeURIComponent(currentRunId)}`, failureRedirectUrl: `${window.location.origin}${window.location.pathname}?payment=linkedin_failed&runId=${encodeURIComponent(currentRunId)}` }),
+                        body: JSON.stringify({ runId: currentRunId, successRedirectUrl: `${window.location.origin}${window.location.pathname}?linkedinPayment=success&runId=${encodeURIComponent(currentRunId)}`, failureRedirectUrl: `${window.location.origin}${window.location.pathname}?linkedinPayment=failed&runId=${encodeURIComponent(currentRunId)}` }),
                     });
                     const payload = await response.json();
                     if (!response.ok) {
@@ -1032,8 +1032,8 @@
 
         async function handleLinkedinWhishReturn() {
             const url = new URL(window.location.href);
-            const paymentStatus = url.searchParams.get('payment');
-            if (paymentStatus !== 'linkedin_success') return;
+            const linkedinPaymentStatus = url.searchParams.get('linkedinPayment');
+            if (linkedinPaymentStatus !== 'success') return;
             const runId = url.searchParams.get('runId') || currentRunId;
             const externalId = sessionStorage.getItem('linkedinWhishExternalId') || url.searchParams.get('externalId');
             if (!runId || !externalId) return;
@@ -1055,7 +1055,7 @@
             }
             linkedinUpsellCard.classList.remove('hidden');
             linkedinUpsellStatus.textContent = 'Payment confirmed. LinkedIn Word file is ready.';
-            url.searchParams.delete('payment');
+            url.searchParams.delete('linkedinPayment');
             url.searchParams.delete('runId');
             window.history.replaceState({}, document.title, url.toString());
         }
