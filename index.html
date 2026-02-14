@@ -960,6 +960,34 @@
                     return;
                 }
 
+                linkedinWhishButton.onclick = async () => {
+                    const providedLinkedInUrl = linkedinUrlInput.value.trim();
+                    if (!looksLikeLinkedInUrl(providedLinkedInUrl)) {
+                        showError('Please provide a valid LinkedIn profile URL.');
+                        return;
+                    }
+                    await fetch('/.netlify/functions/linkedin-upsell-init', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ runId: currentRunId, providedLinkedInUrl }),
+                    });
+                    const response = await fetch('/.netlify/functions/whishpay-linkedin-create-payment', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ runId: currentRunId, successRedirectUrl: `${window.location.origin}${window.location.pathname}?linkedinPayment=success&runId=${encodeURIComponent(currentRunId)}`, failureRedirectUrl: `${window.location.origin}${window.location.pathname}?linkedinPayment=failed&runId=${encodeURIComponent(currentRunId)}` }),
+                    });
+                    const payload = await response.json();
+                    if (!response.ok) {
+                        if (response.status === 409) {
+                            showLinkedInGenerationRetryState();
+                            return;
+                        }
+                        throw new Error(payload.error || 'Unable to start Whish payment.');
+                    }
+                    sessionStorage.setItem('linkedinWhishExternalId', payload.externalId);
+                    window.location.href = payload?.data?.collectUrl || payload?.collectUrl;
+                };
+
                 if (!linkedinButtonsRendered) {
                     const sdk = await loadPayPalSdk();
                     await sdk.Buttons({
@@ -1007,33 +1035,7 @@
                     linkedinButtonsRendered = true;
                 }
 
-                linkedinWhishButton.onclick = async () => {
-                    const providedLinkedInUrl = linkedinUrlInput.value.trim();
-                    if (!looksLikeLinkedInUrl(providedLinkedInUrl)) {
-                        showError('Please provide a valid LinkedIn profile URL.');
-                        return;
-                    }
-                    await fetch('/.netlify/functions/linkedin-upsell-init', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ runId: currentRunId, providedLinkedInUrl }),
-                    });
-                    const response = await fetch('/.netlify/functions/whishpay-linkedin-create-payment', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ runId: currentRunId, successRedirectUrl: `${window.location.origin}${window.location.pathname}?linkedinPayment=success&runId=${encodeURIComponent(currentRunId)}`, failureRedirectUrl: `${window.location.origin}${window.location.pathname}?linkedinPayment=failed&runId=${encodeURIComponent(currentRunId)}` }),
-                    });
-                    const payload = await response.json();
-                    if (!response.ok) {
-                        if (response.status === 409) {
-                            showLinkedInGenerationRetryState();
-                            return;
-                        }
-                        throw new Error(payload.error || 'Unable to start Whish payment.');
-                    }
-                    sessionStorage.setItem('linkedinWhishExternalId', payload.externalId);
-                    window.location.href = payload?.data?.collectUrl || payload?.collectUrl;
-                };
+
 
                 const link = document.getElementById('linkedin-skip-link');
                 if (link) link.onclick = (e) => { e.preventDefault(); linkedinUpsellCard.classList.add('hidden'); };
