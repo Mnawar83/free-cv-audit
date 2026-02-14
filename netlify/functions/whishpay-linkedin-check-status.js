@@ -21,6 +21,15 @@ exports.handler = async (event) => {
 
     const run = await getRun(runId);
     if (!run) return { statusCode: 404, body: JSON.stringify({ error: 'Run not found.' }) };
+
+    const expectedExternalId = run.linkedin_whish_external_id ? String(run.linkedin_whish_external_id) : '';
+    if (!expectedExternalId) {
+      return { statusCode: 409, body: JSON.stringify({ error: 'Whish Pay checkout has not been initiated for this run.' }) };
+    }
+
+    if (String(externalId) !== expectedExternalId) {
+      return { statusCode: 403, body: JSON.stringify({ error: 'Whish Pay reference does not match this run.' }) };
+    }
     if ([LINKEDIN_UPSELL_STATUS.PAID, LINKEDIN_UPSELL_STATUS.GENERATED].includes(run.linkedin_upsell_status)) {
       return { statusCode: 200, body: JSON.stringify({ status: true, collectStatus: 'PAID' }) };
     }
@@ -36,7 +45,23 @@ exports.handler = async (event) => {
       return { statusCode: 502, body: JSON.stringify({ error: 'Whish Pay status check failed.', details: responseText }) };
     }
 
-    const data = JSON.parse(responseText);
+    let data = {};
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      data = { raw: responseText };
+    }
+
+    if (data?.status !== true) {
+      return {
+        statusCode: 502,
+        body: JSON.stringify({
+          error: 'Whish Pay status check failed.',
+          details: data?.dialog || data?.code || data,
+        }),
+      };
+    }
+
     const collectStatus = data?.data?.collectStatus;
     if (collectStatus === 'PAID') {
       await updateRun(runId, () => ({

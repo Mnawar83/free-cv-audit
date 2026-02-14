@@ -6,7 +6,7 @@ const {
   getWhishPayHeaders,
   getWhishPayCreateUrl,
 } = require('./whishpay-utils');
-const { LINKEDIN_UPSELL_STATUS, getRun } = require('./run-store');
+const { LINKEDIN_UPSELL_STATUS, getRun, updateRun } = require('./run-store');
 
 function generateExternalId() {
   return crypto.randomInt(1_000_000_000_000, 9_999_999_999_999);
@@ -67,6 +67,14 @@ exports.handler = async (event) => {
         }),
       };
     }
+
+    await updateRun(runId, (existing) => ({
+      linkedin_whish_external_id: String(externalId),
+      linkedin_upsell_status:
+        existing.linkedin_upsell_status === LINKEDIN_UPSELL_STATUS.NOT_STARTED
+          ? LINKEDIN_UPSELL_STATUS.PENDING_PAYMENT
+          : existing.linkedin_upsell_status,
+    }));
 
     return { statusCode: 200, body: JSON.stringify({ ...data, externalId }) };
   } catch (error) {
