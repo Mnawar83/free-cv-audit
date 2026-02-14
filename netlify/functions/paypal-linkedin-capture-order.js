@@ -1,8 +1,8 @@
-const { getPayPalAccessToken } = require('./paypal-utils');
+const { PAYPAL_CURRENCY, getPayPalAccessToken } = require('./paypal-utils');
 const { LINKEDIN_UPSELL_STATUS, getRun, updateRun } = require('./run-store');
 
 const EXPECTED_AMOUNT = '9.99';
-const EXPECTED_CURRENCY = 'USD';
+const EXPECTED_CURRENCY = (PAYPAL_CURRENCY || 'USD').toUpperCase();
 
 function isValidCapture(data, runId) {
   const unit = data?.purchase_units?.[0];
@@ -12,7 +12,7 @@ function isValidCapture(data, runId) {
   return (
     data?.status === 'COMPLETED' &&
     capture?.status === 'COMPLETED' &&
-    amount?.currency_code === EXPECTED_CURRENCY &&
+    String(amount?.currency_code || '').toUpperCase() === EXPECTED_CURRENCY &&
     amount?.value === EXPECTED_AMOUNT &&
     customId === `linkedin_upsell:${runId}`
   );
