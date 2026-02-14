@@ -1,0 +1,219 @@
+const fs = require('fs/promises');
+const path = require('path');
+const crypto = require('crypto');
+
+const STORE_PATH = process.env.RUN_STORE_PATH || '/tmp/free-cv-audit-runs.json';
+const RUN_STORE_DURABLE_URL = process.env.RUN_STORE_DURABLE_URL || '';
+const RUN_STORE_DURABLE_TOKEN = process.env.RUN_STORE_DURABLE_TOKEN || '';
+
+const LINKEDIN_UPSELL_STATUS = {
+  NOT_STARTED: 'NOT_STARTED',
+  PENDING_PAYMENT: 'PENDING_PAYMENT',
+  PAID: 'PAID',
+  GENERATED: 'GENERATED',
+};
+
+const MAX_CONFLICT_RETRIES = 5;
+let mutationQueue = Promise.resolve();
+
+function isProductionRuntime() {
+  return process.env.CONTEXT === 'production' || process.env.NETLIFY === 'true';
+}
+
+function getDefaultStore() {
+  return { runs: {} };
+}
+
+function getDurableHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  if (RUN_STORE_DURABLE_TOKEN) {
+    headers.Authorization = `Bearer ${RUN_STORE_DURABLE_TOKEN}`;
+  }
+  return headers;
+}
+
+function normalizeStore(parsed) {
+  if (!parsed || typeof parsed !== 'object') return getDefaultStore();
+  if (!parsed.runs || typeof parsed.runs !== 'object') {
+    return { ...parsed, runs: {} };
+  }
+  return parsed;
+}
+
+function isConflictError(error) {
+  return error && (error.code === 'STORE_WRITE_CONFLICT' || error.statusCode === 409 || error.statusCode === 412);
+}
+
+async function readStoreFromDurable() {
+  const response = await fetch(RUN_STORE_DURABLE_URL, {
+    method: 'GET',
+    headers: getDurableHeaders(),
+  });
+
+  if (response.status === 404) {
+    return { store: getDefaultStore(), etag: null };
+  }
+  if (!response.ok) {
+    throw new Error(`Durable run store read failed with status ${response.status}.`);
+  }
+
+  const etag = response.headers.get('etag');
+  const text = await response.text();
+  if (!text.trim()) return { store: getDefaultStore(), etag };
+  return { store: normalizeStore(JSON.parse(text)), etag };
+}
+
+async function writeStoreToDurable(store, etag) {
+  const headers = getDurableHeaders();
+  if (etag) {
+    headers['If-Match'] = etag;
+  }
+
+  const response = await fetch(RUN_STORE_DURABLE_URL, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(store),
+  });
+
+  if (response.status === 409 || response.status === 412) {
+    const conflictError = new Error('Durable run store write conflict.');
+    conflictError.code = 'STORE_WRITE_CONFLICT';
+    conflictError.statusCode = response.status;
+    throw conflictError;
+  }
+
+  if (!response.ok) {
+    throw new Error(`Durable run store write failed with status ${response.status}.`);
+  }
+}
+
+async function readStoreFromFile() {
+  try {
+    const raw = await fs.readFile(STORE_PATH, 'utf8');
+    return { store: normalizeStore(JSON.parse(raw)), etag: null };
+  } catch (error) {
+    if (error.code === 'ENOENT') return { store: getDefaultStore(), etag: null };
+    throw error;
+  }
+}
+
+async function writeStoreToFile(store) {
+  const dir = path.dirname(STORE_PATH);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(STORE_PATH, JSON.stringify(store, null, 2), 'utf8');
+}
+
+async function readStoreWithMeta() {
+  if (RUN_STORE_DURABLE_URL) {
+    return readStoreFromDurable();
+  }
+
+  if (isProductionRuntime()) {
+    throw new Error(
+      'Durable run storage is required in production. Configure RUN_STORE_DURABLE_URL (and RUN_STORE_DURABLE_TOKEN if needed).',
+    );
+  }
+
+  return readStoreFromFile();
+}
+
+async function writeStoreWithMeta(store, etag) {
+  if (RUN_STORE_DURABLE_URL) {
+    await writeStoreToDurable(store, etag);
+    return;
+  }
+
+  if (isProductionRuntime()) {
+    throw new Error(
+      'Durable run storage is required in production. Configure RUN_STORE_DURABLE_URL (and RUN_STORE_DURABLE_TOKEN if needed).',
+    );
+  }
+
+  await writeStoreToFile(store);
+}
+
+function enqueueMutation(work) {
+  const run = mutationQueue.then(work, work);
+  mutationQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+async function mutateStore(mutator) {
+  return enqueueMutation(async () => {
+    for (let attempt = 0; attempt < MAX_CONFLICT_RETRIES; attempt += 1) {
+      const { store, etag } = await readStoreWithMeta();
+      const result = mutator(store);
+      if (result && result.skipWrite) {
+        return result.value;
+      }
+
+      try {
+        await writeStoreWithMeta(store, etag);
+        return result ? result.value : null;
+      } catch (error) {
+        if (isConflictError(error) && attempt < MAX_CONFLICT_RETRIES - 1) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new Error('Run store write conflict. Please retry.');
+  });
+}
+
+async function upsertRun(runId, updates = {}) {
+  return mutateStore((store) => {
+    const existing = store.runs[runId] || {
+      runId,
+      created_at: new Date().toISOString(),
+      linkedin_upsell_status: LINKEDIN_UPSELL_STATUS.NOT_STARTED,
+    };
+
+    const next = {
+      ...existing,
+      ...updates,
+      runId,
+      updated_at: new Date().toISOString(),
+    };
+
+    store.runs[runId] = next;
+    return { value: next };
+  });
+}
+
+async function getRun(runId) {
+  const { store } = await readStoreWithMeta();
+  return store.runs[runId] || null;
+}
+
+async function updateRun(runId, updater) {
+  return mutateStore((store) => {
+    const existing = store.runs[runId];
+    if (!existing) return { value: null, skipWrite: true };
+
+    const next = {
+      ...existing,
+      ...updater(existing),
+      updated_at: new Date().toISOString(),
+    };
+
+    store.runs[runId] = next;
+    return { value: next };
+  });
+}
+
+function createRunId() {
+  return crypto.randomUUID();
+}
+
+module.exports = {
+  LINKEDIN_UPSELL_STATUS,
+  createRunId,
+  getRun,
+  upsertRun,
+  updateRun,
+};
