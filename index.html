@@ -874,6 +874,7 @@
             return /^https?:\/\/(www\.)?linkedin\.com\/.+/i.test((value || '').trim());
         }
 
+
         async function generateLinkedInDocxForRun(runId) {
             const docResponse = await fetch('/.netlify/functions/linkedin-generate-docx', {
                 method: 'POST',
@@ -887,9 +888,29 @@
             linkedinDownloadLink.classList.remove('hidden');
             linkedinDownloadLink.href = docData.downloadUrl;
             linkedinGenerateButton.classList.add('hidden');
+            linkedinGenerateButton.disabled = false;
             linkedinUpsellStatus.textContent = 'LinkedIn Word file is ready.';
             linkedinPayPalButtonsContainer.innerHTML = '';
             linkedinWhishButton.classList.add('hidden');
+        }
+
+        function showLinkedInGenerationRetryState() {
+            linkedinPayPalButtonsContainer.innerHTML = '';
+            linkedinWhishButton.classList.add('hidden');
+            linkedinGenerateButton.classList.remove('hidden');
+            linkedinGenerateButton.disabled = false;
+            linkedinUpsellStatus.textContent = 'Payment confirmed. Generate your LinkedIn Word file.';
+            linkedinGenerateButton.onclick = async () => {
+                linkedinGenerateButton.disabled = true;
+                linkedinUpsellStatus.textContent = 'Generating your LinkedIn Word file...';
+                try {
+                    await generateLinkedInDocxForRun(currentRunId);
+                } catch (error) {
+                    showError(error.message || 'Unable to generate LinkedIn Word file.');
+                    linkedinUpsellStatus.textContent = 'Generation failed. Please try again.';
+                    linkedinGenerateButton.disabled = false;
+                }
+            };
         }
 
         async function initializeLinkedInUpsell() {
@@ -910,21 +931,7 @@
                 }
 
                 if (data.status === 'PAID' && !data.downloadUrl) {
-                    linkedinPayPalButtonsContainer.innerHTML = '';
-                    linkedinWhishButton.classList.add('hidden');
-                    linkedinGenerateButton.classList.remove('hidden');
-                    linkedinUpsellStatus.textContent = 'Payment confirmed. Generate your LinkedIn Word file.';
-                    linkedinGenerateButton.onclick = async () => {
-                        linkedinGenerateButton.disabled = true;
-                        linkedinUpsellStatus.textContent = 'Generating your LinkedIn Word file...';
-                        try {
-                            await generateLinkedInDocxForRun(currentRunId);
-                        } catch (error) {
-                            showError(error.message || 'Unable to generate LinkedIn Word file.');
-                            linkedinUpsellStatus.textContent = 'Generation failed. Please try again.';
-                            linkedinGenerateButton.disabled = false;
-                        }
-                    };
+                    showLinkedInGenerationRetryState();
                     return;
                 }
 
@@ -947,7 +954,13 @@
                                 body: JSON.stringify({ runId: currentRunId }),
                             });
                             const createData = await createResponse.json();
-                            if (!createResponse.ok) throw new Error(createData.error || 'Unable to create PayPal order.');
+                            if (!createResponse.ok) {
+                                if (createResponse.status === 409) {
+                                    showLinkedInGenerationRetryState();
+                                    throw new Error('Payment already confirmed. Please generate your LinkedIn Word file.');
+                                }
+                                throw new Error(createData.error || 'Unable to create PayPal order.');
+                            }
                             return createData.orderID;
                         },
                         onApprove: async (data) => {
@@ -986,7 +999,13 @@
                         body: JSON.stringify({ runId: currentRunId, successRedirectUrl: `${window.location.origin}${window.location.pathname}?payment=linkedin_success&runId=${encodeURIComponent(currentRunId)}`, failureRedirectUrl: `${window.location.origin}${window.location.pathname}?payment=linkedin_failed&runId=${encodeURIComponent(currentRunId)}` }),
                     });
                     const payload = await response.json();
-                    if (!response.ok) throw new Error(payload.error || 'Unable to start Whish payment.');
+                    if (!response.ok) {
+                        if (response.status === 409) {
+                            showLinkedInGenerationRetryState();
+                            return;
+                        }
+                        throw new Error(payload.error || 'Unable to start Whish payment.');
+                    }
                     sessionStorage.setItem('linkedinWhishExternalId', payload.externalId);
                     window.location.href = payload?.data?.collectUrl || payload?.collectUrl;
                 };
