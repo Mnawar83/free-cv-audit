@@ -13,6 +13,9 @@ const LINKEDIN_UPSELL_STATUS = {
   GENERATED: 'GENERATED',
 };
 
+const MAX_CONFLICT_RETRIES = 5;
+let mutationQueue = Promise.resolve();
+
 function isProductionRuntime() {
   return process.env.CONTEXT === 'production' || process.env.NETLIFY === 'true';
 }
@@ -37,6 +40,10 @@ function normalizeStore(parsed) {
   return parsed;
 }
 
+function isConflictError(error) {
+  return error && (error.code === 'STORE_WRITE_CONFLICT' || error.statusCode === 409 || error.statusCode === 412);
+}
+
 async function readStoreFromDurable() {
   const response = await fetch(RUN_STORE_DURABLE_URL, {
     method: 'GET',
@@ -44,23 +51,36 @@ async function readStoreFromDurable() {
   });
 
   if (response.status === 404) {
-    return getDefaultStore();
+    return { store: getDefaultStore(), etag: null };
   }
   if (!response.ok) {
     throw new Error(`Durable run store read failed with status ${response.status}.`);
   }
 
+  const etag = response.headers.get('etag');
   const text = await response.text();
-  if (!text.trim()) return getDefaultStore();
-  return normalizeStore(JSON.parse(text));
+  if (!text.trim()) return { store: getDefaultStore(), etag };
+  return { store: normalizeStore(JSON.parse(text)), etag };
 }
 
-async function writeStoreToDurable(store) {
+async function writeStoreToDurable(store, etag) {
+  const headers = getDurableHeaders();
+  if (etag) {
+    headers['If-Match'] = etag;
+  }
+
   const response = await fetch(RUN_STORE_DURABLE_URL, {
     method: 'PUT',
-    headers: getDurableHeaders(),
+    headers,
     body: JSON.stringify(store),
   });
+
+  if (response.status === 409 || response.status === 412) {
+    const conflictError = new Error('Durable run store write conflict.');
+    conflictError.code = 'STORE_WRITE_CONFLICT';
+    conflictError.statusCode = response.status;
+    throw conflictError;
+  }
 
   if (!response.ok) {
     throw new Error(`Durable run store write failed with status ${response.status}.`);
@@ -70,9 +90,9 @@ async function writeStoreToDurable(store) {
 async function readStoreFromFile() {
   try {
     const raw = await fs.readFile(STORE_PATH, 'utf8');
-    return normalizeStore(JSON.parse(raw));
+    return { store: normalizeStore(JSON.parse(raw)), etag: null };
   } catch (error) {
-    if (error.code === 'ENOENT') return getDefaultStore();
+    if (error.code === 'ENOENT') return { store: getDefaultStore(), etag: null };
     throw error;
   }
 }
@@ -83,7 +103,7 @@ async function writeStoreToFile(store) {
   await fs.writeFile(STORE_PATH, JSON.stringify(store, null, 2), 'utf8');
 }
 
-async function readStore() {
+async function readStoreWithMeta() {
   if (RUN_STORE_DURABLE_URL) {
     return readStoreFromDurable();
   }
@@ -97,9 +117,9 @@ async function readStore() {
   return readStoreFromFile();
 }
 
-async function writeStore(store) {
+async function writeStoreWithMeta(store, etag) {
   if (RUN_STORE_DURABLE_URL) {
-    await writeStoreToDurable(store);
+    await writeStoreToDurable(store, etag);
     return;
   }
 
@@ -112,44 +132,78 @@ async function writeStore(store) {
   await writeStoreToFile(store);
 }
 
+function enqueueMutation(work) {
+  const run = mutationQueue.then(work, work);
+  mutationQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+async function mutateStore(mutator) {
+  return enqueueMutation(async () => {
+    for (let attempt = 0; attempt < MAX_CONFLICT_RETRIES; attempt += 1) {
+      const { store, etag } = await readStoreWithMeta();
+      const result = mutator(store);
+      if (result && result.skipWrite) {
+        return result.value;
+      }
+
+      try {
+        await writeStoreWithMeta(store, etag);
+        return result ? result.value : null;
+      } catch (error) {
+        if (isConflictError(error) && attempt < MAX_CONFLICT_RETRIES - 1) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new Error('Run store write conflict. Please retry.');
+  });
+}
+
 async function upsertRun(runId, updates = {}) {
-  const store = await readStore();
-  const existing = store.runs[runId] || {
-    runId,
-    created_at: new Date().toISOString(),
-    linkedin_upsell_status: LINKEDIN_UPSELL_STATUS.NOT_STARTED,
-  };
+  return mutateStore((store) => {
+    const existing = store.runs[runId] || {
+      runId,
+      created_at: new Date().toISOString(),
+      linkedin_upsell_status: LINKEDIN_UPSELL_STATUS.NOT_STARTED,
+    };
 
-  store.runs[runId] = {
-    ...existing,
-    ...updates,
-    runId,
-    updated_at: new Date().toISOString(),
-  };
+    const next = {
+      ...existing,
+      ...updates,
+      runId,
+      updated_at: new Date().toISOString(),
+    };
 
-  await writeStore(store);
-  return store.runs[runId];
+    store.runs[runId] = next;
+    return { value: next };
+  });
 }
 
 async function getRun(runId) {
-  const store = await readStore();
+  const { store } = await readStoreWithMeta();
   return store.runs[runId] || null;
 }
 
 async function updateRun(runId, updater) {
-  const store = await readStore();
-  const existing = store.runs[runId];
-  if (!existing) return null;
+  return mutateStore((store) => {
+    const existing = store.runs[runId];
+    if (!existing) return { value: null, skipWrite: true };
 
-  const next = {
-    ...existing,
-    ...updater(existing),
-    updated_at: new Date().toISOString(),
-  };
+    const next = {
+      ...existing,
+      ...updater(existing),
+      updated_at: new Date().toISOString(),
+    };
 
-  store.runs[runId] = next;
-  await writeStore(store);
-  return next;
+    store.runs[runId] = next;
+    return { value: next };
+  });
 }
 
 function createRunId() {
