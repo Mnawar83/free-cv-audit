@@ -248,6 +248,7 @@
         let paymentCompleted = false;
         let isGeneratingPdf = false;
         let currentRunId = sessionStorage.getItem('runId') || '';
+        let hasActiveRunId = Boolean(currentRunId);
         let linkedinButtonsRendered = false;
 
         const storedCvText = sessionStorage.getItem('cvText');
@@ -291,6 +292,7 @@
 
         function resetRunStateForNewAudit({ clearAuditArtifacts = false } = {}) {
             currentRunId = '';
+            hasActiveRunId = false;
             sessionStorage.removeItem('runId');
             sessionStorage.removeItem('paymentCompleted');
             sessionStorage.removeItem('linkedinWhishExternalId');
@@ -496,7 +498,7 @@
                 const response = await fetch('/.netlify/functions/generate-pdf', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cvText, cvAnalysis, runId: currentRunId || undefined }),
+                    body: JSON.stringify({ cvText, cvAnalysis, runId: hasActiveRunId ? currentRunId : undefined }),
                 });
 
                 if (!response.ok) {
@@ -515,6 +517,7 @@
                 const generatedRunId = response.headers.get('x-run-id');
                 if (generatedRunId) {
                     currentRunId = generatedRunId;
+                    hasActiveRunId = true;
                     sessionStorage.setItem('runId', generatedRunId);
                 }
 
