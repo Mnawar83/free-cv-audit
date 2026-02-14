@@ -12,6 +12,16 @@ function generateExternalId() {
   return crypto.randomInt(1_000_000_000_000, 9_999_999_999_999);
 }
 
+function appendExternalId(urlString, externalId) {
+  try {
+    const url = new URL(urlString);
+    url.searchParams.set('externalId', externalId.toString());
+    return url.toString();
+  } catch (error) {
+    return urlString;
+  }
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
@@ -30,6 +40,10 @@ exports.handler = async (event) => {
     }
 
     const externalId = generateExternalId();
+    const successCallbackUrl = appendExternalId(payload.successCallbackUrl || WHISHPAY_WEBSITE_URL, externalId);
+    const failureCallbackUrl = appendExternalId(payload.failureCallbackUrl || WHISHPAY_WEBSITE_URL, externalId);
+    const successRedirectUrl = appendExternalId(payload.successRedirectUrl || WHISHPAY_WEBSITE_URL, externalId);
+    const failureRedirectUrl = appendExternalId(payload.failureRedirectUrl || WHISHPAY_WEBSITE_URL, externalId);
     const response = await fetch(getWhishPayCreateUrl(), {
       method: 'POST',
       headers: getWhishPayHeaders(),
@@ -39,10 +53,10 @@ exports.handler = async (event) => {
         invoice: 'LinkedIn Optimization Upsell',
         externalId,
         metadata: { runId, purpose: 'linkedin_upsell' },
-        successCallbackUrl: payload.successCallbackUrl || WHISHPAY_WEBSITE_URL,
-        failureCallbackUrl: payload.failureCallbackUrl || WHISHPAY_WEBSITE_URL,
-        successRedirectUrl: payload.successRedirectUrl || WHISHPAY_WEBSITE_URL,
-        failureRedirectUrl: payload.failureRedirectUrl || WHISHPAY_WEBSITE_URL,
+        successCallbackUrl,
+        failureCallbackUrl,
+        successRedirectUrl,
+        failureRedirectUrl,
       }),
     });
 
