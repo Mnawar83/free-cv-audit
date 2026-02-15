@@ -57,4 +57,4 @@ If you want to keep durable storage fully inside Netlify, deploy `netlify/functi
 This function stores the run-store JSON in Netlify Blobs and supports the same ETag-based optimistic concurrency contract expected by `run-store.js`.
 
 
-When using `netlify/functions/run-store-durable.js`, you can optionally set `NETLIFY_SITE_ID` and `NETLIFY_API_TOKEN` to force manual Netlify Blobs store configuration; otherwise it uses default in-site bindings.
+`run-store-durable` initializes Netlify Blobs with `connectLambda(event)` for Functions v1 compatibility.

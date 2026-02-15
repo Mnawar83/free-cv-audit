@@ -1,45 +1,25 @@
 // Netlify Function: run-store-durable
-//
-// This serverless function implements a simple key/value store for
-// persisted run data using Netlify Blobs. It is designed to be
-// compatible with the `run-store.js` module, which expects an HTTP
-// endpoint that supports optimistic concurrency via `ETag` headers.
 
-const { getStore } = require('@netlify/blobs');
+const { getStore, connectLambda } = require('@netlify/blobs');
 
 const STORE_NAME = 'run-store';
 const STORE_KEY = 'state';
 
-
-function createStore() {
-  const siteID = process.env.NETLIFY_SITE_ID || '';
-  const token = process.env.NETLIFY_API_TOKEN || '';
-
-  if (siteID && token) {
-    return getStore({
-      name: STORE_NAME,
-      siteID,
-      token,
-    });
-  }
-
-  return getStore(STORE_NAME);
-}
-
 function jsonResponse(statusCode, payload, headers = {}) {
   return {
     statusCode,
-    headers: {
-      'Content-Type': 'application/json',
-      ...headers,
-    },
+    headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(payload),
   };
 }
 
 exports.handler = async function handler(event) {
+  // Initialise the Blobs environment for Functions v1
+  connectLambda(event);
+
   const headers = event.headers || {};
 
+  // Optional auth check
   const requiredToken = process.env.RUN_STORE_DURABLE_TOKEN;
   if (requiredToken) {
     const authHeader = headers.authorization || headers.Authorization;
@@ -48,29 +28,20 @@ exports.handler = async function handler(event) {
     }
   }
 
-  const store = createStore();
+  const store = getStore(STORE_NAME);
 
   if (event.httpMethod === 'GET') {
     try {
       const result = await store.getWithMetadata(STORE_KEY, { type: 'json' });
-      if (!result) {
-        return jsonResponse(404, { error: 'Not Found' });
-      }
-
+      if (!result) return jsonResponse(404, { error: 'Not Found' });
       const { data, etag } = result;
       return {
         statusCode: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          ETag: etag,
-        },
+        headers: { 'Content-Type': 'application/json', ETag: etag },
         body: JSON.stringify(data ?? {}),
       };
     } catch (error) {
-      return jsonResponse(500, {
-        error: 'Failed to read store.',
-        details: error.message,
-      });
+      return jsonResponse(500, { error: 'Failed to read store.', details: error.message });
     }
   }
 
@@ -84,42 +55,40 @@ exports.handler = async function handler(event) {
 
     const ifMatch = headers['if-match'] || headers['If-Match'];
     const ifNoneMatch = headers['if-none-match'] || headers['If-None-Match'];
-
     try {
       const options = {};
-      if (ifMatch) {
-        options.onlyIfMatch = ifMatch;
-      } else if (ifNoneMatch === '*') {
-        options.onlyIfNew = true;
-      }
+      if (ifMatch) options.onlyIfMatch = ifMatch;
+      else if (ifNoneMatch === '*') options.onlyIfNew = true;
 
       const result = await store.setJSON(STORE_KEY, payload, options);
-      if (options.onlyIfMatch && !result.modified) {
+
+      if (options.onlyIfMatch && !result?.modified) {
         return jsonResponse(412, { error: 'ETag mismatch.' });
       }
-      if (options.onlyIfNew && !result.modified) {
+      if (options.onlyIfNew && !result?.modified) {
         return jsonResponse(412, { error: 'Store already exists.' });
+      }
+
+      // Get the ETag either from the result or by reading metadata
+      let etag = result?.etag;
+      if (!etag) {
+        try {
+          const meta = await store.getWithMetadata(STORE_KEY, { type: 'json' });
+          etag = meta?.etag;
+        } catch {
+          // ignore if metadata is unavailable
+        }
       }
 
       return {
         statusCode: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          ETag: result.etag,
-        },
+        headers: { 'Content-Type': 'application/json', ...(etag ? { ETag: etag } : {}) },
         body: JSON.stringify(payload),
       };
     } catch (error) {
-      return jsonResponse(500, {
-        error: 'Failed to write store.',
-        details: error.message,
-      });
+      return jsonResponse(500, { error: 'Failed to write store.', details: error.message });
     }
   }
 
-  return {
-    statusCode: 405,
-    headers: { Allow: 'GET, PUT' },
-    body: '',
-  };
+  return { statusCode: 405, headers: { Allow: 'GET, PUT' }, body: '' };
 };
