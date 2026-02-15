@@ -11,6 +11,7 @@
   "scripts": {
     "durable-store:serve": "node scripts/durable-run-store-server.js",
     "test:durable-store": "node tests/durable-run-store-server.test.js",
-    "test:linkedin-upsell-flow": "node tests/linkedin-upsell-flow.test.js"
+    "test:linkedin-upsell-flow": "node tests/linkedin-upsell-flow.test.js",
+    "test:run-store-retry": "node tests/run-store-durable-retry.test.js"
   }
 }

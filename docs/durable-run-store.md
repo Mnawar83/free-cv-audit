@@ -6,7 +6,7 @@ This project can use an external durable JSON store via:
   - can also be set to a root-relative path (for example `/.netlify/functions/run-store-durable`) when `URL`/`DEPLOY_PRIME_URL`/`DEPLOY_URL` is available
 - `RUN_STORE_DURABLE_TOKEN` (optional bearer token)
 
-`netlify/functions/run-store.js` already supports reading/writing this endpoint with optimistic concurrency (`If-None-Match: *` / `If-Match: <etag>`).
+`netlify/functions/run-store.js` already supports reading/writing this endpoint with optimistic concurrency (`If-None-Match: *` / `If-Match: <etag>`). It also retries transient durable endpoint failures (429/502/503/504) before surfacing an error.
 
 ## Provided endpoint implementation
 

@@ -1,3 +1,10 @@
+// Netlify Function: run-store-durable
+//
+// This serverless function implements a simple key/value store for
+// persisted run data using Netlify Blobs. It is designed to be
+// compatible with the `run-store.js` module, which expects an HTTP
+// endpoint that supports optimistic concurrency via `ETag` headers.
+
 const { getStore } = require('@netlify/blobs');
 
 const STORE_NAME = 'run-store';
@@ -14,14 +21,12 @@ function jsonResponse(statusCode, payload, headers = {}) {
   };
 }
 
-function getHeader(headers, key) {
-  return headers?.[key] || headers?.[key.toLowerCase()] || headers?.[key.toUpperCase()];
-}
-
 exports.handler = async function handler(event) {
+  const headers = event.headers || {};
+
   const requiredToken = process.env.RUN_STORE_DURABLE_TOKEN;
   if (requiredToken) {
-    const authHeader = getHeader(event.headers, 'Authorization');
+    const authHeader = headers.authorization || headers.Authorization;
     if (!authHeader || authHeader !== `Bearer ${requiredToken}`) {
       return jsonResponse(401, { error: 'Unauthorized' });
     }
@@ -61,8 +66,8 @@ exports.handler = async function handler(event) {
       return jsonResponse(400, { error: 'Invalid JSON body.' });
     }
 
-    const ifMatch = getHeader(event.headers, 'If-Match');
-    const ifNoneMatch = getHeader(event.headers, 'If-None-Match');
+    const ifMatch = headers['if-match'] || headers['If-Match'];
+    const ifNoneMatch = headers['if-none-match'] || headers['If-None-Match'];
 
     try {
       const options = {};
@@ -98,9 +103,7 @@ exports.handler = async function handler(event) {
 
   return {
     statusCode: 405,
-    headers: {
-      Allow: 'GET, PUT',
-    },
+    headers: { Allow: 'GET, PUT' },
     body: '',
   };
 };

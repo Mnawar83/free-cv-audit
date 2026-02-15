@@ -37,6 +37,8 @@ const LINKEDIN_UPSELL_STATUS = {
 };
 
 const MAX_CONFLICT_RETRIES = 5;
+const MAX_DURABLE_HTTP_RETRIES = 3;
+const DURABLE_RETRY_STATUS_CODES = new Set([429, 502, 503, 504]);
 let mutationQueue = Promise.resolve();
 
 function isProductionRuntime() {
@@ -67,8 +69,39 @@ function isConflictError(error) {
   return error && (error.code === 'STORE_WRITE_CONFLICT' || error.statusCode === 409 || error.statusCode === 412);
 }
 
+function shouldRetryDurableRequest(statusCode) {
+  return DURABLE_RETRY_STATUS_CODES.has(statusCode);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchDurableWithRetry(request) {
+  let lastResponse = null;
+
+  for (let attempt = 0; attempt < MAX_DURABLE_HTTP_RETRIES; attempt += 1) {
+    const response = await fetch(RESOLVED_RUN_STORE_DURABLE_URL, request);
+    lastResponse = response;
+
+    if (!shouldRetryDurableRequest(response.status) || attempt === MAX_DURABLE_HTTP_RETRIES - 1) {
+      return response;
+    }
+
+    await sleep((attempt + 1) * 150);
+  }
+
+  return lastResponse;
+}
+
+async function readResponseSummary(response) {
+  const body = (await response.text()).trim();
+  if (!body) return '';
+  return body.length > 240 ? `${body.slice(0, 240)}…` : body;
+}
+
 async function readStoreFromDurable() {
-  const response = await fetch(RESOLVED_RUN_STORE_DURABLE_URL, {
+  const response = await fetchDurableWithRetry({
     method: 'GET',
     headers: getDurableHeaders(),
   });
@@ -77,7 +110,9 @@ async function readStoreFromDurable() {
     return { store: getDefaultStore(), etag: null };
   }
   if (!response.ok) {
-    throw new Error(`Durable run store read failed with status ${response.status}.`);
+    const summary = await readResponseSummary(response);
+    const details = summary ? ` Response: ${summary}` : '';
+    throw new Error(`Durable run store read failed with status ${response.status}.${details}`);
   }
 
   const etag = response.headers.get('etag');
@@ -94,7 +129,7 @@ async function writeStoreToDurable(store, etag) {
     headers['If-None-Match'] = '*';
   }
 
-  const response = await fetch(RESOLVED_RUN_STORE_DURABLE_URL, {
+  const response = await fetchDurableWithRetry({
     method: 'PUT',
     headers,
     body: JSON.stringify(store),
@@ -108,7 +143,9 @@ async function writeStoreToDurable(store, etag) {
   }
 
   if (!response.ok) {
-    throw new Error(`Durable run store write failed with status ${response.status}.`);
+    const summary = await readResponseSummary(response);
+    const details = summary ? ` Response: ${summary}` : '';
+    throw new Error(`Durable run store write failed with status ${response.status}.${details}`);
   }
 }
 
