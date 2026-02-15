@@ -6,5 +6,10 @@
   "private": true,
   "dependencies": {
     "docx": "^9.5.1"
+  },
+  "scripts": {
+    "test:linkedin-upsell-flow": "node tests/linkedin-upsell-flow.test.js",
+    "durable-store:serve": "node scripts/durable-run-store-server.js",
+    "test:durable-store": "node tests/durable-run-store-server.test.js"
   }
 }
