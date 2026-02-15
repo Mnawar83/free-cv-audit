@@ -440,6 +440,29 @@
             }
         }
 
+        function getApiErrorMessage(payload, fallbackMessage) {
+            if (!payload || typeof payload !== 'object') return fallbackMessage;
+            if (typeof payload.error === 'string' && payload.error.trim()) {
+                if (typeof payload.details === 'string' && payload.details.trim()) {
+                    return `${payload.error} ${payload.details}`;
+                }
+                return payload.error;
+            }
+            return fallbackMessage;
+        }
+
+        async function initializeLinkedInCheckout(runId, providedLinkedInUrl) {
+            const initResponse = await fetch('/.netlify/functions/linkedin-upsell-init', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ runId, providedLinkedInUrl }),
+            });
+            if (!initResponse.ok) {
+                const initData = await readJsonSafely(initResponse);
+                throw new Error(getApiErrorMessage(initData, 'Unable to start LinkedIn checkout. Please try again.'));
+            }
+        }
+
         function setDownloadLocked(isLocked) {
             if (!downloadLink || !downloadNote) return;
             if (isLocked) {
@@ -643,9 +666,12 @@
                     });
                     if (!response.ok) {
                         const errorData = await readJsonSafely(response);
-                        throw new Error(errorData.error || 'Unable to create PayPal order.');
+                        throw new Error(getApiErrorMessage(errorData, 'Unable to create PayPal order.'));
                     }
                     const orderData = await readJsonSafely(response);
+                    if (!orderData?.id) {
+                        throw new Error('PayPal order creation response was invalid. Please try again.');
+                    }
                     return orderData.id;
                 };
 
@@ -658,7 +684,7 @@
                         });
                         if (!response.ok) {
                             const errorData = await readJsonSafely(response);
-                            throw new Error(errorData.error || 'Unable to capture PayPal order.');
+                            throw new Error(getApiErrorMessage(errorData, 'Unable to capture PayPal order.'));
                         }
                         const captureResult = await readJsonSafely(response);
                         if (captureResult.status === 'COMPLETED') {
@@ -808,7 +834,7 @@
 
                 if (!response.ok) {
                     const errorData = await readJsonSafely(response);
-                    throw new Error(errorData.error || 'Unable to create Whish Pay checkout.');
+                    throw new Error(getApiErrorMessage(errorData, 'Unable to create Whish Pay checkout.'));
                 }
 
                 const payload = await readJsonSafely(response);
@@ -874,7 +900,7 @@
                     .then(async (response) => {
                         if (!response.ok) {
                             const errorData = await readJsonSafely(response);
-                            throw new Error(errorData.error || 'Unable to confirm Whish Pay payment.');
+                            throw new Error(getApiErrorMessage(errorData, 'Unable to confirm Whish Pay payment.'));
                         }
                         return readJsonSafely(response);
                     })
@@ -987,27 +1013,19 @@
                         showError('Please provide a valid LinkedIn profile URL.');
                         return;
                     }
-                    const initResponse = await fetch('/.netlify/functions/linkedin-upsell-init', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ runId: currentRunId, providedLinkedInUrl }),
-                    });
-                    if (!initResponse.ok) {
-                        const initData = await readJsonSafely(initResponse);
-                        throw new Error(initData.error || 'Unable to start LinkedIn checkout. Please try again.');
-                    }
+                    await initializeLinkedInCheckout(currentRunId, providedLinkedInUrl);
                     const response = await fetch('/.netlify/functions/whishpay-linkedin-create-payment', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ runId: currentRunId, successRedirectUrl: `${window.location.origin}${window.location.pathname}?linkedinPayment=success&runId=${encodeURIComponent(currentRunId)}`, failureRedirectUrl: `${window.location.origin}${window.location.pathname}?linkedinPayment=failed&runId=${encodeURIComponent(currentRunId)}` }),
                     });
-                    const payload = await response.json().catch(() => ({}));
+                    const payload = await readJsonSafely(response);
                     if (!response.ok) {
                         if (response.status === 409) {
                             showLinkedInGenerationRetryState();
                             return;
                         }
-                        throw new Error(payload.error || 'Unable to start Whish payment.');
+                        throw new Error(getApiErrorMessage(payload, 'Unable to start Whish payment.'));
                     }
                     const externalId = payload?.externalId;
                     const collectUrl = payload?.data?.collectUrl || payload?.collectUrl;
@@ -1030,27 +1048,22 @@
                             if (!looksLikeLinkedInUrl(providedLinkedInUrl)) {
                                 throw new Error('Please provide a valid LinkedIn profile URL.');
                             }
-                            const initResponse = await fetch('/.netlify/functions/linkedin-upsell-init', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ runId: currentRunId, providedLinkedInUrl }),
-                            });
-                            if (!initResponse.ok) {
-                                const initData = await readJsonSafely(initResponse);
-                                throw new Error(initData.error || 'Unable to start LinkedIn checkout. Please try again.');
-                            }
+                            await initializeLinkedInCheckout(currentRunId, providedLinkedInUrl);
                             const createResponse = await fetch('/.netlify/functions/paypal-linkedin-create-order', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ runId: currentRunId }),
                             });
-                            const createData = await createResponse.json();
+                            const createData = await readJsonSafely(createResponse);
                             if (!createResponse.ok) {
                                 if (createResponse.status === 409) {
                                     showLinkedInGenerationRetryState();
                                     throw new Error('Payment already confirmed. Please generate your LinkedIn Word file.');
                                 }
-                                throw new Error(createData.error || 'Unable to create PayPal order.');
+                                throw new Error(getApiErrorMessage(createData, 'Unable to create PayPal order.'));
+                            }
+                            if (!createData?.orderID) {
+                                throw new Error('PayPal order creation response was invalid. Please try again.');
                             }
                             return createData.orderID;
                         },
@@ -1060,7 +1073,7 @@
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ runId: currentRunId, orderID: payload.orderID }),
                             });
-                            const captureData = await captureResponse.json();
+                            const captureData = await readJsonSafely(captureResponse);
                             if (!captureResponse.ok || !captureData.ok) throw new Error(captureData.error || 'PayPal capture failed.');
                             await generateLinkedInDocxForRun(currentRunId);
                             linkedinUpsellStatus.textContent = 'Payment received. LinkedIn Word file is ready.';
