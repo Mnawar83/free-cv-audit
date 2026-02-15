@@ -6,6 +6,29 @@ const STORE_PATH = process.env.RUN_STORE_PATH || '/tmp/free-cv-audit-runs.json';
 const RUN_STORE_DURABLE_URL = process.env.RUN_STORE_DURABLE_URL || '';
 const RUN_STORE_DURABLE_TOKEN = process.env.RUN_STORE_DURABLE_TOKEN || '';
 
+function resolveDurableStoreUrl() {
+  if (!RUN_STORE_DURABLE_URL) return '';
+
+  if (/^https?:\/\//i.test(RUN_STORE_DURABLE_URL)) {
+    return RUN_STORE_DURABLE_URL;
+  }
+
+  if (RUN_STORE_DURABLE_URL.startsWith('/')) {
+    const baseUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || '';
+    if (!baseUrl) {
+      throw new Error(
+        'RUN_STORE_DURABLE_URL is relative, but no base URL is available. Set URL/DEPLOY_PRIME_URL/DEPLOY_URL or use an absolute RUN_STORE_DURABLE_URL.',
+      );
+    }
+
+    return new URL(RUN_STORE_DURABLE_URL, baseUrl).toString();
+  }
+
+  throw new Error('RUN_STORE_DURABLE_URL must be an absolute http(s) URL or a root-relative path.');
+}
+
+const RESOLVED_RUN_STORE_DURABLE_URL = resolveDurableStoreUrl();
+
 const LINKEDIN_UPSELL_STATUS = {
   NOT_STARTED: 'NOT_STARTED',
   PENDING_PAYMENT: 'PENDING_PAYMENT',
@@ -14,10 +37,12 @@ const LINKEDIN_UPSELL_STATUS = {
 };
 
 const MAX_CONFLICT_RETRIES = 5;
+const MAX_DURABLE_HTTP_RETRIES = 3;
+const DURABLE_RETRY_STATUS_CODES = new Set([429, 502, 503, 504]);
 let mutationQueue = Promise.resolve();
 
 function isProductionRuntime() {
-  return process.env.CONTEXT === 'production' || process.env.NETLIFY === 'true';
+  return process.env.CONTEXT === 'production';
 }
 
 function getDefaultStore() {
@@ -44,8 +69,39 @@ function isConflictError(error) {
   return error && (error.code === 'STORE_WRITE_CONFLICT' || error.statusCode === 409 || error.statusCode === 412);
 }
 
+function shouldRetryDurableRequest(statusCode) {
+  return DURABLE_RETRY_STATUS_CODES.has(statusCode);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchDurableWithRetry(request) {
+  let lastResponse = null;
+
+  for (let attempt = 0; attempt < MAX_DURABLE_HTTP_RETRIES; attempt += 1) {
+    const response = await fetch(RESOLVED_RUN_STORE_DURABLE_URL, request);
+    lastResponse = response;
+
+    if (!shouldRetryDurableRequest(response.status) || attempt === MAX_DURABLE_HTTP_RETRIES - 1) {
+      return response;
+    }
+
+    await sleep((attempt + 1) * 150);
+  }
+
+  return lastResponse;
+}
+
+async function readResponseSummary(response) {
+  const body = (await response.text()).trim();
+  if (!body) return '';
+  return body.length > 240 ? `${body.slice(0, 240)}…` : body;
+}
+
 async function readStoreFromDurable() {
-  const response = await fetch(RUN_STORE_DURABLE_URL, {
+  const response = await fetchDurableWithRetry({
     method: 'GET',
     headers: getDurableHeaders(),
   });
@@ -54,7 +110,9 @@ async function readStoreFromDurable() {
     return { store: getDefaultStore(), etag: null };
   }
   if (!response.ok) {
-    throw new Error(`Durable run store read failed with status ${response.status}.`);
+    const summary = await readResponseSummary(response);
+    const details = summary ? ` Response: ${summary}` : '';
+    throw new Error(`Durable run store read failed with status ${response.status}.${details}`);
   }
 
   const etag = response.headers.get('etag');
@@ -67,9 +125,11 @@ async function writeStoreToDurable(store, etag) {
   const headers = getDurableHeaders();
   if (etag) {
     headers['If-Match'] = etag;
+  } else {
+    headers['If-None-Match'] = '*';
   }
 
-  const response = await fetch(RUN_STORE_DURABLE_URL, {
+  const response = await fetchDurableWithRetry({
     method: 'PUT',
     headers,
     body: JSON.stringify(store),
@@ -83,7 +143,9 @@ async function writeStoreToDurable(store, etag) {
   }
 
   if (!response.ok) {
-    throw new Error(`Durable run store write failed with status ${response.status}.`);
+    const summary = await readResponseSummary(response);
+    const details = summary ? ` Response: ${summary}` : '';
+    throw new Error(`Durable run store write failed with status ${response.status}.${details}`);
   }
 }
 
@@ -104,7 +166,7 @@ async function writeStoreToFile(store) {
 }
 
 async function readStoreWithMeta() {
-  if (RUN_STORE_DURABLE_URL) {
+  if (RESOLVED_RUN_STORE_DURABLE_URL) {
     return readStoreFromDurable();
   }
 
@@ -118,7 +180,7 @@ async function readStoreWithMeta() {
 }
 
 async function writeStoreWithMeta(store, etag) {
-  if (RUN_STORE_DURABLE_URL) {
+  if (RESOLVED_RUN_STORE_DURABLE_URL) {
     await writeStoreToDurable(store, etag);
     return;
   }
