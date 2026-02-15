@@ -10,6 +10,22 @@ const { getStore } = require('@netlify/blobs');
 const STORE_NAME = 'run-store';
 const STORE_KEY = 'state';
 
+
+function createStore() {
+  const siteID = process.env.NETLIFY_SITE_ID || '';
+  const token = process.env.NETLIFY_API_TOKEN || '';
+
+  if (siteID && token) {
+    return getStore({
+      name: STORE_NAME,
+      siteID,
+      token,
+    });
+  }
+
+  return getStore(STORE_NAME);
+}
+
 function jsonResponse(statusCode, payload, headers = {}) {
   return {
     statusCode,
@@ -32,7 +48,7 @@ exports.handler = async function handler(event) {
     }
   }
 
-  const store = getStore(STORE_NAME);
+  const store = createStore();
 
   if (event.httpMethod === 'GET') {
     try {
