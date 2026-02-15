@@ -6,6 +6,29 @@ const STORE_PATH = process.env.RUN_STORE_PATH || '/tmp/free-cv-audit-runs.json';
 const RUN_STORE_DURABLE_URL = process.env.RUN_STORE_DURABLE_URL || '';
 const RUN_STORE_DURABLE_TOKEN = process.env.RUN_STORE_DURABLE_TOKEN || '';
 
+function resolveDurableStoreUrl() {
+  if (!RUN_STORE_DURABLE_URL) return '';
+
+  if (/^https?:\/\//i.test(RUN_STORE_DURABLE_URL)) {
+    return RUN_STORE_DURABLE_URL;
+  }
+
+  if (RUN_STORE_DURABLE_URL.startsWith('/')) {
+    const baseUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || '';
+    if (!baseUrl) {
+      throw new Error(
+        'RUN_STORE_DURABLE_URL is relative, but no base URL is available. Set URL/DEPLOY_PRIME_URL/DEPLOY_URL or use an absolute RUN_STORE_DURABLE_URL.',
+      );
+    }
+
+    return new URL(RUN_STORE_DURABLE_URL, baseUrl).toString();
+  }
+
+  throw new Error('RUN_STORE_DURABLE_URL must be an absolute http(s) URL or a root-relative path.');
+}
+
+const RESOLVED_RUN_STORE_DURABLE_URL = resolveDurableStoreUrl();
+
 const LINKEDIN_UPSELL_STATUS = {
   NOT_STARTED: 'NOT_STARTED',
   PENDING_PAYMENT: 'PENDING_PAYMENT',
@@ -45,7 +68,7 @@ function isConflictError(error) {
 }
 
 async function readStoreFromDurable() {
-  const response = await fetch(RUN_STORE_DURABLE_URL, {
+  const response = await fetch(RESOLVED_RUN_STORE_DURABLE_URL, {
     method: 'GET',
     headers: getDurableHeaders(),
   });
@@ -71,7 +94,7 @@ async function writeStoreToDurable(store, etag) {
     headers['If-None-Match'] = '*';
   }
 
-  const response = await fetch(RUN_STORE_DURABLE_URL, {
+  const response = await fetch(RESOLVED_RUN_STORE_DURABLE_URL, {
     method: 'PUT',
     headers,
     body: JSON.stringify(store),
@@ -106,7 +129,7 @@ async function writeStoreToFile(store) {
 }
 
 async function readStoreWithMeta() {
-  if (RUN_STORE_DURABLE_URL) {
+  if (RESOLVED_RUN_STORE_DURABLE_URL) {
     return readStoreFromDurable();
   }
 
@@ -120,7 +143,7 @@ async function readStoreWithMeta() {
 }
 
 async function writeStoreWithMeta(store, etag) {
-  if (RUN_STORE_DURABLE_URL) {
+  if (RESOLVED_RUN_STORE_DURABLE_URL) {
     await writeStoreToDurable(store, etag);
     return;
   }

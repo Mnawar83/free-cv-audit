@@ -3,6 +3,7 @@
 This project can use an external durable JSON store via:
 
 - `RUN_STORE_DURABLE_URL`
+  - can also be set to a root-relative path (for example `/.netlify/functions/run-store-durable`) when `URL`/`DEPLOY_PRIME_URL`/`DEPLOY_URL` is available
 - `RUN_STORE_DURABLE_TOKEN` (optional bearer token)
 
 `netlify/functions/run-store.js` already supports reading/writing this endpoint with optimistic concurrency (`If-None-Match: *` / `If-Match: <etag>`).
@@ -45,3 +46,12 @@ Then point Netlify functions (or tests) to:
 
 - `RUN_STORE_DURABLE_URL=http://127.0.0.1:8787/`
 - `RUN_STORE_DURABLE_TOKEN=dev-token`
+
+## Netlify Blobs function option
+
+If you want to keep durable storage fully inside Netlify, deploy `netlify/functions/run-store-durable.js` and set:
+
+- `RUN_STORE_DURABLE_URL=/.netlify/functions/run-store-durable`
+- `RUN_STORE_DURABLE_TOKEN=<token-or-empty>`
+
+This function stores the run-store JSON in Netlify Blobs and supports the same ETag-based optimistic concurrency contract expected by `run-store.js`.
