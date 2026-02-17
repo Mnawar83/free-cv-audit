@@ -1,2 +1,5 @@
+[functions]
+  external_node_modules = ["@sparticuz/chromium", "puppeteer-core"]
+
 [functions."generate-pdf"]
   timeout = 90

@@ -36,6 +36,15 @@ const LINKEDIN_UPSELL_STATUS = {
   GENERATED: 'GENERATED',
 };
 
+const COVER_LETTER_STATUS = {
+  NOT_STARTED: 'NOT_STARTED',
+  PENDING_PAYMENT: 'PENDING_PAYMENT',
+  PAID: 'PAID',
+  GENERATED: 'GENERATED',
+};
+
+const COVER_LETTER_PRICE_USD = 0.99;
+
 const MAX_CONFLICT_RETRIES = 5;
 const MAX_DURABLE_HTTP_RETRIES = 3;
 const DURABLE_RETRY_STATUS_CODES = new Set([429, 502, 503, 504]);
@@ -233,6 +242,8 @@ async function upsertRun(runId, updates = {}) {
       runId,
       created_at: new Date().toISOString(),
       linkedin_upsell_status: LINKEDIN_UPSELL_STATUS.NOT_STARTED,
+      cover_letter_status: COVER_LETTER_STATUS.NOT_STARTED,
+      cover_letter_price_usd: COVER_LETTER_PRICE_USD,
     };
 
     const next = {
@@ -273,6 +284,8 @@ function createRunId() {
 }
 
 module.exports = {
+  COVER_LETTER_PRICE_USD,
+  COVER_LETTER_STATUS,
   LINKEDIN_UPSELL_STATUS,
   createRunId,
   getRun,
