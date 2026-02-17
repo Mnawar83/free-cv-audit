@@ -657,7 +657,6 @@
         function showRevisedDownloadOnly() {
             if (auditSection) auditSection.classList.add('hidden');
             if (revisedPaymentSection) revisedPaymentSection.classList.add('hidden');
-            if (upsellCards) upsellCards.classList.add('hidden');
             if (revisedDownloadOnly) revisedDownloadOnly.classList.remove('hidden');
             if (revisedDownloadOnlyLink && revisedCvBlobUrl) {
                 revisedDownloadOnlyLink.href = revisedCvBlobUrl;
@@ -710,6 +709,7 @@
                     revisedDownloadOnlyLink.setAttribute('aria-disabled', 'false');
                 }
                 showRevisedDownloadOnly();
+                initializeLinkedInUpsell();
             }
             updateRetryVisibility();
         }

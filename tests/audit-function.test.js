@@ -34,6 +34,8 @@ async function run() {
   const promptText = capturedPayload.systemInstruction.parts[0].text;
   assert.ok(promptText.includes('Return a complete audit immediately'));
   assert.ok(promptText.includes('Never say you are ready to begin'));
+  assert.ok(promptText.includes('Do not include a rewritten professional summary section'));
+  assert.ok(!promptText.includes('Rewritten Professional Summary'));
   assert.ok(capturedPayload.contents[0].parts[0].text.startsWith('Audit this CV now:'));
 
   console.log('Audit function test passed');

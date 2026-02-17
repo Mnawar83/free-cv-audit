@@ -28,9 +28,7 @@ Suggested Improvements (Prioritized):
 2) <improvement>
 3) <improvement>
 
-Rewritten Professional Summary:
-<4-6 lines tailored to ATS and the likely target role inferred from CV>
-
+Do not include a rewritten professional summary section.
 Do not include markdown code fences. Do not include any preamble. Base everything strictly on the provided CV text and do not invent facts.`;
 
 exports.handler = async (event) => {
