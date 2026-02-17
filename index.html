@@ -168,22 +168,41 @@
                         </button>
                     </div>
 
-                    <div id="linkedin-upsell-card" class="mt-8 hidden bg-white text-black border border-gray-300 p-6 rounded-lg text-left">
-                        <h3 class="text-2xl font-semibold">Optimize your LinkedIn</h3>
-                        <p class="mt-2 text-sm text-gray-700">Get a high-converting LinkedIn Headline and About section based on your newly revised CV.</p>
-                        <label for="linkedin-url" class="mt-4 block text-sm font-medium">LinkedIn profile link</label>
-                        <input id="linkedin-url" type="url" class="mt-1 w-full rounded-md border border-gray-400 px-3 py-2 text-sm" placeholder="https://www.linkedin.com/in/your-profile" />
-                        <div class="mt-4 text-sm">Price: <span class="font-semibold">$9.99</span></div>
-                        <div class="mt-3 text-sm font-medium">Pay securely</div>
-                        <div class="mt-3 rounded-md border border-gray-300 p-3">
-                            <div id="linkedin-paypal-buttons" class="min-h-[44px]"></div>
-                            <p class="mt-2 text-xs text-gray-600">Pay with PayPal or any Debit/Credit Card.</p>
+                    <div id="upsell-cards" class="mt-8 hidden grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div id="linkedin-upsell-card" class="bg-white text-black border border-gray-300 p-6 rounded-lg text-left">
+                            <h3 class="text-2xl font-semibold">Optimize your LinkedIn</h3>
+                            <p class="mt-2 text-sm text-gray-700">Get a high-converting LinkedIn Headline and About section based on your newly revised CV.</p>
+                            <label for="linkedin-url" class="mt-4 block text-sm font-medium">LinkedIn profile link</label>
+                            <input id="linkedin-url" type="url" class="mt-1 w-full rounded-md border border-gray-400 px-3 py-2 text-sm" placeholder="https://www.linkedin.com/in/your-profile" />
+                            <div class="mt-4 text-sm">Price: <span class="font-semibold">$9.99</span></div>
+                            <div class="mt-3 text-sm font-medium">Pay securely</div>
+                            <div class="mt-3 rounded-md border border-gray-300 p-3">
+                                <div id="linkedin-paypal-buttons" class="min-h-[44px]"></div>
+                                <p class="mt-2 text-xs text-gray-600">Pay with PayPal or any Debit/Credit Card.</p>
+                            </div>
+                            <button id="linkedin-whish-button" class="mt-3 w-full rounded-md bg-black py-3 text-sm font-semibold text-white">Pay with Whish Pay</button>
+                            <a id="linkedin-skip-link" href="#" class="mt-3 inline-block text-xs underline text-gray-700">Skip for now</a>
+                            <a id="linkedin-download-link" href="#" class="mt-4 hidden rounded-md bg-black px-4 py-3 text-sm font-semibold text-white inline-flex">Download LinkedIn Word File</a>
+                            <button id="linkedin-generate-button" type="button" class="mt-4 hidden rounded-md bg-black px-4 py-3 text-sm font-semibold text-white">Generate LinkedIn Word File</button>
+                            <p id="linkedin-upsell-status" class="mt-2 text-xs text-gray-700"></p>
                         </div>
-                        <button id="linkedin-whish-button" class="mt-3 w-full rounded-md bg-black py-3 text-sm font-semibold text-white">Pay with Whish Pay</button>
-                        <a id="linkedin-skip-link" href="#" class="mt-3 inline-block text-xs underline text-gray-700">Skip for now</a>
-                        <a id="linkedin-download-link" href="#" class="mt-4 hidden rounded-md bg-black px-4 py-3 text-sm font-semibold text-white inline-flex">Download LinkedIn Word File</a>
-                        <button id="linkedin-generate-button" type="button" class="mt-4 hidden rounded-md bg-black px-4 py-3 text-sm font-semibold text-white">Generate LinkedIn Word File</button>
-                        <p id="linkedin-upsell-status" class="mt-2 text-xs text-gray-700"></p>
+
+                        <div id="cover-letter-card" class="bg-white text-black border border-gray-300 p-6 rounded-lg text-left">
+                            <h3 class="text-2xl font-semibold">Cover Letter</h3>
+                            <label for="cover-letter-job-link" class="mt-4 block text-sm font-medium">Job link</label>
+                            <input id="cover-letter-job-link" type="url" required class="mt-1 w-full rounded-md border border-gray-400 px-3 py-2 text-sm" placeholder="https://example.com/jobs/role" />
+                            <p id="cover-letter-validation" class="mt-2 text-xs text-red-700"></p>
+                            <div class="mt-4 text-sm">Price: <span class="font-semibold">$0.99</span></div>
+                            <div class="mt-3 text-sm font-medium">Pay securely</div>
+                            <div class="mt-3 rounded-md border border-gray-300 p-3">
+                                <div id="cover-letter-paypal-buttons" class="min-h-[44px]"></div>
+                            </div>
+                            <button id="cover-letter-whish-button" class="mt-3 w-full rounded-md bg-black py-3 text-sm font-semibold text-white">Pay with Whish Pay</button>
+                            <a id="cover-letter-skip-link" href="#" class="mt-3 inline-block text-xs underline text-gray-700">Skip for now</a>
+                            <a id="cover-letter-download-link" href="#" class="mt-4 hidden rounded-md bg-black px-4 py-3 text-sm font-semibold text-white inline-flex">Download Cover Letter</a>
+                            <button id="cover-letter-generate-button" type="button" class="mt-4 hidden rounded-md bg-black px-4 py-3 text-sm font-semibold text-white">Generate Cover Letter</button>
+                            <p id="cover-letter-status" class="mt-2 text-xs text-gray-700"></p>
+                        </div>
                     </div>
                 </div>
                  <!-- Error Message Box -->
@@ -220,6 +239,7 @@
         const downloadLink = document.getElementById('download-link');
         const downloadNote = document.getElementById('download-note');
         const retryDownloadButton = document.getElementById('retry-download');
+        const upsellCards = document.getElementById('upsell-cards');
         const linkedinUpsellCard = document.getElementById('linkedin-upsell-card');
         const linkedinUrlInput = document.getElementById('linkedin-url');
         const linkedinPayPalButtonsContainer = document.getElementById('linkedin-paypal-buttons');
@@ -227,6 +247,14 @@
         const linkedinDownloadLink = document.getElementById('linkedin-download-link');
         const linkedinGenerateButton = document.getElementById('linkedin-generate-button');
         const linkedinUpsellStatus = document.getElementById('linkedin-upsell-status');
+        const coverLetterCard = document.getElementById('cover-letter-card');
+        const coverLetterJobLinkInput = document.getElementById('cover-letter-job-link');
+        const coverLetterValidation = document.getElementById('cover-letter-validation');
+        const coverLetterPayPalButtonsContainer = document.getElementById('cover-letter-paypal-buttons');
+        const coverLetterWhishButton = document.getElementById('cover-letter-whish-button');
+        const coverLetterDownloadLink = document.getElementById('cover-letter-download-link');
+        const coverLetterGenerateButton = document.getElementById('cover-letter-generate-button');
+        const coverLetterStatus = document.getElementById('cover-letter-status');
 
         const uploadSection = document.getElementById('upload-section');
         const loadingSection = document.getElementById('loading-section');
@@ -250,6 +278,8 @@
         let currentRunId = sessionStorage.getItem('runId') || '';
         let hasActiveRunId = Boolean(currentRunId);
         let linkedinButtonsRendered = false;
+            coverLetterButtonsRendered = false;
+        let coverLetterButtonsRendered = false;
 
         const storedCvText = sessionStorage.getItem('cvText');
         if (storedCvText) {
@@ -296,10 +326,12 @@
             sessionStorage.removeItem('runId');
             sessionStorage.removeItem('paymentCompleted');
             sessionStorage.removeItem('linkedinWhishExternalId');
+            sessionStorage.removeItem('coverLetterWhishExternalId');
             paymentCompleted = false;
             linkedinButtonsRendered = false;
-            if (linkedinUpsellCard) {
-                linkedinUpsellCard.classList.add('hidden');
+            coverLetterButtonsRendered = false;
+            if (upsellCards) {
+                upsellCards.classList.add('hidden');
             }
             if (clearAuditArtifacts) {
                 extractedCvText = '';
@@ -309,6 +341,10 @@
                 if (linkedinDownloadLink) {
                     linkedinDownloadLink.classList.add('hidden');
                     linkedinDownloadLink.removeAttribute('href');
+                }
+                if (coverLetterDownloadLink) {
+                    coverLetterDownloadLink.classList.add('hidden');
+                    coverLetterDownloadLink.removeAttribute('href');
                 }
             }
         }
@@ -978,8 +1014,8 @@
         }
 
         async function initializeLinkedInUpsell() {
-            if (!paymentCompleted || !currentRunId || !linkedinUpsellCard) return;
-            linkedinUpsellCard.classList.remove('hidden');
+            if (!paymentCompleted || !currentRunId || !upsellCards) return;
+            upsellCards.classList.remove('hidden');
 
             let data = null;
             try {
@@ -1092,6 +1128,8 @@
 
             const link = document.getElementById('linkedin-skip-link');
             if (link) link.onclick = (e) => { e.preventDefault(); linkedinUpsellCard.classList.add('hidden'); };
+
+            initializeCoverLetterUpsell();
         }
 
 
@@ -1119,6 +1157,7 @@
                     return;
                 }
                 await generateLinkedInDocxForRun(runId);
+                if (upsellCards) upsellCards.classList.remove('hidden');
                 linkedinUpsellCard.classList.remove('hidden');
                 linkedinUpsellStatus.textContent = 'Payment confirmed. LinkedIn Word file is ready.';
                 url.searchParams.delete('linkedinPayment');
@@ -1129,6 +1168,167 @@
             }
         }
 
+
+
+        function looksLikeHttpUrl(value) {
+            return /^https?:\/\/.+/i.test((value || '').trim());
+        }
+
+        async function generateCoverLetterDocxForRun(runId) {
+            const docResponse = await fetch('/.netlify/functions/cover-letter-generate-docx', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId }),
+            });
+            const docData = await readJsonSafely(docResponse);
+            if (!docResponse.ok) throw new Error(docData.error || 'Unable to generate cover letter.');
+            coverLetterDownloadLink.classList.remove('hidden');
+            coverLetterDownloadLink.href = docData.downloadUrl;
+            coverLetterGenerateButton.classList.add('hidden');
+            coverLetterStatus.textContent = 'Cover letter is ready.';
+            coverLetterPayPalButtonsContainer.innerHTML = '';
+            coverLetterWhishButton.classList.add('hidden');
+        }
+
+        function showCoverLetterValidation(message) {
+            if (coverLetterValidation) coverLetterValidation.textContent = message || '';
+        }
+
+        function showCoverLetterGenerationRetryState() {
+            coverLetterPayPalButtonsContainer.innerHTML = '';
+            coverLetterWhishButton.classList.add('hidden');
+            coverLetterGenerateButton.classList.remove('hidden');
+            coverLetterGenerateButton.disabled = false;
+            coverLetterStatus.textContent = 'Payment confirmed. Generate your cover letter.';
+            coverLetterGenerateButton.onclick = async () => {
+                coverLetterGenerateButton.disabled = true;
+                coverLetterStatus.textContent = 'Generating your cover letter...';
+                try { await generateCoverLetterDocxForRun(currentRunId); }
+                catch (error) { showError(error.message || 'Unable to generate cover letter.'); coverLetterGenerateButton.disabled = false; }
+            };
+        }
+
+        async function initializeCoverLetterCheckout(runId, jobLink) {
+            const initResponse = await fetch('/.netlify/functions/cover-letter-init', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId, jobLink }),
+            });
+            const initData = await readJsonSafely(initResponse);
+            if (!initResponse.ok) throw new Error(getApiErrorMessage(initData, 'Unable to start cover letter checkout.'));
+            await fetch('/.netlify/functions/cover-letter-fetch-job', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId, jobLink }),
+            }).catch(() => {});
+        }
+
+        async function initializeCoverLetterUpsell() {
+            if (!paymentCompleted || !currentRunId || !coverLetterCard) return;
+            let data = null;
+            try {
+                const response = await fetch(`/.netlify/functions/cover-letter-status?runId=${encodeURIComponent(currentRunId)}`);
+                if (!response.ok) throw new Error('Unable to load cover letter status.');
+                data = await response.json();
+            } catch {}
+
+            if (data && (data.status === 'PAID' || data.status === 'GENERATED') && data.downloadUrl) {
+                coverLetterDownloadLink.classList.remove('hidden');
+                coverLetterDownloadLink.href = data.downloadUrl;
+                coverLetterStatus.textContent = 'Already unlocked. Download your cover letter.';
+                coverLetterGenerateButton.classList.add('hidden');
+                coverLetterPayPalButtonsContainer.innerHTML = '';
+                coverLetterWhishButton.classList.add('hidden');
+                return;
+            }
+            if (data && (data.status === 'PAID' || data.status === 'GENERATED') && !data.downloadUrl) {
+                showCoverLetterGenerationRetryState();
+                return;
+            }
+
+            coverLetterWhishButton.onclick = async () => {
+                try {
+                    const jobLink = coverLetterJobLinkInput.value.trim();
+                    if (!looksLikeHttpUrl(jobLink)) { showCoverLetterValidation('Please provide a valid job URL.'); return; }
+                    showCoverLetterValidation('');
+                    await initializeCoverLetterCheckout(currentRunId, jobLink);
+                    const response = await fetch('/.netlify/functions/whishpay-cover-letter-create-payment', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ runId: currentRunId, successRedirectUrl: `${window.location.origin}${window.location.pathname}?coverLetterPayment=success&runId=${encodeURIComponent(currentRunId)}`, failureRedirectUrl: `${window.location.origin}${window.location.pathname}?coverLetterPayment=failed&runId=${encodeURIComponent(currentRunId)}` }),
+                    });
+                    const payload = await readJsonSafely(response);
+                    if (!response.ok) {
+                        if (response.status === 409) { showCoverLetterGenerationRetryState(); return; }
+                        throw new Error(getApiErrorMessage(payload, 'Unable to start Whish payment.'));
+                    }
+                    const externalId = payload?.externalId;
+                    const collectUrl = payload?.data?.collectUrl || payload?.collectUrl;
+                    if (!externalId || !collectUrl) throw new Error('Unable to start Whish payment. Please try again.');
+                    sessionStorage.setItem('coverLetterWhishExternalId', externalId.toString());
+                    window.location.href = collectUrl;
+                } catch (error) { showError(error.message || 'Cover letter Whish payment failed.'); }
+            };
+
+            if (!coverLetterButtonsRendered) {
+                try {
+                    const sdk = await loadPayPalSdk();
+                    await sdk.Buttons({
+                        createOrder: async () => {
+                            const jobLink = coverLetterJobLinkInput.value.trim();
+                            if (!looksLikeHttpUrl(jobLink)) throw new Error('Please provide a valid job URL.');
+                            showCoverLetterValidation('');
+                            await initializeCoverLetterCheckout(currentRunId, jobLink);
+                            const createResponse = await fetch('/.netlify/functions/paypal-cover-letter-create-order', {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId: currentRunId }),
+                            });
+                            const createData = await readJsonSafely(createResponse);
+                            if (!createResponse.ok) {
+                                if (createResponse.status === 409) { showCoverLetterGenerationRetryState(); throw new Error('Payment already confirmed.'); }
+                                throw new Error(getApiErrorMessage(createData, 'Unable to create PayPal order.'));
+                            }
+                            return createData.orderID;
+                        },
+                        onApprove: async (payload) => {
+                            const captureResponse = await fetch('/.netlify/functions/paypal-cover-letter-capture-order', {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId: currentRunId, orderID: payload.orderID }),
+                            });
+                            const captureData = await readJsonSafely(captureResponse);
+                            if (!captureResponse.ok || !captureData.ok) throw new Error(captureData.error || 'PayPal capture failed.');
+                            await generateCoverLetterDocxForRun(currentRunId);
+                        },
+                        onError: (error) => showError(error.message || 'Cover letter PayPal payment failed.'),
+                    }).render('#cover-letter-paypal-buttons');
+                    coverLetterButtonsRendered = true;
+                } catch (error) {
+                    coverLetterPayPalButtonsContainer.innerHTML = '<p class="text-slate-600">PayPal is currently unavailable. You can still complete checkout with Whish Pay below.</p>';
+                }
+            }
+
+            const coverLetterSkip = document.getElementById('cover-letter-skip-link');
+            if (coverLetterSkip) coverLetterSkip.onclick = (e) => { e.preventDefault(); coverLetterCard.classList.add('hidden'); };
+        }
+
+        async function handleCoverLetterWhishReturn() {
+            try {
+                const url = new URL(window.location.href);
+                const paymentStatus = url.searchParams.get('coverLetterPayment');
+                if (paymentStatus !== 'success') return;
+                const restored = restoreAuditResultsFromSession();
+                if (!restored) return;
+                const runId = url.searchParams.get('runId') || currentRunId;
+                const externalId = sessionStorage.getItem('coverLetterWhishExternalId') || url.searchParams.get('externalId');
+                if (!runId || !externalId) return;
+                const verifyResponse = await fetch('/.netlify/functions/whishpay-cover-letter-check-status', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId, externalId }),
+                });
+                const verifyData = await readJsonSafely(verifyResponse);
+                if (!verifyResponse.ok || (verifyData.collectStatus !== 'PAID' && verifyData.collectStatus !== 'success' && verifyData.isPaidStatus !== true)) {
+                    showError(verifyData.error || 'Cover letter Whish payment is not confirmed yet.');
+                    return;
+                }
+                await generateCoverLetterDocxForRun(runId);
+                coverLetterStatus.textContent = 'Payment confirmed. Cover letter is ready.';
+                url.searchParams.delete('coverLetterPayment');
+                url.searchParams.delete('runId');
+                window.history.replaceState({}, document.title, url.toString());
+            } catch (error) {
+                showError(error.message || 'Cover letter Whish payment handling failed.');
+            }
+        }
 
         function initializeWhishPayCheckout() {
             if (whishPayButton && !whishPayListenerAttached) {
@@ -1142,6 +1342,7 @@
         updateRetryVisibility();
         handleWhishPayReturn();
         handleLinkedinWhishReturn();
+        handleCoverLetterWhishReturn();
 
         if (retryDownloadButton) {
             retryDownloadButton.addEventListener('click', async () => {
