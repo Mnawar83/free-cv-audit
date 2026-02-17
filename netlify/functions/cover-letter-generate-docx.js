@@ -6,11 +6,58 @@ const { COVER_LETTER_AI_JOB_TEXT_MAX, COVER_LETTER_JOB_TEXT_THRESHOLD } = requir
 
 function buildPrompt(revisedCvText, jobPageText, jobPageTextLength) {
   if (jobPageTextLength >= COVER_LETTER_JOB_TEXT_THRESHOLD) {
-    return `CANDIDATE PROFILE:\n${revisedCvText}\n\nJOB POST CONTENT:\n${jobPageText.slice(0, COVER_LETTER_AI_JOB_TEXT_MAX)}\n\nINSTRUCTIONS:\n1. Write a tailored cover letter using both the candidate profile and job post.\n2. Extract job title and company name ONLY if clearly present in JOB POST CONTENT.\n3. If company name cannot be reliably identified, use generic phrases:\n   'your team', 'your organization', 'your company'.\n4. If job title cannot be reliably identified, refer to:\n   'this role' or 'this position'.\n5. Do NOT invent employers, metrics, certifications, or experience not present in the candidate profile or job post.\n6. Do NOT exaggerate.\n7. Tone: confident, professional, concise.\n8. Length: 250–400 words.\n9. Structure:\n   - Paragraph 1: Greeting and intent.\n   - Paragraph 2–3: Align candidate strengths with job requirements.\n   - Final paragraph: Closing statement and call to action.\n10. Do not use bullet points.\n11. Output plain text paragraphs only (no markdown).\n12. Do not include the title 'Cover Letter' in the output.\n\nReturn only the body content.`;
+    return `CANDIDATE PROFILE:
+${revisedCvText}
+
+JOB POST CONTENT:
+${jobPageText.slice(0, COVER_LETTER_AI_JOB_TEXT_MAX)}
+
+INSTRUCTIONS:
+1. Write a tailored cover letter using both the candidate profile and job post.
+2. Extract company name ONLY if clearly present in JOB POST CONTENT.
+3. If company name cannot be reliably identified, use generic phrases:
+   'your team', 'your organization', 'your company'.
+4. Always refer to the position as:
+   'this role'.
+5. Never mention or infer a specific job title, even if one appears in the job post.
+6. Do NOT invent employers, metrics, certifications, or experience not present in the candidate profile or job post.
+7. Do NOT exaggerate.
+8. Tone: confident, professional, concise.
+9. Length: 250–400 words.
+10. Structure:
+   - Paragraph 1: Greeting and intent.
+   - Paragraph 2–3: Align candidate strengths with job requirements.
+   - Final paragraph: Closing statement and call to action.
+11. Do not use bullet points.
+12. Output plain text paragraphs only (no markdown).
+13. Do not include the title 'Cover Letter' in the output.
+
+Return only the body content.`;
   }
 
-  return `CANDIDATE PROFILE:\n${revisedCvText}\n\nINSTRUCTIONS:\n1. Write a strong general-purpose professional cover letter.\n2. Do NOT reference any specific company name.\n3. Do NOT reference any specific job title.\n4. Use generic phrases such as:\n   'this opportunity', 'your organization', 'your company'.\n5. Do NOT invent employers, metrics, certifications, or experience not present in the candidate profile.\n6. Tone: confident, professional, concise.\n7. Length: 250–400 words.\n8. Structure:\n   - Paragraph 1: Professional introduction and intent.\n   - Paragraph 2–3: Core strengths and relevant experience.\n   - Final paragraph: Closing statement and call to action.\n9. No bullet points.\n10. Output plain text paragraphs only (no markdown).\n11. Do not include the title 'Cover Letter' in the output.\n\nReturn only the body content.`;
+  return `CANDIDATE PROFILE:
+${revisedCvText}
+
+INSTRUCTIONS:
+1. Write a strong general-purpose professional cover letter.
+2. Do NOT reference any specific company name.
+3. Never mention any specific job title.
+4. Always use the phrase 'this role' for the position reference.
+5. Use generic company phrases such as 'your organization' or 'your company'.
+6. Do NOT invent employers, metrics, certifications, or experience not present in the candidate profile.
+7. Tone: confident, professional, concise.
+8. Length: 250–400 words.
+9. Structure:
+   - Paragraph 1: Professional introduction and intent.
+   - Paragraph 2–3: Core strengths and relevant experience.
+   - Final paragraph: Closing statement and call to action.
+10. No bullet points.
+11. Output plain text paragraphs only (no markdown).
+12. Do not include the title 'Cover Letter' in the output.
+
+Return only the body content.`;
 }
+
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
