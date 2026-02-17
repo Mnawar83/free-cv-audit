@@ -212,7 +212,7 @@
                     </div>
 
                     <div id="revised-download-only" class="hidden mt-8 rounded-lg border border-emerald-500/50 bg-emerald-950/30 p-8 text-center">
-                        <a id="revised-download-only-link" href="#" class="inline-flex w-full max-w-md items-center justify-center rounded-lg bg-emerald-600 px-6 py-4 text-base font-bold text-white transition hover:bg-emerald-500" aria-disabled="true">
+                        <a id="primary-download-link" href="#" class="inline-flex w-full max-w-md items-center justify-center rounded-lg bg-emerald-600 px-6 py-4 text-base font-bold text-white transition hover:bg-emerald-500" aria-disabled="true">
                             Download Revised CV (PDF)
                         </a>
                     </div>
@@ -302,7 +302,7 @@
         const auditSection = document.getElementById('audit-section');
         const revisedPaymentSection = document.getElementById('revised-payment-section');
         const revisedDownloadOnly = document.getElementById('revised-download-only');
-        const revisedDownloadOnlyLink = document.getElementById('revised-download-only-link');
+        const primaryDownloadLink = document.getElementById('primary-download-link');
         const upsellCards = document.getElementById('upsell-cards');
         const linkedinUpsellCard = document.getElementById('linkedin-upsell-card');
         const linkedinCheckoutSection = document.getElementById('linkedin-checkout-section');
@@ -348,6 +348,13 @@
         let hasActiveRunId = Boolean(currentRunId);
         let linkedinButtonsRendered = false;
         let coverLetterButtonsRendered = false;
+        let activeDownloadType = '';
+        let linkedinUnlocked = false;
+        let coverLetterUnlocked = false;
+        let linkedinDownloaded = false;
+        let coverLetterDownloaded = false;
+        let linkedinDownloadUrl = '';
+        let coverLetterDownloadUrl = '';
 
         const storedCvText = sessionStorage.getItem('cvText');
         if (storedCvText) {
@@ -643,48 +650,99 @@
             if (auditSection) auditSection.classList.remove('hidden');
             if (revisedPaymentSection) revisedPaymentSection.classList.remove('hidden');
             if (revisedDownloadOnly) revisedDownloadOnly.classList.add('hidden');
-            if (revisedDownloadOnlyLink) {
-                revisedDownloadOnlyLink.setAttribute('href', '#');
-                revisedDownloadOnlyLink.setAttribute('aria-disabled', 'true');
+            if (primaryDownloadLink) {
+                primaryDownloadLink.setAttribute('href', '#');
+                primaryDownloadLink.setAttribute('aria-disabled', 'true');
+                primaryDownloadLink.textContent = 'Download Revised CV (PDF)';
             }
             if (upsellCards) upsellCards.classList.add('hidden');
+            if (linkedinUpsellCard) linkedinUpsellCard.classList.remove('hidden');
+            if (coverLetterCard) coverLetterCard.classList.remove('hidden');
             if (linkedinCheckoutSection) linkedinCheckoutSection.classList.remove('hidden');
             if (linkedinDownloadOnly) linkedinDownloadOnly.classList.add('hidden');
             if (coverLetterCheckoutSection) coverLetterCheckoutSection.classList.remove('hidden');
             if (coverLetterDownloadOnly) coverLetterDownloadOnly.classList.add('hidden');
+            activeDownloadType = '';
+            linkedinUnlocked = false;
+            coverLetterUnlocked = false;
+            linkedinDownloaded = false;
+            coverLetterDownloaded = false;
+            linkedinDownloadUrl = '';
+            coverLetterDownloadUrl = '';
         }
 
-        function showRevisedDownloadOnly() {
+        function setPrimaryDownloadButton(type) {
+            if (!revisedDownloadOnly || !primaryDownloadLink) return;
+            revisedDownloadOnly.classList.remove('hidden');
+            if (type === 'linkedin') {
+                primaryDownloadLink.textContent = 'Download LinkedIn Optimization';
+                primaryDownloadLink.href = linkedinDownloadUrl || '#';
+                primaryDownloadLink.removeAttribute('download');
+            } else if (type === 'cover-letter') {
+                primaryDownloadLink.textContent = 'Download Cover Letter';
+                primaryDownloadLink.href = coverLetterDownloadUrl || '#';
+                primaryDownloadLink.removeAttribute('download');
+            } else {
+                primaryDownloadLink.textContent = 'Download Revised CV (PDF)';
+                primaryDownloadLink.href = revisedCvBlobUrl || '#';
+                primaryDownloadLink.setAttribute('download', 'revised-cv.pdf');
+            }
+            primaryDownloadLink.setAttribute('aria-disabled', primaryDownloadLink.href === '#' ? 'true' : 'false');
+        }
+
+        function applyPaidGatedLayout() {
+            if (!paymentCompleted) return;
+
             if (auditSection) auditSection.classList.add('hidden');
             if (revisedPaymentSection) revisedPaymentSection.classList.add('hidden');
-            if (revisedDownloadOnly) revisedDownloadOnly.classList.remove('hidden');
-            if (revisedDownloadOnlyLink && revisedCvBlobUrl) {
-                revisedDownloadOnlyLink.href = revisedCvBlobUrl;
-                revisedDownloadOnlyLink.setAttribute('download', 'revised-cv.pdf');
-                revisedDownloadOnlyLink.setAttribute('aria-disabled', 'false');
+            if (upsellCards) upsellCards.classList.add('hidden');
+            if (linkedinUpsellCard) linkedinUpsellCard.classList.remove('hidden');
+            if (coverLetterCard) coverLetterCard.classList.remove('hidden');
+
+            const active = activeDownloadType || 'revised';
+            setPrimaryDownloadButton(active);
+
+            if (active === 'revised') {
+                if (upsellCards) upsellCards.classList.remove('hidden');
+                if (linkedinUpsellCard && linkedinUnlocked) linkedinUpsellCard.classList.add('hidden');
+                if (coverLetterCard && coverLetterUnlocked) coverLetterCard.classList.add('hidden');
+                return;
+            }
+
+            if (active === 'linkedin') {
+                if (linkedinDownloaded && !coverLetterUnlocked && coverLetterCard && upsellCards) {
+                    upsellCards.classList.remove('hidden');
+                    linkedinUpsellCard.classList.add('hidden');
+                    coverLetterCard.classList.remove('hidden');
+                }
+                return;
+            }
+
+            if (active === 'cover-letter') {
+                if (coverLetterDownloaded && !linkedinUnlocked && linkedinUpsellCard && upsellCards) {
+                    upsellCards.classList.remove('hidden');
+                    coverLetterCard.classList.add('hidden');
+                    linkedinUpsellCard.classList.remove('hidden');
+                }
             }
         }
 
-        function showLinkedInDownloadOnly(downloadUrl) {
-            if (linkedinCheckoutSection) linkedinCheckoutSection.classList.add('hidden');
-            if (linkedinDownloadOnly) linkedinDownloadOnly.classList.remove('hidden');
-            if (linkedinDownloadLink && downloadUrl) {
-                linkedinDownloadLink.classList.remove('hidden');
-                linkedinDownloadLink.href = downloadUrl;
+        function markUpsellUnlocked(type, downloadUrl) {
+            if (type === 'linkedin') {
+                linkedinUnlocked = true;
+                linkedinDownloadUrl = downloadUrl || linkedinDownloadUrl;
+                activeDownloadType = 'linkedin';
             }
-        }
-
-        function showCoverLetterDownloadOnly(downloadUrl) {
-            if (coverLetterCheckoutSection) coverLetterCheckoutSection.classList.add('hidden');
-            if (coverLetterDownloadOnly) coverLetterDownloadOnly.classList.remove('hidden');
-            if (coverLetterDownloadLink && downloadUrl) {
-                coverLetterDownloadLink.classList.remove('hidden');
-                coverLetterDownloadLink.href = downloadUrl;
+            if (type === 'cover-letter') {
+                coverLetterUnlocked = true;
+                coverLetterDownloadUrl = downloadUrl || coverLetterDownloadUrl;
+                activeDownloadType = 'cover-letter';
             }
+            applyPaidGatedLayout();
         }
 
         function focusUpsellSelection(type) {
-            if (!upsellCards) return;
+            if (!upsellCards || !paymentCompleted) return;
             upsellCards.classList.remove('hidden');
             if (auditSection) auditSection.classList.add('hidden');
             if (revisedPaymentSection) revisedPaymentSection.classList.add('hidden');
@@ -719,12 +777,8 @@
                 }
                 downloadLink.setAttribute('download', 'revised-cv.pdf');
                 downloadNote.textContent = 'Your revised CV PDF is ready to download.';
-                if (revisedDownloadOnlyLink && revisedCvBlobUrl) {
-                    revisedDownloadOnlyLink.href = revisedCvBlobUrl;
-                    revisedDownloadOnlyLink.setAttribute('download', 'revised-cv.pdf');
-                    revisedDownloadOnlyLink.setAttribute('aria-disabled', 'false');
-                }
-                showRevisedDownloadOnly();
+                activeDownloadType = 'revised';
+                applyPaidGatedLayout();
                 initializeLinkedInUpsell();
                 initializeCoverLetterUpsell();
             }
@@ -745,6 +799,12 @@
             resultsSection.classList.remove('hidden');
             initializePayPalButtons();
             initializeWhishPayCheckout();
+            if (paymentCompleted) {
+                activeDownloadType = activeDownloadType || "revised";
+                applyPaidGatedLayout();
+                initializeLinkedInUpsell();
+                initializeCoverLetterUpsell();
+            }
             return true;
         }
 
@@ -1191,7 +1251,7 @@
             if (!docResponse.ok) {
                 throw new Error(docData.error || 'Unable to generate LinkedIn file.');
             }
-            showLinkedInDownloadOnly(docData.downloadUrl);
+            markUpsellUnlocked('linkedin', docData.downloadUrl);
             linkedinGenerateButton.classList.add('hidden');
             linkedinGenerateButton.disabled = false;
             linkedinUpsellStatus.textContent = 'LinkedIn Word file is ready.';
@@ -1233,11 +1293,13 @@
             }
 
             if (data && (data.status === 'PAID' || data.status === 'GENERATED') && data.downloadUrl) {
-                showLinkedInDownloadOnly(data.downloadUrl);
+                linkedinUnlocked = true;
+                linkedinDownloadUrl = data.downloadUrl;
                 linkedinUpsellStatus.textContent = 'Already unlocked. Download your LinkedIn Word file.';
                 linkedinGenerateButton.classList.add('hidden');
                 linkedinPayPalButtonsContainer.innerHTML = '';
                 linkedinWhishButton.classList.add('hidden');
+                applyPaidGatedLayout();
                 return;
             }
 
@@ -1383,7 +1445,7 @@
             });
             const docData = await readJsonSafely(docResponse);
             if (!docResponse.ok) throw new Error(docData.error || 'Unable to generate cover letter.');
-            showCoverLetterDownloadOnly(docData.downloadUrl);
+            markUpsellUnlocked('cover-letter', docData.downloadUrl);
             coverLetterGenerateButton.classList.add('hidden');
             coverLetterStatus.textContent = 'Cover letter is ready.';
             coverLetterPayPalButtonsContainer.innerHTML = '';
@@ -1429,11 +1491,13 @@
             } catch {}
 
             if (data && (data.status === 'PAID' || data.status === 'GENERATED') && data.downloadUrl) {
-                showCoverLetterDownloadOnly(data.downloadUrl);
+                coverLetterUnlocked = true;
+                coverLetterDownloadUrl = data.downloadUrl;
                 coverLetterStatus.textContent = 'Already unlocked. Download your cover letter.';
                 coverLetterGenerateButton.classList.add('hidden');
                 coverLetterPayPalButtonsContainer.innerHTML = '';
                 coverLetterWhishButton.classList.add('hidden');
+                applyPaidGatedLayout();
                 return;
             }
             if (data && (data.status === 'PAID' || data.status === 'GENERATED') && !data.downloadUrl) {
@@ -1543,6 +1607,18 @@
         }
         if (coverLetterCard) {
             coverLetterCard.addEventListener('click', () => focusUpsellSelection('cover-letter'));
+        }
+
+        if (primaryDownloadLink) {
+            primaryDownloadLink.addEventListener('click', () => {
+                if (activeDownloadType === 'linkedin') {
+                    linkedinDownloaded = true;
+                    applyPaidGatedLayout();
+                } else if (activeDownloadType === 'cover-letter') {
+                    coverLetterDownloaded = true;
+                    applyPaidGatedLayout();
+                }
+            });
         }
 
         hydratePayPalPricing();
