@@ -60,15 +60,23 @@ exports.handler = async (event) => {
     if (!text) return { statusCode: 500, body: JSON.stringify({ error: 'No AI output generated.' }) };
 
     const { headline, about } = parseLinkedinOutput(text);
+    const baseTextStyle = { font: 'Times New Roman', size: 24 };
+    const aboutParagraphLines = about
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
     const doc = new Document({
       sections: [{
         children: [
-          new Paragraph({ text: 'LinkedIn Optimization', heading: HeadingLevel.TITLE }),
-          new Paragraph({ text: 'LinkedIn Headline', heading: HeadingLevel.HEADING_1 }),
-          new Paragraph({ children: [new TextRun(headline)] }),
-          new Paragraph({ text: '' }),
-          new Paragraph({ text: 'About', heading: HeadingLevel.HEADING_1 }),
-          ...about.split('\n').filter(Boolean).map((line) => new Paragraph({ children: [new TextRun(line)] })),
+          new Paragraph({ text: 'LinkedIn Optimization', heading: HeadingLevel.TITLE, spacing: { after: 240 } }),
+          new Paragraph({ text: 'LinkedIn Headline', heading: HeadingLevel.HEADING_1, spacing: { after: 200 } }),
+          new Paragraph({ children: [new TextRun({ text: headline, ...baseTextStyle })], spacing: { after: 240 } }),
+          new Paragraph({ text: 'About', heading: HeadingLevel.HEADING_1, spacing: { after: 200 } }),
+          ...aboutParagraphLines.map((line) => new Paragraph({
+            children: [new TextRun({ text: line, ...baseTextStyle })],
+            spacing: { after: 200 },
+          })),
         ],
       }],
     });

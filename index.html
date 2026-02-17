@@ -66,6 +66,31 @@
                 max-height: 22vh;
             }
         }
+        #audit-output {
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: linear-gradient(180deg, rgba(15, 23, 42, 0.75) 0%, rgba(2, 6, 23, 0.95) 100%);
+        }
+        .audit-report h3 {
+            margin-top: 1.25rem;
+            margin-bottom: 0.5rem;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #f8fafc;
+        }
+        .audit-report p {
+            margin: 0.35rem 0;
+            line-height: 1.7;
+            color: #cbd5e1;
+        }
+        .audit-report ul {
+            margin: 0.6rem 0 1rem;
+            padding-left: 1.2rem;
+            color: #cbd5e1;
+        }
+        .audit-report li {
+            margin: 0.25rem 0;
+            line-height: 1.6;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-slate-200">
@@ -129,7 +154,7 @@
                 <!-- Results Section -->
                 <div id="results-section" class="hidden">
                     <h2 class="text-2xl md:text-3xl font-bold text-center text-white mb-6">Your CV Audit Results</h2>
-                    <div id="audit-output" class="prose prose-invert max-w-none rounded-lg bg-gray-900 p-6">
+                    <div id="audit-output" class="max-w-none rounded-lg p-6 md:p-7">
                         <!-- AI generated content will go here -->
                     </div>
 
@@ -189,6 +214,7 @@
 
                         <div id="cover-letter-card" class="bg-white text-black border border-gray-300 p-6 rounded-lg text-left">
                             <h3 class="text-2xl font-semibold">Cover Letter</h3>
+                            <p class="mt-2 text-sm text-gray-700">Never send a CV without a cover letter. Get it now.</p>
                             <label for="cover-letter-job-link" class="mt-4 block text-sm font-medium">Job link</label>
                             <input id="cover-letter-job-link" type="url" required class="mt-1 w-full rounded-md border border-gray-400 px-3 py-2 text-sm" placeholder="https://example.com/jobs/role" />
                             <p id="cover-letter-validation" class="mt-2 text-xs text-red-700"></p>
@@ -390,7 +416,7 @@
                 const auditResult = await getAuditFeedback(text);
                 extractedCvAnalysis = auditResult;
                 sessionStorage.setItem('cvAnalysis', auditResult);
-                auditOutput.innerHTML = auditResult.replace(/\n\n/g, '<p>').replace(/\n/g, '<br>');
+                auditOutput.innerHTML = formatAuditHtml(auditResult);
                 loadingSection.classList.add('hidden');
                 resultsSection.classList.remove('hidden');
                 initializePayPalButtons();
@@ -501,6 +527,63 @@
             return fallbackMessage;
         }
 
+
+        function escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function formatAuditHtml(text) {
+            const lines = String(text || '').split(/\r?\n/).map((line) => line.trim());
+            const parts = ['<div class="audit-report">'];
+            let listOpen = false;
+
+            for (const line of lines) {
+                if (!line) {
+                    if (listOpen) {
+                        parts.push('</ul>');
+                        listOpen = false;
+                    }
+                    continue;
+                }
+
+                const headingMatch = line.match(/^\*{0,2}\s*(\d+[.)]\s*)?([A-Za-z][A-Za-z0-9\s/&()'-]{2,}):\s*$/);
+                if (headingMatch) {
+                    if (listOpen) {
+                        parts.push('</ul>');
+                        listOpen = false;
+                    }
+                    parts.push(`<h3>${escapeHtml(headingMatch[2])}</h3>`);
+                    continue;
+                }
+
+                if (/^[-•*]\s+/.test(line)) {
+                    if (!listOpen) {
+                        parts.push('<ul>');
+                        listOpen = true;
+                    }
+                    parts.push(`<li>${escapeHtml(line.replace(/^[-•*]\s+/, ''))}</li>`);
+                    continue;
+                }
+
+                if (listOpen) {
+                    parts.push('</ul>');
+                    listOpen = false;
+                }
+                parts.push(`<p>${escapeHtml(line)}</p>`);
+            }
+
+            if (listOpen) {
+                parts.push('</ul>');
+            }
+            parts.push('</div>');
+            return parts.join('');
+        }
+
         async function initializeLinkedInCheckout(runId, providedLinkedInUrl) {
             const initResponse = await fetch('/.netlify/functions/linkedin-upsell-init', {
                 method: 'POST',
@@ -546,7 +629,7 @@
             if (storedText) {
                 extractedCvText = storedText;
             }
-            auditOutput.innerHTML = storedAnalysis.replace(/\n\n/g, '<p>').replace(/\n/g, '<br>');
+            auditOutput.innerHTML = formatAuditHtml(storedAnalysis);
             uploadSection.classList.add('hidden');
             loadingSection.classList.add('hidden');
             resultsSection.classList.remove('hidden');
