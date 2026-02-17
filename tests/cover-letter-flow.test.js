@@ -39,12 +39,18 @@ async function run() {
 
   await upsertRun(runId, { cover_letter_status: 'PAID', job_page_text: 'short', job_page_text_length: 5 });
 
-  global.fetch = async () => ({
-    ok: true,
-    json: async () => ({
-      candidates: [{ content: { parts: [{ text: 'Dear Hiring Manager\n\nI am excited to apply for this opportunity.\n\nThank you for your consideration.' }] } }],
-    }),
-  });
+  let capturedPrompt = '';
+  global.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body || '{}');
+    capturedPrompt = body?.contents?.[0]?.parts?.[0]?.text || '';
+    return {
+      ok: true,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: 'Dear Hiring Manager\n\nI am excited to apply for this role.\n\nThank you for your consideration.' }] } }],
+      }),
+    };
+  };
+
 
   const generateResponse = await coverLetterGenerate({
     httpMethod: 'POST',
@@ -60,6 +66,8 @@ async function run() {
   assert.strictEqual(updatedRun.cover_letter_status, 'GENERATED');
   assert.strictEqual(updatedRun.used_job_text, false);
   assert.ok(updatedRun.cover_letter_docx_base64);
+  assert.ok(capturedPrompt.includes("Always use the phrase 'this role'"));
+  assert.ok(!capturedPrompt.includes('this position'));
 
   await fs.rm(tempDir, { recursive: true, force: true });
   console.log('Cover letter flow test passed');
