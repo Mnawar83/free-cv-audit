@@ -242,9 +242,9 @@
 
                         <div id="cover-letter-card" class="upsell-card bg-white text-black border border-gray-300 p-6 rounded-lg text-left">
                             <h3 class="text-2xl font-semibold">Cover Letter</h3>
-                            <p class="mt-2 text-sm text-gray-700">Never send a CV without a cover letter. Get it now.</p>
+                            <p class="mt-2 text-sm text-gray-700">Never send a CV without a cover letter. Get it now for better results.</p>
                             <div id="cover-letter-checkout-section" class="upsell-checkout mt-4">
-                                <label for="cover-letter-job-link" class="block text-sm font-medium">Job link</label>
+                                <label for="cover-letter-job-link" class="block text-sm font-medium">Job link <span class="text-xs font-normal text-gray-500">(Only company website)</span></label>
                                 <input id="cover-letter-job-link" type="url" required class="mt-1 w-full rounded-md border border-gray-400 px-3 py-2 text-sm" placeholder="https://example.com/jobs/role" />
                                 <p id="cover-letter-validation" class="mt-2 text-xs text-red-700"></p>
                                 <div class="mt-4 text-sm">Price: <span class="font-semibold">$0.99</span></div>
@@ -683,6 +683,22 @@
             }
         }
 
+        function focusUpsellSelection(type) {
+            if (!upsellCards) return;
+            upsellCards.classList.remove('hidden');
+            if (auditSection) auditSection.classList.add('hidden');
+            if (revisedPaymentSection) revisedPaymentSection.classList.add('hidden');
+            if (revisedDownloadOnly) revisedDownloadOnly.classList.add('hidden');
+
+            if (type === 'linkedin') {
+                if (linkedinUpsellCard) linkedinUpsellCard.classList.remove('hidden');
+                if (coverLetterCard) coverLetterCard.classList.add('hidden');
+            } else if (type === 'cover-letter') {
+                if (coverLetterCard) coverLetterCard.classList.remove('hidden');
+                if (linkedinUpsellCard) linkedinUpsellCard.classList.add('hidden');
+            }
+        }
+
         function setDownloadLocked(isLocked) {
             if (!downloadLink || !downloadNote) return;
             if (isLocked) {
@@ -710,6 +726,7 @@
                 }
                 showRevisedDownloadOnly();
                 initializeLinkedInUpsell();
+                initializeCoverLetterUpsell();
             }
             updateRetryVisibility();
         }
@@ -1316,7 +1333,6 @@
             const link = document.getElementById('linkedin-skip-link');
             if (link) link.onclick = (e) => { e.preventDefault(); linkedinUpsellCard.classList.add('hidden'); };
 
-            initializeCoverLetterUpsell();
         }
 
 
@@ -1520,6 +1536,13 @@
                 whishPayButton.addEventListener('click', startWhishPayCheckout);
                 whishPayListenerAttached = true;
             }
+        }
+
+        if (linkedinUpsellCard) {
+            linkedinUpsellCard.addEventListener('click', () => focusUpsellSelection('linkedin'));
+        }
+        if (coverLetterCard) {
+            coverLetterCard.addEventListener('click', () => focusUpsellSelection('cover-letter'));
         }
 
         hydratePayPalPricing();
