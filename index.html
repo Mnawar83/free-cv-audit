@@ -305,7 +305,12 @@
         
         function handleFile(file) {
             const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-            if (file && allowedTypes.includes(file.type)) {
+            const normalizedName = (file?.name || '').toLowerCase();
+            const hasAllowedExtension = normalizedName.endsWith('.pdf') || normalizedName.endsWith('.docx');
+            const hasAllowedMimeType = allowedTypes.includes(file?.type || '');
+            const isAcceptedFile = Boolean(file) && (hasAllowedMimeType || hasAllowedExtension);
+
+            if (isAcceptedFile) {
                 resetRunStateForNewAudit({ clearAuditArtifacts: true });
                 cvFile = file;
                 fileNameDisplay.textContent = file.name;
