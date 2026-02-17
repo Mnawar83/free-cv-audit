@@ -66,6 +66,47 @@
                 max-height: 22vh;
             }
         }
+        #audit-output {
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: linear-gradient(180deg, rgba(15, 23, 42, 0.75) 0%, rgba(2, 6, 23, 0.95) 100%);
+        }
+        .audit-report h3 {
+            margin-top: 1.25rem;
+            margin-bottom: 0.5rem;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #f8fafc;
+        }
+        .audit-report p {
+            margin: 0.35rem 0;
+            line-height: 1.7;
+            color: #cbd5e1;
+        }
+        .audit-report ul {
+            margin: 0.6rem 0 1rem;
+            padding-left: 1.2rem;
+            color: #cbd5e1;
+        }
+        .audit-report li {
+            margin: 0.25rem 0;
+            line-height: 1.6;
+        }
+        .upsell-card {
+            display: flex;
+            flex-direction: column;
+            min-height: 100%;
+        }
+        .upsell-checkout {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+        }
+        .upsell-paypal-panel {
+            min-height: 168px;
+        }
+        .upsell-primary-button {
+            min-height: 48px;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-slate-200">
@@ -128,13 +169,15 @@
 
                 <!-- Results Section -->
                 <div id="results-section" class="hidden">
-                    <h2 class="text-2xl md:text-3xl font-bold text-center text-white mb-6">Your CV Audit Results</h2>
-                    <div id="audit-output" class="prose prose-invert max-w-none rounded-lg bg-gray-900 p-6">
-                        <!-- AI generated content will go here -->
+                    <div id="audit-section">
+                        <h2 class="text-2xl md:text-3xl font-bold text-center text-white mb-6">Your CV Audit Results</h2>
+                        <div id="audit-output" class="max-w-none rounded-lg p-6 md:p-7">
+                            <!-- AI generated content will go here -->
+                        </div>
                     </div>
 
                     <!-- Payment Section -->
-                    <div class="mt-8 bg-gray-900 border border-blue-500/40 p-6 rounded-lg text-center">
+                    <div id="revised-payment-section" class="mt-8 bg-gray-900 border border-blue-500/40 p-6 rounded-lg text-center">
                         <h3 class="text-xl font-bold text-white">Download Your Revised CV (PDF)</h3>
                         <p class="mt-2 text-slate-300">
                             Get the professionally revised, ATS-ready version of your CV based on this audit for
@@ -168,42 +211,59 @@
                         </button>
                     </div>
 
+                    <div id="revised-download-only" class="hidden mt-8 rounded-lg border border-emerald-500/50 bg-emerald-950/30 p-8 text-center">
+                        <a id="primary-download-link" href="#" class="inline-flex w-full max-w-md items-center justify-center rounded-lg bg-emerald-600 px-6 py-4 text-base font-bold text-white transition hover:bg-emerald-500" aria-disabled="true">
+                            Download Revised CV (PDF)
+                        </a>
+                    </div>
+
                     <div id="upsell-cards" class="mt-8 hidden grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <div id="linkedin-upsell-card" class="bg-white text-black border border-gray-300 p-6 rounded-lg text-left">
+                        <div id="linkedin-upsell-card" class="upsell-card bg-white text-black border border-gray-300 p-6 rounded-lg text-left">
                             <h3 class="text-2xl font-semibold">Optimize your LinkedIn</h3>
                             <p class="mt-2 text-sm text-gray-700">Get a high-converting LinkedIn Headline and About section based on your newly revised CV.</p>
-                            <label for="linkedin-url" class="mt-4 block text-sm font-medium">LinkedIn profile link</label>
-                            <input id="linkedin-url" type="url" class="mt-1 w-full rounded-md border border-gray-400 px-3 py-2 text-sm" placeholder="https://www.linkedin.com/in/your-profile" />
-                            <div class="mt-4 text-sm">Price: <span class="font-semibold">$9.99</span></div>
-                            <div class="mt-3 text-sm font-medium">Pay securely</div>
-                            <div class="mt-3 rounded-md border border-gray-300 p-3">
-                                <div id="linkedin-paypal-buttons" class="min-h-[44px]"></div>
-                                <p class="mt-2 text-xs text-gray-600">Pay with PayPal or any Debit/Credit Card.</p>
+                            <div id="linkedin-checkout-section" class="upsell-checkout mt-4">
+                                <label for="linkedin-url" class="block text-sm font-medium">LinkedIn profile link</label>
+                                <input id="linkedin-url" type="url" class="mt-1 w-full rounded-md border border-gray-400 px-3 py-2 text-sm" placeholder="https://www.linkedin.com/in/your-profile" />
+                                <div class="mt-4 text-sm">Price: <span class="font-semibold">$9.99</span></div>
+                                <div class="mt-3 text-sm font-medium">Pay securely</div>
+                                <div class="upsell-paypal-panel mt-3 rounded-md border border-gray-300 p-3">
+                                    <div id="linkedin-paypal-buttons" class="min-h-[44px]"></div>
+                                    <p class="mt-2 text-xs text-gray-600">Pay with PayPal or any Debit/Credit Card.</p>
+                                </div>
+                                <button id="linkedin-whish-button" class="upsell-primary-button mt-3 w-full rounded-md bg-black py-3 text-sm font-semibold text-white">Pay with Whish Pay</button>
+                                <a id="linkedin-skip-link" href="#" class="mt-3 inline-block text-xs underline text-gray-700">Skip for now</a>
+                                <button id="linkedin-generate-button" type="button" class="mt-4 hidden rounded-md bg-black px-4 py-3 text-sm font-semibold text-white">Generate LinkedIn Word File</button>
                             </div>
-                            <button id="linkedin-whish-button" class="mt-3 w-full rounded-md bg-black py-3 text-sm font-semibold text-white">Pay with Whish Pay</button>
-                            <a id="linkedin-skip-link" href="#" class="mt-3 inline-block text-xs underline text-gray-700">Skip for now</a>
-                            <a id="linkedin-download-link" href="#" class="mt-4 hidden rounded-md bg-black px-4 py-3 text-sm font-semibold text-white inline-flex">Download LinkedIn Word File</a>
-                            <button id="linkedin-generate-button" type="button" class="mt-4 hidden rounded-md bg-black px-4 py-3 text-sm font-semibold text-white">Generate LinkedIn Word File</button>
-                            <p id="linkedin-upsell-status" class="mt-2 text-xs text-gray-700"></p>
+                            <div id="linkedin-download-only" class="hidden mt-4">
+                                <a id="linkedin-download-link" href="#" class="inline-flex w-full items-center justify-center rounded-md bg-black px-4 py-3 text-sm font-semibold text-white">Download LinkedIn Word File</a>
+                            </div>
+                            <p id="linkedin-upsell-status" class="mt-3 min-h-[20px] text-xs text-gray-700"></p>
                         </div>
 
-                        <div id="cover-letter-card" class="bg-white text-black border border-gray-300 p-6 rounded-lg text-left">
+                        <div id="cover-letter-card" class="upsell-card bg-white text-black border border-gray-300 p-6 rounded-lg text-left">
                             <h3 class="text-2xl font-semibold">Cover Letter</h3>
-                            <label for="cover-letter-job-link" class="mt-4 block text-sm font-medium">Job link</label>
-                            <input id="cover-letter-job-link" type="url" required class="mt-1 w-full rounded-md border border-gray-400 px-3 py-2 text-sm" placeholder="https://example.com/jobs/role" />
-                            <p id="cover-letter-validation" class="mt-2 text-xs text-red-700"></p>
-                            <div class="mt-4 text-sm">Price: <span class="font-semibold">$0.99</span></div>
-                            <div class="mt-3 text-sm font-medium">Pay securely</div>
-                            <div class="mt-3 rounded-md border border-gray-300 p-3">
-                                <div id="cover-letter-paypal-buttons" class="min-h-[44px]"></div>
+                            <p class="mt-2 text-sm text-gray-700">Never send a CV without a cover letter. Get it now for better results.</p>
+                            <div id="cover-letter-checkout-section" class="upsell-checkout mt-4">
+                                <label for="cover-letter-job-link" class="block text-sm font-medium">Job link <span class="text-xs font-normal text-gray-500">(Only company website)</span></label>
+                                <input id="cover-letter-job-link" type="url" required class="mt-1 w-full rounded-md border border-gray-400 px-3 py-2 text-sm" placeholder="https://example.com/jobs/role" />
+                                <p id="cover-letter-validation" class="mt-2 text-xs text-red-700"></p>
+                                <div class="mt-4 text-sm">Price: <span class="font-semibold">$0.99</span></div>
+                                <div class="mt-3 text-sm font-medium">Pay securely</div>
+                                <div class="upsell-paypal-panel mt-3 rounded-md border border-gray-300 p-3">
+                                    <div id="cover-letter-paypal-buttons" class="min-h-[44px]"></div>
+                                    <p class="mt-2 text-xs text-gray-600">Pay with PayPal or any Debit/Credit Card.</p>
+                                </div>
+                                <button id="cover-letter-whish-button" class="upsell-primary-button mt-3 w-full rounded-md bg-black py-3 text-sm font-semibold text-white">Pay with Whish Pay</button>
+                                <a id="cover-letter-skip-link" href="#" class="mt-3 inline-block text-xs underline text-gray-700">Skip for now</a>
+                                <button id="cover-letter-generate-button" type="button" class="mt-4 hidden rounded-md bg-black px-4 py-3 text-sm font-semibold text-white">Generate Cover Letter</button>
                             </div>
-                            <button id="cover-letter-whish-button" class="mt-3 w-full rounded-md bg-black py-3 text-sm font-semibold text-white">Pay with Whish Pay</button>
-                            <a id="cover-letter-skip-link" href="#" class="mt-3 inline-block text-xs underline text-gray-700">Skip for now</a>
-                            <a id="cover-letter-download-link" href="#" class="mt-4 hidden rounded-md bg-black px-4 py-3 text-sm font-semibold text-white inline-flex">Download Cover Letter</a>
-                            <button id="cover-letter-generate-button" type="button" class="mt-4 hidden rounded-md bg-black px-4 py-3 text-sm font-semibold text-white">Generate Cover Letter</button>
-                            <p id="cover-letter-status" class="mt-2 text-xs text-gray-700"></p>
+                            <div id="cover-letter-download-only" class="hidden mt-4">
+                                <a id="cover-letter-download-link" href="#" class="inline-flex w-full items-center justify-center rounded-md bg-black px-4 py-3 text-sm font-semibold text-white">Download Cover Letter</a>
+                            </div>
+                            <p id="cover-letter-status" class="mt-3 min-h-[20px] text-xs text-gray-700"></p>
                         </div>
                     </div>
+                </div>
                 </div>
                  <!-- Error Message Box -->
                 <div id="error-box" class="hidden mt-4 bg-red-900 border border-red-700 text-red-300 px-4 py-3 rounded-lg relative" role="alert">
@@ -239,8 +299,14 @@
         const downloadLink = document.getElementById('download-link');
         const downloadNote = document.getElementById('download-note');
         const retryDownloadButton = document.getElementById('retry-download');
+        const auditSection = document.getElementById('audit-section');
+        const revisedPaymentSection = document.getElementById('revised-payment-section');
+        const revisedDownloadOnly = document.getElementById('revised-download-only');
+        const primaryDownloadLink = document.getElementById('primary-download-link');
         const upsellCards = document.getElementById('upsell-cards');
         const linkedinUpsellCard = document.getElementById('linkedin-upsell-card');
+        const linkedinCheckoutSection = document.getElementById('linkedin-checkout-section');
+        const linkedinDownloadOnly = document.getElementById('linkedin-download-only');
         const linkedinUrlInput = document.getElementById('linkedin-url');
         const linkedinPayPalButtonsContainer = document.getElementById('linkedin-paypal-buttons');
         const linkedinWhishButton = document.getElementById('linkedin-whish-button');
@@ -248,6 +314,8 @@
         const linkedinGenerateButton = document.getElementById('linkedin-generate-button');
         const linkedinUpsellStatus = document.getElementById('linkedin-upsell-status');
         const coverLetterCard = document.getElementById('cover-letter-card');
+        const coverLetterCheckoutSection = document.getElementById('cover-letter-checkout-section');
+        const coverLetterDownloadOnly = document.getElementById('cover-letter-download-only');
         const coverLetterJobLinkInput = document.getElementById('cover-letter-job-link');
         const coverLetterValidation = document.getElementById('cover-letter-validation');
         const coverLetterPayPalButtonsContainer = document.getElementById('cover-letter-paypal-buttons');
@@ -280,6 +348,13 @@
         let hasActiveRunId = Boolean(currentRunId);
         let linkedinButtonsRendered = false;
         let coverLetterButtonsRendered = false;
+        let activeDownloadType = '';
+        let linkedinUnlocked = false;
+        let coverLetterUnlocked = false;
+        let linkedinDownloaded = false;
+        let coverLetterDownloaded = false;
+        let linkedinDownloadUrl = '';
+        let coverLetterDownloadUrl = '';
 
         const storedCvText = sessionStorage.getItem('cvText');
         if (storedCvText) {
@@ -345,6 +420,7 @@
             if (upsellCards) {
                 upsellCards.classList.add('hidden');
             }
+            resetPostPaymentLayout();
             if (clearAuditArtifacts) {
                 extractedCvText = '';
                 extractedCvAnalysis = '';
@@ -390,7 +466,7 @@
                 const auditResult = await getAuditFeedback(text);
                 extractedCvAnalysis = auditResult;
                 sessionStorage.setItem('cvAnalysis', auditResult);
-                auditOutput.innerHTML = auditResult.replace(/\n\n/g, '<p>').replace(/\n/g, '<br>');
+                auditOutput.innerHTML = formatAuditHtml(auditResult);
                 loadingSection.classList.add('hidden');
                 resultsSection.classList.remove('hidden');
                 initializePayPalButtons();
@@ -501,6 +577,63 @@
             return fallbackMessage;
         }
 
+
+        function escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function formatAuditHtml(text) {
+            const lines = String(text || '').split(/\r?\n/).map((line) => line.trim());
+            const parts = ['<div class="audit-report">'];
+            let listOpen = false;
+
+            for (const line of lines) {
+                if (!line) {
+                    if (listOpen) {
+                        parts.push('</ul>');
+                        listOpen = false;
+                    }
+                    continue;
+                }
+
+                const headingMatch = line.match(/^\*{0,2}\s*(\d+[.)]\s*)?([A-Za-z][A-Za-z0-9\s/&()'-]{2,}):\s*$/);
+                if (headingMatch) {
+                    if (listOpen) {
+                        parts.push('</ul>');
+                        listOpen = false;
+                    }
+                    parts.push(`<h3>${escapeHtml(headingMatch[2])}</h3>`);
+                    continue;
+                }
+
+                if (/^[-•*]\s+/.test(line)) {
+                    if (!listOpen) {
+                        parts.push('<ul>');
+                        listOpen = true;
+                    }
+                    parts.push(`<li>${escapeHtml(line.replace(/^[-•*]\s+/, ''))}</li>`);
+                    continue;
+                }
+
+                if (listOpen) {
+                    parts.push('</ul>');
+                    listOpen = false;
+                }
+                parts.push(`<p>${escapeHtml(line)}</p>`);
+            }
+
+            if (listOpen) {
+                parts.push('</ul>');
+            }
+            parts.push('</div>');
+            return parts.join('');
+        }
+
         async function initializeLinkedInCheckout(runId, providedLinkedInUrl) {
             const initResponse = await fetch('/.netlify/functions/linkedin-upsell-init', {
                 method: 'POST',
@@ -510,6 +643,117 @@
             if (!initResponse.ok) {
                 const initData = await readJsonSafely(initResponse);
                 throw new Error(getApiErrorMessage(initData, 'Unable to start LinkedIn checkout. Please try again.'));
+            }
+        }
+
+        function resetPostPaymentLayout() {
+            if (auditSection) auditSection.classList.remove('hidden');
+            if (revisedPaymentSection) revisedPaymentSection.classList.remove('hidden');
+            if (revisedDownloadOnly) revisedDownloadOnly.classList.add('hidden');
+            if (primaryDownloadLink) {
+                primaryDownloadLink.setAttribute('href', '#');
+                primaryDownloadLink.setAttribute('aria-disabled', 'true');
+                primaryDownloadLink.textContent = 'Download Revised CV (PDF)';
+            }
+            if (upsellCards) upsellCards.classList.add('hidden');
+            if (linkedinUpsellCard) linkedinUpsellCard.classList.remove('hidden');
+            if (coverLetterCard) coverLetterCard.classList.remove('hidden');
+            if (linkedinCheckoutSection) linkedinCheckoutSection.classList.remove('hidden');
+            if (linkedinDownloadOnly) linkedinDownloadOnly.classList.add('hidden');
+            if (coverLetterCheckoutSection) coverLetterCheckoutSection.classList.remove('hidden');
+            if (coverLetterDownloadOnly) coverLetterDownloadOnly.classList.add('hidden');
+            activeDownloadType = '';
+            linkedinUnlocked = false;
+            coverLetterUnlocked = false;
+            linkedinDownloaded = false;
+            coverLetterDownloaded = false;
+            linkedinDownloadUrl = '';
+            coverLetterDownloadUrl = '';
+        }
+
+        function setPrimaryDownloadButton(type) {
+            if (!revisedDownloadOnly || !primaryDownloadLink) return;
+            revisedDownloadOnly.classList.remove('hidden');
+            if (type === 'linkedin') {
+                primaryDownloadLink.textContent = 'Download LinkedIn Optimization';
+                primaryDownloadLink.href = linkedinDownloadUrl || '#';
+                primaryDownloadLink.removeAttribute('download');
+            } else if (type === 'cover-letter') {
+                primaryDownloadLink.textContent = 'Download Cover Letter';
+                primaryDownloadLink.href = coverLetterDownloadUrl || '#';
+                primaryDownloadLink.removeAttribute('download');
+            } else {
+                primaryDownloadLink.textContent = 'Download Revised CV (PDF)';
+                primaryDownloadLink.href = revisedCvBlobUrl || '#';
+                primaryDownloadLink.setAttribute('download', 'revised-cv.pdf');
+            }
+            primaryDownloadLink.setAttribute('aria-disabled', primaryDownloadLink.href === '#' ? 'true' : 'false');
+        }
+
+        function applyPaidGatedLayout() {
+            if (!paymentCompleted) return;
+
+            if (auditSection) auditSection.classList.add('hidden');
+            if (revisedPaymentSection) revisedPaymentSection.classList.add('hidden');
+            if (upsellCards) upsellCards.classList.add('hidden');
+            if (linkedinUpsellCard) linkedinUpsellCard.classList.remove('hidden');
+            if (coverLetterCard) coverLetterCard.classList.remove('hidden');
+
+            const active = activeDownloadType || 'revised';
+            setPrimaryDownloadButton(active);
+
+            if (active === 'revised') {
+                if (upsellCards) upsellCards.classList.remove('hidden');
+                if (linkedinUpsellCard && linkedinUnlocked) linkedinUpsellCard.classList.add('hidden');
+                if (coverLetterCard && coverLetterUnlocked) coverLetterCard.classList.add('hidden');
+                return;
+            }
+
+            if (active === 'linkedin') {
+                if (linkedinDownloaded && !coverLetterUnlocked && coverLetterCard && upsellCards) {
+                    upsellCards.classList.remove('hidden');
+                    linkedinUpsellCard.classList.add('hidden');
+                    coverLetterCard.classList.remove('hidden');
+                }
+                return;
+            }
+
+            if (active === 'cover-letter') {
+                if (coverLetterDownloaded && !linkedinUnlocked && linkedinUpsellCard && upsellCards) {
+                    upsellCards.classList.remove('hidden');
+                    coverLetterCard.classList.add('hidden');
+                    linkedinUpsellCard.classList.remove('hidden');
+                }
+            }
+        }
+
+        function markUpsellUnlocked(type, downloadUrl) {
+            if (type === 'linkedin') {
+                linkedinUnlocked = true;
+                linkedinDownloadUrl = downloadUrl || linkedinDownloadUrl;
+                activeDownloadType = 'linkedin';
+            }
+            if (type === 'cover-letter') {
+                coverLetterUnlocked = true;
+                coverLetterDownloadUrl = downloadUrl || coverLetterDownloadUrl;
+                activeDownloadType = 'cover-letter';
+            }
+            applyPaidGatedLayout();
+        }
+
+        function focusUpsellSelection(type) {
+            if (!upsellCards || !paymentCompleted) return;
+            upsellCards.classList.remove('hidden');
+            if (auditSection) auditSection.classList.add('hidden');
+            if (revisedPaymentSection) revisedPaymentSection.classList.add('hidden');
+            if (revisedDownloadOnly) revisedDownloadOnly.classList.add('hidden');
+
+            if (type === 'linkedin') {
+                if (linkedinUpsellCard) linkedinUpsellCard.classList.remove('hidden');
+                if (coverLetterCard) coverLetterCard.classList.add('hidden');
+            } else if (type === 'cover-letter') {
+                if (coverLetterCard) coverLetterCard.classList.remove('hidden');
+                if (linkedinUpsellCard) linkedinUpsellCard.classList.add('hidden');
             }
         }
 
@@ -533,7 +777,10 @@
                 }
                 downloadLink.setAttribute('download', 'revised-cv.pdf');
                 downloadNote.textContent = 'Your revised CV PDF is ready to download.';
+                activeDownloadType = 'revised';
+                applyPaidGatedLayout();
                 initializeLinkedInUpsell();
+                initializeCoverLetterUpsell();
             }
             updateRetryVisibility();
         }
@@ -546,13 +793,18 @@
             if (storedText) {
                 extractedCvText = storedText;
             }
-            auditOutput.innerHTML = storedAnalysis.replace(/\n\n/g, '<p>').replace(/\n/g, '<br>');
+            auditOutput.innerHTML = formatAuditHtml(storedAnalysis);
             uploadSection.classList.add('hidden');
             loadingSection.classList.add('hidden');
             resultsSection.classList.remove('hidden');
             initializePayPalButtons();
             initializeWhishPayCheckout();
-            initializeLinkedInUpsell();
+            if (paymentCompleted) {
+                activeDownloadType = activeDownloadType || "revised";
+                applyPaidGatedLayout();
+                initializeLinkedInUpsell();
+                initializeCoverLetterUpsell();
+            }
             return true;
         }
 
@@ -999,8 +1251,7 @@
             if (!docResponse.ok) {
                 throw new Error(docData.error || 'Unable to generate LinkedIn file.');
             }
-            linkedinDownloadLink.classList.remove('hidden');
-            linkedinDownloadLink.href = docData.downloadUrl;
+            markUpsellUnlocked('linkedin', docData.downloadUrl);
             linkedinGenerateButton.classList.add('hidden');
             linkedinGenerateButton.disabled = false;
             linkedinUpsellStatus.textContent = 'LinkedIn Word file is ready.';
@@ -1042,12 +1293,13 @@
             }
 
             if (data && (data.status === 'PAID' || data.status === 'GENERATED') && data.downloadUrl) {
-                linkedinDownloadLink.classList.remove('hidden');
-                linkedinDownloadLink.href = data.downloadUrl;
+                linkedinUnlocked = true;
+                linkedinDownloadUrl = data.downloadUrl;
                 linkedinUpsellStatus.textContent = 'Already unlocked. Download your LinkedIn Word file.';
                 linkedinGenerateButton.classList.add('hidden');
                 linkedinPayPalButtonsContainer.innerHTML = '';
                 linkedinWhishButton.classList.add('hidden');
+                applyPaidGatedLayout();
                 return;
             }
 
@@ -1143,7 +1395,6 @@
             const link = document.getElementById('linkedin-skip-link');
             if (link) link.onclick = (e) => { e.preventDefault(); linkedinUpsellCard.classList.add('hidden'); };
 
-            initializeCoverLetterUpsell();
         }
 
 
@@ -1194,8 +1445,7 @@
             });
             const docData = await readJsonSafely(docResponse);
             if (!docResponse.ok) throw new Error(docData.error || 'Unable to generate cover letter.');
-            coverLetterDownloadLink.classList.remove('hidden');
-            coverLetterDownloadLink.href = docData.downloadUrl;
+            markUpsellUnlocked('cover-letter', docData.downloadUrl);
             coverLetterGenerateButton.classList.add('hidden');
             coverLetterStatus.textContent = 'Cover letter is ready.';
             coverLetterPayPalButtonsContainer.innerHTML = '';
@@ -1241,12 +1491,13 @@
             } catch {}
 
             if (data && (data.status === 'PAID' || data.status === 'GENERATED') && data.downloadUrl) {
-                coverLetterDownloadLink.classList.remove('hidden');
-                coverLetterDownloadLink.href = data.downloadUrl;
+                coverLetterUnlocked = true;
+                coverLetterDownloadUrl = data.downloadUrl;
                 coverLetterStatus.textContent = 'Already unlocked. Download your cover letter.';
                 coverLetterGenerateButton.classList.add('hidden');
                 coverLetterPayPalButtonsContainer.innerHTML = '';
                 coverLetterWhishButton.classList.add('hidden');
+                applyPaidGatedLayout();
                 return;
             }
             if (data && (data.status === 'PAID' || data.status === 'GENERATED') && !data.downloadUrl) {
@@ -1349,6 +1600,25 @@
                 whishPayButton.addEventListener('click', startWhishPayCheckout);
                 whishPayListenerAttached = true;
             }
+        }
+
+        if (linkedinUpsellCard) {
+            linkedinUpsellCard.addEventListener('click', () => focusUpsellSelection('linkedin'));
+        }
+        if (coverLetterCard) {
+            coverLetterCard.addEventListener('click', () => focusUpsellSelection('cover-letter'));
+        }
+
+        if (primaryDownloadLink) {
+            primaryDownloadLink.addEventListener('click', () => {
+                if (activeDownloadType === 'linkedin') {
+                    linkedinDownloaded = true;
+                    applyPaidGatedLayout();
+                } else if (activeDownloadType === 'cover-letter') {
+                    coverLetterDownloaded = true;
+                    applyPaidGatedLayout();
+                }
+            });
         }
 
         hydratePayPalPricing();
