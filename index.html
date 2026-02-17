@@ -264,6 +264,7 @@
         const errorMessage = document.getElementById('error-message');
         
         let cvFile = null;
+        let cvFileKind = '';
         let paypalSdkLoading = null;
         let paypalButtonsRendered = false;
         let paypalConfigCache = null;
@@ -303,21 +304,28 @@
         });
         cvUpload.addEventListener('change', (e) => { if (e.target.files.length > 0) handleFile(e.target.files[0]); });
         
-        function handleFile(file) {
-            const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+        function detectCvFileKind(file) {
+            const type = (file?.type || '').toLowerCase();
             const normalizedName = (file?.name || '').toLowerCase();
-            const hasAllowedExtension = normalizedName.endsWith('.pdf') || normalizedName.endsWith('.docx');
-            const hasAllowedMimeType = allowedTypes.includes(file?.type || '');
-            const isAcceptedFile = Boolean(file) && (hasAllowedMimeType || hasAllowedExtension);
+            if (type === 'application/pdf' || normalizedName.endsWith('.pdf')) return 'pdf';
+            if (type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || normalizedName.endsWith('.docx')) return 'docx';
+            return '';
+        }
+
+        function handleFile(file) {
+            const fileKind = detectCvFileKind(file);
+            const isAcceptedFile = Boolean(file) && Boolean(fileKind);
 
             if (isAcceptedFile) {
                 resetRunStateForNewAudit({ clearAuditArtifacts: true });
                 cvFile = file;
+                cvFileKind = fileKind;
                 fileNameDisplay.textContent = file.name;
                 auditButton.disabled = false;
                 hideError();
             } else {
                 cvFile = null;
+                cvFileKind = '';
                 fileNameDisplay.textContent = '';
                 auditButton.disabled = true;
                 showError("Invalid file type. Please upload a PDF or DOCX file.");
@@ -365,10 +373,12 @@
 
             try {
                 let text = '';
-                if (cvFile.type === 'application/pdf') {
+                if (cvFileKind === 'pdf') {
                     text = await extractTextFromPdf(cvFile);
-                } else {
+                } else if (cvFileKind === 'docx') {
                     text = await extractTextFromDocx(cvFile);
+                } else {
+                    throw new Error('Invalid file type. Please upload a PDF or DOCX file.');
                 }
 
                 if (text.trim().length < 50) {
