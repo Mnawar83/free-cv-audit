@@ -1,26 +1,56 @@
-exports.handler = async (event, context) => {
+const { buildGoogleAiUrl } = require('./google-ai');
+
+const AUDIT_SYSTEM_PROMPT = `You are a senior ATS CV auditor for Work Waves Career Services.
+
+Return a complete audit immediately. Never say you are ready to begin and never ask for permission.
+
+Write a practical, concise CV audit in plain text using this exact structure:
+Overall ATS Match: <0-100>%
+
+Strengths:
+- <bullet>
+- <bullet>
+
+Issues to Fix:
+- <bullet>
+- <bullet>
+
+Keyword Gaps:
+- <missing keyword or phrase>
+- <missing keyword or phrase>
+
+Formatting & ATS Parsing Risks:
+- <risk>
+- <risk>
+
+Suggested Improvements (Prioritized):
+1) <improvement>
+2) <improvement>
+3) <improvement>
+
+Rewritten Professional Summary:
+<4-6 lines tailored to ATS and the likely target role inferred from CV>
+
+Do not include markdown code fences. Do not include any preamble. Base everything strictly on the provided CV text and do not invent facts.`;
+
+exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
   }
 
   try {
-    const { cvText } = JSON.parse(event.body);
+    const { cvText } = JSON.parse(event.body || '{}');
     if (!cvText) return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
 
-    const apiKey = process.env.GOOGLE_AI_API_KEY;
-    const { buildGoogleAiUrl } = require('./google-ai');
-    const apiUrl = buildGoogleAiUrl(apiKey);
-
-    const systemPrompt = `You are an expert CV auditor for 'Work Waves Career Services'. ...`; // Your prompt here
+    const apiUrl = buildGoogleAiUrl(process.env.GOOGLE_AI_API_KEY);
 
     const payload = {
-      // systemInstruction MUST be in camelCase for the REST API
-      systemInstruction: { 
-        parts: [{ text: systemPrompt }] 
+      systemInstruction: {
+        parts: [{ text: AUDIT_SYSTEM_PROMPT }],
       },
       contents: [
-        { parts: [{ text: `Here is the CV text to audit:\n\n${cvText}` }] }
-      ]
+        { parts: [{ text: `Audit this CV now:\n\n${cvText}` }] },
+      ],
     };
 
     const fetchResponse = await fetch(apiUrl, {
@@ -39,11 +69,11 @@ exports.handler = async (event, context) => {
     }
 
     const result = await fetchResponse.json();
-    const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+    const text = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ auditResult: text?.trim() || 'No response from AI' }),
+      body: JSON.stringify({ auditResult: text || 'No response from AI' }),
     };
   } catch (error) {
     return { statusCode: 500, body: JSON.stringify({ error: 'Internal Server Error' }) };
