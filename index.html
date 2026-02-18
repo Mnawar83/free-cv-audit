@@ -758,11 +758,11 @@
             if (type === 'linkedin') {
                 primaryDownloadLink.textContent = 'Download LinkedIn Optimization';
                 primaryDownloadLink.href = linkedinDownloadUrl || '#';
-                primaryDownloadLink.removeAttribute('download');
+                primaryDownloadLink.setAttribute('download', 'linkedin-optimization.docx');
             } else if (type === 'cover-letter') {
                 primaryDownloadLink.textContent = 'Download Cover Letter';
                 primaryDownloadLink.href = coverLetterDownloadUrl || '#';
-                primaryDownloadLink.removeAttribute('download');
+                primaryDownloadLink.setAttribute('download', 'cover-letter.docx');
             } else {
                 primaryDownloadLink.textContent = 'Download Revised CV (PDF)';
                 primaryDownloadLink.href = revisedCvBlobUrl || '#';
@@ -780,29 +780,19 @@
             if (linkedinUpsellCard) linkedinUpsellCard.classList.remove('hidden');
             if (coverLetterCard) coverLetterCard.classList.remove('hidden');
 
-            if (hasPaidLinkedIn && !linkedinDownloaded) {
+            if (hasPaidLinkedIn && hasPaidCoverLetter) {
+                const preferredType = activeDownloadType === 'cover-letter' ? 'cover-letter' : 'linkedin';
+                setPrimaryDownloadButton(preferredType);
+                return;
+            }
+
+            if (hasPaidLinkedIn) {
                 setPrimaryDownloadButton('linkedin');
                 return;
             }
 
-            if (hasPaidCoverLetter && !coverLetterDownloaded) {
+            if (hasPaidCoverLetter) {
                 setPrimaryDownloadButton('cover-letter');
-                return;
-            }
-
-            if (hasPaidLinkedIn && linkedinDownloaded && !hasPaidCoverLetter && upsellCards && coverLetterCard && linkedinUpsellCard) {
-                setPrimaryDownloadButton('revised');
-                upsellCards.classList.remove('hidden');
-                linkedinUpsellCard.classList.add('hidden');
-                coverLetterCard.classList.remove('hidden');
-                return;
-            }
-
-            if (hasPaidCoverLetter && coverLetterDownloaded && !hasPaidLinkedIn && upsellCards && coverLetterCard && linkedinUpsellCard) {
-                setPrimaryDownloadButton('revised');
-                upsellCards.classList.remove('hidden');
-                coverLetterCard.classList.add('hidden');
-                linkedinUpsellCard.classList.remove('hidden');
                 return;
             }
 
@@ -1448,7 +1438,6 @@
 
         async function initializeLinkedInUpsell() {
             if (!hasPaidCV || !currentRunId || !upsellCards) return;
-            upsellCards.classList.remove('hidden');
 
             let data = null;
             try {
@@ -1839,13 +1828,7 @@
 
         if (primaryDownloadLink) {
             primaryDownloadLink.addEventListener('click', () => {
-                if (activeDownloadType === 'linkedin') {
-                    linkedinDownloaded = true;
-                    applyPaidGatedLayout();
-                } else if (activeDownloadType === 'cover-letter') {
-                    coverLetterDownloaded = true;
-                    applyPaidGatedLayout();
-                }
+                // Keep per-product download state isolated.
             });
         }
 
