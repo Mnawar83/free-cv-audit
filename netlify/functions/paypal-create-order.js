@@ -10,8 +10,11 @@ exports.handler = async (event) => {
   }
 
   try {
+    const functionStart = Date.now();
+    console.info('[timing] paypal-create-order start', { at: functionStart });
     const { accessToken, baseUrl } = await getPayPalAccessToken();
 
+    const providerStart = Date.now();
     const response = await fetch(`${baseUrl}/v2/checkout/orders`, {
       method: 'POST',
       headers: {
@@ -44,8 +47,13 @@ exports.handler = async (event) => {
       };
     }
 
+    console.info('[timing] paypal-create-order provider response', { ms: Date.now() - providerStart });
     const data = await response.json();
-    return { statusCode: 200, body: JSON.stringify({ id: data.id }) };
+    const approveLink = Array.isArray(data.links)
+      ? data.links.find((link) => link.rel === 'approve')?.href
+      : null;
+    console.info('[timing] paypal-create-order complete', { ms: Date.now() - functionStart });
+    return { statusCode: 200, body: JSON.stringify({ id: data.id, approvalUrl: approveLink }) };
   } catch (error) {
     return {
       statusCode: error.statusCode || 500,

@@ -28,6 +28,8 @@ exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
 
   try {
+    const functionStart = Date.now();
+    console.info('[timing] whishpay-cover-letter-create-payment start', { at: functionStart });
     assertWhishPayConfigured();
     const payload = JSON.parse(event.body || '{}');
     const runId = payload.runId;
@@ -45,6 +47,7 @@ exports.handler = async (event) => {
     const successRedirectUrl = appendExternalId(payload.successRedirectUrl || WHISHPAY_WEBSITE_URL, externalId);
     const failureRedirectUrl = appendExternalId(payload.failureRedirectUrl || WHISHPAY_WEBSITE_URL, externalId);
 
+    const providerStart = Date.now();
     const response = await fetch(getWhishPayCreateUrl(), {
       method: 'POST',
       headers: getWhishPayHeaders(),
@@ -62,6 +65,7 @@ exports.handler = async (event) => {
     });
 
     const responseText = await response.text();
+    console.info('[timing] whishpay-cover-letter-create-payment provider response', { ms: Date.now() - providerStart });
     if (!response.ok) return { statusCode: 502, body: JSON.stringify({ error: 'Whish Pay order creation failed.', details: responseText }) };
 
     let data = {};
@@ -78,6 +82,7 @@ exports.handler = async (event) => {
           : existing.cover_letter_status,
     }));
 
+    console.info('[timing] whishpay-cover-letter-create-payment complete', { ms: Date.now() - functionStart });
     return { statusCode: 200, body: JSON.stringify({ ...data, externalId }) };
   } catch (error) {
     return { statusCode: error.statusCode || 500, body: JSON.stringify({ error: error.message || 'Whish Pay order creation failed.' }) };

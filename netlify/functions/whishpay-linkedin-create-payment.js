@@ -29,6 +29,8 @@ exports.handler = async (event) => {
   }
 
   try {
+    const functionStart = Date.now();
+    console.info('[timing] whishpay-linkedin-create-payment start', { at: functionStart });
     assertWhishPayConfigured();
     const payload = JSON.parse(event.body || '{}');
     const runId = payload.runId;
@@ -45,6 +47,7 @@ exports.handler = async (event) => {
     const failureCallbackUrl = appendExternalId(payload.failureCallbackUrl || WHISHPAY_WEBSITE_URL, externalId);
     const successRedirectUrl = appendExternalId(payload.successRedirectUrl || WHISHPAY_WEBSITE_URL, externalId);
     const failureRedirectUrl = appendExternalId(payload.failureRedirectUrl || WHISHPAY_WEBSITE_URL, externalId);
+    const providerStart = Date.now();
     const response = await fetch(getWhishPayCreateUrl(), {
       method: 'POST',
       headers: getWhishPayHeaders(),
@@ -62,6 +65,7 @@ exports.handler = async (event) => {
     });
 
     const responseText = await response.text();
+    console.info('[timing] whishpay-linkedin-create-payment provider response', { ms: Date.now() - providerStart });
     if (!response.ok) {
       return { statusCode: 502, body: JSON.stringify({ error: 'Whish Pay order creation failed.', details: responseText }) };
     }
@@ -95,6 +99,7 @@ exports.handler = async (event) => {
       return { statusCode: 404, body: JSON.stringify({ error: 'Run not found.' }) };
     }
 
+    console.info('[timing] whishpay-linkedin-create-payment complete', { ms: Date.now() - functionStart });
     return { statusCode: 200, body: JSON.stringify({ ...data, externalId }) };
   } catch (error) {
     return { statusCode: error.statusCode || 500, body: JSON.stringify({ error: error.message || 'Whish Pay order creation failed.' }) };
