@@ -808,12 +808,26 @@
                 linkedinDownloadUrl = downloadUrl || linkedinDownloadUrl;
                 activeDownloadType = 'linkedin';
                 setPaidState('linkedin', true);
+                if (linkedinDownloadLink) {
+                    linkedinDownloadLink.href = linkedinDownloadUrl || '#';
+                    linkedinDownloadLink.setAttribute('download', 'linkedin-optimization.docx');
+                    linkedinDownloadLink.classList.remove('hidden');
+                }
+                if (linkedinDownloadOnly) linkedinDownloadOnly.classList.remove('hidden');
+                if (linkedinCheckoutSection) linkedinCheckoutSection.classList.add('hidden');
             }
             if (type === 'cover-letter') {
                 coverLetterUnlocked = true;
                 coverLetterDownloadUrl = downloadUrl || coverLetterDownloadUrl;
                 activeDownloadType = 'cover-letter';
                 setPaidState('cover-letter', true);
+                if (coverLetterDownloadLink) {
+                    coverLetterDownloadLink.href = coverLetterDownloadUrl || '#';
+                    coverLetterDownloadLink.setAttribute('download', 'cover-letter.docx');
+                    coverLetterDownloadLink.classList.remove('hidden');
+                }
+                if (coverLetterDownloadOnly) coverLetterDownloadOnly.classList.remove('hidden');
+                if (coverLetterCheckoutSection) coverLetterCheckoutSection.classList.add('hidden');
             }
             applyPaidGatedLayout();
         }
@@ -1442,13 +1456,15 @@
                     if (!looksLikeLinkedInUrl(providedLinkedInUrl)) {
                         throw new Error('Please provide a valid LinkedIn profile URL.');
                     }
-                    await initializeLinkedInCheckout(currentRunId, providedLinkedInUrl);
                     const createStart = performance.now();
-                    const response = await fetch('/.netlify/functions/whishpay-linkedin-create-payment', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ runId: currentRunId, successRedirectUrl: `${window.location.origin}${window.location.pathname}?linkedinPayment=success&runId=${encodeURIComponent(currentRunId)}`, failureRedirectUrl: `${window.location.origin}${window.location.pathname}?linkedinPayment=failed&runId=${encodeURIComponent(currentRunId)}` }),
-                    });
+                    const [_, response] = await Promise.all([
+                        initializeLinkedInCheckout(currentRunId, providedLinkedInUrl),
+                        fetch('/.netlify/functions/whishpay-linkedin-create-payment', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ runId: currentRunId, successRedirectUrl: `${window.location.origin}${window.location.pathname}?linkedinPayment=success&runId=${encodeURIComponent(currentRunId)}`, failureRedirectUrl: `${window.location.origin}${window.location.pathname}?linkedinPayment=failed&runId=${encodeURIComponent(currentRunId)}` }),
+                        }),
+                    ]);
                     console.info('[timing] LinkedIn Whish create-payment response', { ms: Math.round(performance.now() - createStart) });
                     const payload = await readJsonSafely(response);
                     if (!response.ok) {
@@ -1657,12 +1673,14 @@
                     const jobLink = coverLetterJobLinkInput.value.trim();
                     if (!looksLikeHttpUrl(jobLink)) { throw new Error('Please provide a valid job URL.'); }
                     showCoverLetterValidation('');
-                    await initializeCoverLetterCheckout(currentRunId, jobLink);
                     const createStart = performance.now();
-                    const response = await fetch('/.netlify/functions/whishpay-cover-letter-create-payment', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ runId: currentRunId, successRedirectUrl: `${window.location.origin}${window.location.pathname}?coverLetterPayment=success&runId=${encodeURIComponent(currentRunId)}`, failureRedirectUrl: `${window.location.origin}${window.location.pathname}?coverLetterPayment=failed&runId=${encodeURIComponent(currentRunId)}` }),
-                    });
+                    const [_, response] = await Promise.all([
+                        initializeCoverLetterCheckout(currentRunId, jobLink),
+                        fetch('/.netlify/functions/whishpay-cover-letter-create-payment', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ runId: currentRunId, successRedirectUrl: `${window.location.origin}${window.location.pathname}?coverLetterPayment=success&runId=${encodeURIComponent(currentRunId)}`, failureRedirectUrl: `${window.location.origin}${window.location.pathname}?coverLetterPayment=failed&runId=${encodeURIComponent(currentRunId)}` }),
+                        }),
+                    ]);
                     console.info('[timing] Cover letter Whish create-payment response', { ms: Math.round(performance.now() - createStart) });
                     const payload = await readJsonSafely(response);
                     if (!response.ok) {
