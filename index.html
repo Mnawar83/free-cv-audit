@@ -793,6 +793,8 @@
                     linkedinUpsellCard.classList.add('hidden');
                     coverLetterCard.classList.remove('hidden');
                 }
+                if (coverLetterDownloadOnly) coverLetterDownloadOnly.classList.add('hidden');
+                if (coverLetterCheckoutSection) coverLetterCheckoutSection.classList.remove('hidden');
                 return;
             }
 
@@ -803,6 +805,8 @@
                     coverLetterCard.classList.add('hidden');
                     linkedinUpsellCard.classList.remove('hidden');
                 }
+                if (linkedinDownloadOnly) linkedinDownloadOnly.classList.add('hidden');
+                if (linkedinCheckoutSection) linkedinCheckoutSection.classList.remove('hidden');
                 return;
             }
 
@@ -825,6 +829,15 @@
                 }
                 if (linkedinDownloadOnly) linkedinDownloadOnly.classList.remove('hidden');
                 if (linkedinCheckoutSection) linkedinCheckoutSection.classList.add('hidden');
+
+                if (!hasPaidCoverLetter) {
+                    if (coverLetterDownloadOnly) coverLetterDownloadOnly.classList.add('hidden');
+                    if (coverLetterCheckoutSection) coverLetterCheckoutSection.classList.remove('hidden');
+                    if (coverLetterDownloadLink) {
+                        coverLetterDownloadLink.classList.add('hidden');
+                        coverLetterDownloadLink.removeAttribute('href');
+                    }
+                }
             }
             if (type === 'cover-letter') {
                 coverLetterUnlocked = true;
@@ -838,6 +851,15 @@
                 }
                 if (coverLetterDownloadOnly) coverLetterDownloadOnly.classList.remove('hidden');
                 if (coverLetterCheckoutSection) coverLetterCheckoutSection.classList.add('hidden');
+
+                if (!hasPaidLinkedIn) {
+                    if (linkedinDownloadOnly) linkedinDownloadOnly.classList.add('hidden');
+                    if (linkedinCheckoutSection) linkedinCheckoutSection.classList.remove('hidden');
+                    if (linkedinDownloadLink) {
+                        linkedinDownloadLink.classList.add('hidden');
+                        linkedinDownloadLink.removeAttribute('href');
+                    }
+                }
             }
             applyPaidGatedLayout();
         }
@@ -1394,6 +1416,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ runId }),
             });
+            const docData = await readJsonSafely(docResponse);
             if (!docResponse.ok) {
                 const errorData = await readJsonSafely(docResponse);
                 throw new Error(errorData.error || 'Unable to generate LinkedIn file.');
@@ -1415,6 +1438,12 @@
                 linkedinObjectDownloadUrl = URL.createObjectURL(docBlob);
                 markUpsellUnlocked('linkedin', linkedinObjectDownloadUrl);
             }
+            if (!docData.downloadUrl) {
+                throw new Error('LinkedIn download URL was missing.');
+            }
+
+            const resolvedDownloadUrl = new URL(docData.downloadUrl, window.location.origin).toString();
+            markUpsellUnlocked('linkedin', resolvedDownloadUrl);
             linkedinGenerateButton.classList.add('hidden');
             linkedinGenerateButton.disabled = false;
             linkedinUpsellStatus.textContent = 'LinkedIn Word file is ready.';
@@ -1623,27 +1652,16 @@
             const docResponse = await fetch('/.netlify/functions/cover-letter-generate-docx', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId }),
             });
+            const docData = await readJsonSafely(docResponse);
             if (!docResponse.ok) {
-                const docData = await readJsonSafely(docResponse);
                 throw new Error(docData.error || 'Unable to generate cover letter.');
             }
-
-            let docBlob = null;
-            const contentType = (docResponse.headers.get('content-type') || '').toLowerCase();
-            if (contentType.includes('application/json')) {
-                const docData = await readJsonSafely(docResponse);
-                if (!docData.downloadUrl) {
-                    throw new Error('Cover letter download URL was missing.');
-                }
-                markUpsellUnlocked('cover-letter', docData.downloadUrl);
-            } else {
-                docBlob = await docResponse.blob();
-                if (coverLetterObjectDownloadUrl) {
-                    URL.revokeObjectURL(coverLetterObjectDownloadUrl);
-                }
-                coverLetterObjectDownloadUrl = URL.createObjectURL(docBlob);
-                markUpsellUnlocked('cover-letter', coverLetterObjectDownloadUrl);
+            if (!docData.downloadUrl) {
+                throw new Error('Cover letter download URL was missing.');
             }
+
+            const resolvedDownloadUrl = new URL(docData.downloadUrl, window.location.origin).toString();
+            markUpsellUnlocked('cover-letter', resolvedDownloadUrl);
             coverLetterGenerateButton.classList.add('hidden');
             coverLetterStatus.textContent = 'Cover letter is ready.';
             coverLetterPayPalButtonsContainer.innerHTML = '';
