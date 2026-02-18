@@ -342,7 +342,9 @@
         let extractedCvText = '';
         let extractedCvAnalysis = '';
         let revisedCvBlobUrl = null;
-        let paymentCompleted = false;
+        let hasPaidCV = false;
+        let hasPaidLinkedIn = false;
+        let hasPaidCoverLetter = false;
         let isGeneratingPdf = false;
         let currentRunId = sessionStorage.getItem('runId') || '';
         let hasActiveRunId = Boolean(currentRunId);
@@ -355,6 +357,13 @@
         let coverLetterDownloaded = false;
         let linkedinDownloadUrl = '';
         let coverLetterDownloadUrl = '';
+        let auditRequestController = null;
+        let auditRequestToken = 0;
+        const auditMountParent = auditSection ? auditSection.parentElement : null;
+        const auditMountAnchor = document.createComment('audit-section-anchor');
+        if (auditMountParent && auditSection) {
+            auditMountParent.insertBefore(auditMountAnchor, auditSection);
+        }
 
         const storedCvText = sessionStorage.getItem('cvText');
         if (storedCvText) {
@@ -365,10 +374,46 @@
             extractedCvAnalysis = storedCvAnalysis;
         }
 
-        const storedPaymentCompleted = sessionStorage.getItem('paymentCompleted');
-        if (storedPaymentCompleted === 'true') {
-            paymentCompleted = true;
+        hasPaidCV = sessionStorage.getItem('hasPaidCV') === 'true' || sessionStorage.getItem('paymentCompleted') === 'true';
+        hasPaidLinkedIn = sessionStorage.getItem('hasPaidLinkedIn') === 'true';
+        hasPaidCoverLetter = sessionStorage.getItem('hasPaidCoverLetter') === 'true';
+
+        function syncPaidSessionState() {
+            sessionStorage.setItem('hasPaidCV', String(hasPaidCV));
+            sessionStorage.setItem('hasPaidLinkedIn', String(hasPaidLinkedIn));
+            sessionStorage.setItem('hasPaidCoverLetter', String(hasPaidCoverLetter));
+            sessionStorage.setItem('paymentCompleted', String(hasPaidCV));
         }
+
+        function setPaidState(type, value) {
+            if (type === 'cv') {
+                hasPaidCV = value;
+            } else if (type === 'linkedin') {
+                hasPaidLinkedIn = value;
+            } else if (type === 'cover-letter') {
+                hasPaidCoverLetter = value;
+            }
+            syncPaidSessionState();
+            syncAuditVisibility();
+        }
+
+        function isAnyPaidStateActive() {
+            return hasPaidCV || hasPaidLinkedIn || hasPaidCoverLetter;
+        }
+
+        function syncAuditVisibility() {
+            if (!auditSection || !auditMountParent) return;
+            const shouldRenderAudit = !isAnyPaidStateActive();
+            const isMounted = auditSection.parentElement === auditMountParent;
+            if (shouldRenderAudit && !isMounted) {
+                auditMountParent.insertBefore(auditSection, auditMountAnchor.nextSibling);
+            }
+            if (!shouldRenderAudit && isMounted) {
+                auditSection.remove();
+            }
+        }
+
+        syncAuditVisibility();
 
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
         dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('drag-over'); });
@@ -412,9 +457,18 @@
             hasActiveRunId = false;
             sessionStorage.removeItem('runId');
             sessionStorage.removeItem('paymentCompleted');
+            sessionStorage.removeItem('hasPaidCV');
+            sessionStorage.removeItem('hasPaidLinkedIn');
+            sessionStorage.removeItem('hasPaidCoverLetter');
             sessionStorage.removeItem('linkedinWhishExternalId');
             sessionStorage.removeItem('coverLetterWhishExternalId');
-            paymentCompleted = false;
+            if (auditRequestController) {
+                auditRequestController.abort();
+                auditRequestController = null;
+            }
+            setPaidState('cv', false);
+            setPaidState('linkedin', false);
+            setPaidState('cover-letter', false);
             linkedinButtonsRendered = false;
             coverLetterButtonsRendered = false;
             if (upsellCards) {
@@ -463,7 +517,13 @@
 
                 extractedCvText = text;
                 sessionStorage.setItem('cvText', text);
-                const auditResult = await getAuditFeedback(text);
+                const requestToken = ++auditRequestToken;
+                auditRequestController = new AbortController();
+                const auditResult = await getAuditFeedback(text, auditRequestController.signal);
+                if (requestToken !== auditRequestToken || isAnyPaidStateActive()) {
+                    console.info('[timing] Ignoring stale audit response', { requestToken, latest: auditRequestToken });
+                    return;
+                }
                 extractedCvAnalysis = auditResult;
                 sessionStorage.setItem('cvAnalysis', auditResult);
                 auditOutput.innerHTML = formatAuditHtml(auditResult);
@@ -473,6 +533,10 @@
                 initializeWhishPayCheckout();
 
             } catch (error) {
+                if (error.name === 'AbortError') {
+                    console.info('[timing] Audit request aborted');
+                    return;
+                }
                 console.error('Audit Error:', error);
                 loadingSection.classList.add('hidden');
                 uploadSection.classList.remove('hidden');
@@ -516,7 +580,7 @@
         }
 
         // --- SECURE API CALL to our Netlify Function ---
-        async function getAuditFeedback(cvText) {
+        async function getAuditFeedback(cvText, signal) {
             // FIX: The backend function only exists when deployed.
             // This check now returns a mock response in preview environments instead of throwing an error.
             
@@ -524,11 +588,15 @@
             const functionUrl = '/.netlify/functions/audit';
 
             try {
+                const auditStart = performance.now();
+                console.info('[timing] audit request start', { at: auditStart });
                 const response = await fetch(functionUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cvText: cvText })
+                    body: JSON.stringify({ cvText: cvText }),
+                    signal,
                 });
+                console.info('[timing] audit response received', { ms: Math.round(performance.now() - auditStart) });
 
                 if (!response.ok) {
                     const errorData = await response.json();
@@ -539,6 +607,9 @@
                 return result.audit || result.auditResult;
 
             } catch (error) {
+                 if (error.name === 'AbortError') {
+                     throw error;
+                 }
                  console.error("Function call error:", error);
                  if (error instanceof SyntaxError) {
                      throw new Error("Received an invalid response from the server. This can happen if the backend function has an error.");
@@ -647,7 +718,7 @@
         }
 
         function resetPostPaymentLayout() {
-            if (auditSection) auditSection.classList.remove('hidden');
+            syncAuditVisibility();
             if (revisedPaymentSection) revisedPaymentSection.classList.remove('hidden');
             if (revisedDownloadOnly) revisedDownloadOnly.classList.add('hidden');
             if (primaryDownloadLink) {
@@ -691,40 +762,44 @@
         }
 
         function applyPaidGatedLayout() {
-            if (!paymentCompleted) return;
+            syncAuditVisibility();
+            if (!hasPaidCV) return;
 
-            if (auditSection) auditSection.classList.add('hidden');
             if (revisedPaymentSection) revisedPaymentSection.classList.add('hidden');
             if (upsellCards) upsellCards.classList.add('hidden');
             if (linkedinUpsellCard) linkedinUpsellCard.classList.remove('hidden');
             if (coverLetterCard) coverLetterCard.classList.remove('hidden');
 
-            const active = activeDownloadType || 'revised';
-            setPrimaryDownloadButton(active);
-
-            if (active === 'revised') {
-                if (upsellCards) upsellCards.classList.remove('hidden');
-                if (linkedinUpsellCard && linkedinUnlocked) linkedinUpsellCard.classList.add('hidden');
-                if (coverLetterCard && coverLetterUnlocked) coverLetterCard.classList.add('hidden');
+            if (hasPaidLinkedIn && !linkedinDownloaded) {
+                setPrimaryDownloadButton('linkedin');
                 return;
             }
 
-            if (active === 'linkedin') {
-                if (linkedinDownloaded && !coverLetterUnlocked && coverLetterCard && upsellCards) {
-                    upsellCards.classList.remove('hidden');
-                    linkedinUpsellCard.classList.add('hidden');
-                    coverLetterCard.classList.remove('hidden');
-                }
+            if (hasPaidCoverLetter && !coverLetterDownloaded) {
+                setPrimaryDownloadButton('cover-letter');
                 return;
             }
 
-            if (active === 'cover-letter') {
-                if (coverLetterDownloaded && !linkedinUnlocked && linkedinUpsellCard && upsellCards) {
-                    upsellCards.classList.remove('hidden');
-                    coverLetterCard.classList.add('hidden');
-                    linkedinUpsellCard.classList.remove('hidden');
-                }
+            if (hasPaidLinkedIn && linkedinDownloaded && !hasPaidCoverLetter && upsellCards && coverLetterCard && linkedinUpsellCard) {
+                setPrimaryDownloadButton('revised');
+                upsellCards.classList.remove('hidden');
+                linkedinUpsellCard.classList.add('hidden');
+                coverLetterCard.classList.remove('hidden');
+                return;
             }
+
+            if (hasPaidCoverLetter && coverLetterDownloaded && !hasPaidLinkedIn && upsellCards && coverLetterCard && linkedinUpsellCard) {
+                setPrimaryDownloadButton('revised');
+                upsellCards.classList.remove('hidden');
+                coverLetterCard.classList.add('hidden');
+                linkedinUpsellCard.classList.remove('hidden');
+                return;
+            }
+
+            setPrimaryDownloadButton('revised');
+            if (upsellCards) upsellCards.classList.remove('hidden');
+            if (linkedinUpsellCard && hasPaidLinkedIn) linkedinUpsellCard.classList.add('hidden');
+            if (coverLetterCard && hasPaidCoverLetter) coverLetterCard.classList.add('hidden');
         }
 
         function markUpsellUnlocked(type, downloadUrl) {
@@ -732,19 +807,21 @@
                 linkedinUnlocked = true;
                 linkedinDownloadUrl = downloadUrl || linkedinDownloadUrl;
                 activeDownloadType = 'linkedin';
+                setPaidState('linkedin', true);
             }
             if (type === 'cover-letter') {
                 coverLetterUnlocked = true;
                 coverLetterDownloadUrl = downloadUrl || coverLetterDownloadUrl;
                 activeDownloadType = 'cover-letter';
+                setPaidState('cover-letter', true);
             }
             applyPaidGatedLayout();
         }
 
         function focusUpsellSelection(type) {
-            if (!upsellCards || !paymentCompleted) return;
+            if (!upsellCards || !hasPaidCV) return;
             upsellCards.classList.remove('hidden');
-            if (auditSection) auditSection.classList.add('hidden');
+            syncAuditVisibility();
             if (revisedPaymentSection) revisedPaymentSection.classList.add('hidden');
             if (revisedDownloadOnly) revisedDownloadOnly.classList.add('hidden');
 
@@ -799,7 +876,7 @@
             resultsSection.classList.remove('hidden');
             initializePayPalButtons();
             initializeWhishPayCheckout();
-            if (paymentCompleted) {
+            if (isAnyPaidStateActive()) {
                 activeDownloadType = activeDownloadType || "revised";
                 applyPaidGatedLayout();
                 initializeLinkedInUpsell();
@@ -810,7 +887,7 @@
 
         function updateRetryVisibility() {
             if (!retryDownloadButton) return;
-            if (paymentCompleted && !revisedCvBlobUrl && !isGeneratingPdf) {
+            if (hasPaidCV && !revisedCvBlobUrl && !isGeneratingPdf) {
                 retryDownloadButton.classList.remove('hidden');
                 if (downloadNote) {
                     downloadNote.textContent = 'Payment received. Generate your revised CV to download.';
@@ -961,11 +1038,14 @@
             try {
                 const paypalSdk = await loadPayPalSdk();
                 const createOrder = async () => {
+                    const start = performance.now();
+                    console.info('[timing] CV PayPal create-order click', { at: start });
                     const response = await fetch('/.netlify/functions/paypal-create-order', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({}),
                     });
+                    console.info('[timing] CV PayPal create-order response', { ms: Math.round(performance.now() - start) });
                     if (!response.ok) {
                         const errorData = await readJsonSafely(response);
                         throw new Error(getApiErrorMessage(errorData, 'Unable to create PayPal order.'));
@@ -979,6 +1059,7 @@
 
                 const handleApprove = async (data) => {
                     try {
+                        const captureStart = performance.now();
                         const response = await fetch('/.netlify/functions/paypal-capture-order', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -988,10 +1069,11 @@
                             const errorData = await readJsonSafely(response);
                             throw new Error(getApiErrorMessage(errorData, 'Unable to capture PayPal order.'));
                         }
+                        console.info('[timing] CV PayPal capture response', { ms: Math.round(performance.now() - captureStart) });
                         const captureResult = await readJsonSafely(response);
                         if (captureResult.status === 'COMPLETED') {
-                            paymentCompleted = true;
-                            sessionStorage.setItem('paymentCompleted', 'true');
+                            setPaidState('cv', true);
+                            console.info('[timing] CV PayPal capture confirmed');
                             try {
                                 await generateRevisedPdf(extractedCvText);
                                 setDownloadLocked(false);
@@ -1105,12 +1187,27 @@
             }
         }
 
+
+        function openPaymentTarget() {
+            const popup = window.open('', '_blank');
+            if (!popup) {
+                return { mode: 'same-tab', target: window };
+            }
+            popup.document.write('<!doctype html><title>Opening payment…</title><p style="font-family:sans-serif;padding:16px;">Opening payment…</p>');
+            popup.document.close();
+            return { mode: 'popup', target: popup };
+        }
+
         async function startWhishPayCheckout() {
             if (!whishPayButton) return;
+            const clickAt = performance.now();
+            console.info('[timing] Whish CV click', { at: clickAt });
+            const paymentTarget = openPaymentTarget();
+
             whishPayButton.disabled = true;
             whishPayButton.classList.add('opacity-70');
             if (whishPayStatus) {
-                whishPayStatus.textContent = 'Opening Whish Pay checkout...';
+                whishPayStatus.textContent = paymentTarget.mode === 'popup' ? 'Opening payment...' : 'Opening payment in this tab...';
             }
 
             try {
@@ -1120,6 +1217,7 @@
                 }
                 const returnQuery = 'payment=success';
                 const failQuery = 'payment=failed';
+                const functionStart = performance.now();
                 const response = await fetch('/.netlify/functions/whishpay-create-payment', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1133,6 +1231,7 @@
                         failureRedirectUrl: `${window.location.origin}${window.location.pathname}?${failQuery}`,
                     }),
                 });
+                console.info('[timing] Whish CV create-payment response', { ms: Math.round(performance.now() - functionStart) });
 
                 if (!response.ok) {
                     const errorData = await readJsonSafely(response);
@@ -1149,11 +1248,14 @@
                 if (!paymentUrl) {
                     throw new Error('Whish Pay did not return a checkout link.');
                 }
-                window.location.href = paymentUrl;
+                paymentTarget.target.location.href = paymentUrl;
+                console.info('[timing] Whish CV popup navigated', { msFromClick: Math.round(performance.now() - clickAt) });
             } catch (error) {
+                if (paymentTarget.mode === 'popup' && paymentTarget.target && !paymentTarget.target.closed) {
+                    paymentTarget.target.close();
+                }
                 console.error('Whish Pay error:', error);
                 showError(error.message || 'Whish Pay checkout failed. Please try again.');
-            } finally {
                 whishPayButton.disabled = false;
                 whishPayButton.classList.remove('opacity-70');
             }
@@ -1173,6 +1275,8 @@
                 setDownloadLocked(true);
             }
             if (paymentStatus === 'success') {
+                setPaidState('cv', true);
+                setDownloadLocked(true);
                 const externalId = url.searchParams.get('externalId') || sessionStorage.getItem('whishPayExternalId');
                 if (!externalId) {
                     showError('Missing Whish Pay reference. Please try again.');
@@ -1194,12 +1298,14 @@
                 if (currency) {
                     statusPayload.currency = currency;
                 }
+                const verifyStart = performance.now();
                 fetch('/.netlify/functions/whishpay-check-status', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(statusPayload),
                 })
                     .then(async (response) => {
+                        console.info('[timing] Whish CV verify response', { ms: Math.round(performance.now() - verifyStart) });
                         if (!response.ok) {
                             const errorData = await readJsonSafely(response);
                             throw new Error(getApiErrorMessage(errorData, 'Unable to confirm Whish Pay payment.'));
@@ -1210,8 +1316,8 @@
                         if (statusData.collectStatus !== 'success') {
                             throw new Error('Whish Pay payment is not confirmed yet.');
                         }
-                        paymentCompleted = true;
-                        sessionStorage.setItem('paymentCompleted', 'true');
+                        setPaidState('cv', true);
+                        console.info('[timing] CV Whish payment verified');
                         sessionStorage.removeItem('whishPayExternalId');
                         sessionStorage.removeItem('whishPayCurrency');
                         if (whishPayStatus) {
@@ -1226,6 +1332,7 @@
                     .then(() => setDownloadLocked(false))
                     .catch((error) => {
                         console.error('Whish Pay confirmation error:', error);
+                        setPaidState('cv', false);
                         showError(error.message || 'Unable to confirm your payment yet.');
                         updateRetryVisibility();
                     });
@@ -1279,7 +1386,7 @@
         }
 
         async function initializeLinkedInUpsell() {
-            if (!paymentCompleted || !currentRunId || !upsellCards) return;
+            if (!hasPaidCV || !currentRunId || !upsellCards) return;
             upsellCards.classList.remove('hidden');
 
             let data = null;
@@ -1294,6 +1401,7 @@
 
             if (data && (data.status === 'PAID' || data.status === 'GENERATED') && data.downloadUrl) {
                 linkedinUnlocked = true;
+                setPaidState('linkedin', true);
                 linkedinDownloadUrl = data.downloadUrl;
                 linkedinUpsellStatus.textContent = 'Already unlocked. Download your LinkedIn Word file.';
                 linkedinGenerateButton.classList.add('hidden');
@@ -1309,22 +1417,28 @@
             }
 
             linkedinWhishButton.onclick = async () => {
+                const clickAt = performance.now();
+                console.info('[timing] LinkedIn Whish click', { at: clickAt });
+                let paymentTarget = null;
                 try {
+                    paymentTarget = openPaymentTarget();
                     const providedLinkedInUrl = linkedinUrlInput.value.trim();
                     if (!looksLikeLinkedInUrl(providedLinkedInUrl)) {
-                        showError('Please provide a valid LinkedIn profile URL.');
-                        return;
+                        throw new Error('Please provide a valid LinkedIn profile URL.');
                     }
                     await initializeLinkedInCheckout(currentRunId, providedLinkedInUrl);
+                    const createStart = performance.now();
                     const response = await fetch('/.netlify/functions/whishpay-linkedin-create-payment', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ runId: currentRunId, successRedirectUrl: `${window.location.origin}${window.location.pathname}?linkedinPayment=success&runId=${encodeURIComponent(currentRunId)}`, failureRedirectUrl: `${window.location.origin}${window.location.pathname}?linkedinPayment=failed&runId=${encodeURIComponent(currentRunId)}` }),
                     });
+                    console.info('[timing] LinkedIn Whish create-payment response', { ms: Math.round(performance.now() - createStart) });
                     const payload = await readJsonSafely(response);
                     if (!response.ok) {
                         if (response.status === 409) {
                             showLinkedInGenerationRetryState();
+                            if (paymentTarget && paymentTarget.mode === 'popup' && paymentTarget.target && !paymentTarget.target.closed) paymentTarget.target.close();
                             return;
                         }
                         throw new Error(getApiErrorMessage(payload, 'Unable to start Whish payment.'));
@@ -1335,8 +1449,10 @@
                         throw new Error('Unable to start Whish payment. Please try again.');
                     }
                     sessionStorage.setItem('linkedinWhishExternalId', externalId.toString());
-                    window.location.href = collectUrl;
+                    paymentTarget.target.location.href = collectUrl;
+                    console.info('[timing] LinkedIn Whish popup navigated', { msFromClick: Math.round(performance.now() - clickAt) });
                 } catch (error) {
+                    if (paymentTarget && paymentTarget.mode === 'popup' && paymentTarget.target && !paymentTarget.target.closed) paymentTarget.target.close();
                     showError(error.message || 'LinkedIn Whish payment failed.');
                 }
             };
@@ -1408,16 +1524,24 @@
                     showError('Your audit results have expired. Please run the audit again to continue.');
                     return;
                 }
+
+                setPaidState('linkedin', true);
+                applyPaidGatedLayout();
+
                 const runId = url.searchParams.get('runId') || currentRunId;
                 const externalId = sessionStorage.getItem('linkedinWhishExternalId') || url.searchParams.get('externalId');
                 if (!runId || !externalId) return;
+
+                const verifyStart = performance.now();
                 const verifyResponse = await fetch('/.netlify/functions/whishpay-linkedin-check-status', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ runId, externalId }),
                 });
+                console.info('[timing] LinkedIn Whish verify response', { ms: Math.round(performance.now() - verifyStart) });
                 const verifyData = await readJsonSafely(verifyResponse);
                 if (!verifyResponse.ok || (verifyData.collectStatus !== 'PAID' && verifyData.collectStatus !== 'success' && verifyData.isPaidStatus !== true)) {
+                    setPaidState('linkedin', false);
                     showError(verifyData.error || 'LinkedIn Whish payment is not confirmed yet.');
                     return;
                 }
@@ -1429,6 +1553,7 @@
                 url.searchParams.delete('runId');
                 window.history.replaceState({}, document.title, url.toString());
             } catch (error) {
+                setPaidState('linkedin', false);
                 showError(error.message || 'LinkedIn Whish payment handling failed. Please try again.');
             }
         }
@@ -1482,7 +1607,7 @@
         }
 
         async function initializeCoverLetterUpsell() {
-            if (!paymentCompleted || !currentRunId || !coverLetterCard) return;
+            if (!hasPaidCV || !currentRunId || !coverLetterCard) return;
             let data = null;
             try {
                 const response = await fetch(`/.netlify/functions/cover-letter-status?runId=${encodeURIComponent(currentRunId)}`);
@@ -1492,6 +1617,7 @@
 
             if (data && (data.status === 'PAID' || data.status === 'GENERATED') && data.downloadUrl) {
                 coverLetterUnlocked = true;
+                setPaidState('cover-letter', true);
                 coverLetterDownloadUrl = data.downloadUrl;
                 coverLetterStatus.textContent = 'Already unlocked. Download your cover letter.';
                 coverLetterGenerateButton.classList.add('hidden');
@@ -1506,26 +1632,36 @@
             }
 
             coverLetterWhishButton.onclick = async () => {
+                const clickAt = performance.now();
+                console.info('[timing] Cover letter Whish click', { at: clickAt });
+                let paymentTarget = null;
                 try {
+                    paymentTarget = openPaymentTarget();
                     const jobLink = coverLetterJobLinkInput.value.trim();
-                    if (!looksLikeHttpUrl(jobLink)) { showCoverLetterValidation('Please provide a valid job URL.'); return; }
+                    if (!looksLikeHttpUrl(jobLink)) { throw new Error('Please provide a valid job URL.'); }
                     showCoverLetterValidation('');
                     await initializeCoverLetterCheckout(currentRunId, jobLink);
+                    const createStart = performance.now();
                     const response = await fetch('/.netlify/functions/whishpay-cover-letter-create-payment', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ runId: currentRunId, successRedirectUrl: `${window.location.origin}${window.location.pathname}?coverLetterPayment=success&runId=${encodeURIComponent(currentRunId)}`, failureRedirectUrl: `${window.location.origin}${window.location.pathname}?coverLetterPayment=failed&runId=${encodeURIComponent(currentRunId)}` }),
                     });
+                    console.info('[timing] Cover letter Whish create-payment response', { ms: Math.round(performance.now() - createStart) });
                     const payload = await readJsonSafely(response);
                     if (!response.ok) {
-                        if (response.status === 409) { showCoverLetterGenerationRetryState(); return; }
+                        if (response.status === 409) { showCoverLetterGenerationRetryState(); if (paymentTarget && paymentTarget.mode === 'popup' && paymentTarget.target && !paymentTarget.target.closed) paymentTarget.target.close(); return; }
                         throw new Error(getApiErrorMessage(payload, 'Unable to start Whish payment.'));
                     }
                     const externalId = payload?.externalId;
                     const collectUrl = payload?.data?.collectUrl || payload?.collectUrl;
                     if (!externalId || !collectUrl) throw new Error('Unable to start Whish payment. Please try again.');
                     sessionStorage.setItem('coverLetterWhishExternalId', externalId.toString());
-                    window.location.href = collectUrl;
-                } catch (error) { showError(error.message || 'Cover letter Whish payment failed.'); }
+                    paymentTarget.target.location.href = collectUrl;
+                    console.info('[timing] Cover letter Whish popup navigated', { msFromClick: Math.round(performance.now() - clickAt) });
+                } catch (error) {
+                    if (paymentTarget && paymentTarget.mode === 'popup' && paymentTarget.target && !paymentTarget.target.closed) paymentTarget.target.close();
+                    showError(error.message || 'Cover letter Whish payment failed.');
+                }
             };
 
             if (!coverLetterButtonsRendered) {
@@ -1574,14 +1710,21 @@
                 if (paymentStatus !== 'success') return;
                 const restored = restoreAuditResultsFromSession();
                 if (!restored) return;
+
+                setPaidState('cover-letter', true);
+                applyPaidGatedLayout();
+
                 const runId = url.searchParams.get('runId') || currentRunId;
                 const externalId = sessionStorage.getItem('coverLetterWhishExternalId') || url.searchParams.get('externalId');
                 if (!runId || !externalId) return;
+                const verifyStart = performance.now();
                 const verifyResponse = await fetch('/.netlify/functions/whishpay-cover-letter-check-status', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId, externalId }),
                 });
+                console.info('[timing] Cover letter Whish verify response', { ms: Math.round(performance.now() - verifyStart) });
                 const verifyData = await readJsonSafely(verifyResponse);
                 if (!verifyResponse.ok || (verifyData.collectStatus !== 'PAID' && verifyData.collectStatus !== 'success' && verifyData.isPaidStatus !== true)) {
+                    setPaidState('cover-letter', false);
                     showError(verifyData.error || 'Cover letter Whish payment is not confirmed yet.');
                     return;
                 }
@@ -1591,6 +1734,7 @@
                 url.searchParams.delete('runId');
                 window.history.replaceState({}, document.title, url.toString());
             } catch (error) {
+                setPaidState('cover-letter', false);
                 showError(error.message || 'Cover letter Whish payment handling failed.');
             }
         }
