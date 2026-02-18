@@ -1188,32 +1188,26 @@
         }
 
 
-        function openPaymentPopup() {
-            const popup = window.open('', '_blank', 'noopener');
+        function openPaymentTarget() {
+            const popup = window.open('', '_blank');
             if (!popup) {
-                throw new Error('Unable to open payment window. Please allow popups and try again.');
+                return { mode: 'same-tab', target: window };
             }
             popup.document.write('<!doctype html><title>Opening payment…</title><p style="font-family:sans-serif;padding:16px;">Opening payment…</p>');
             popup.document.close();
-            return popup;
+            return { mode: 'popup', target: popup };
         }
 
         async function startWhishPayCheckout() {
             if (!whishPayButton) return;
             const clickAt = performance.now();
             console.info('[timing] Whish CV click', { at: clickAt });
-            let paymentPopup;
-            try {
-                paymentPopup = openPaymentPopup();
-            } catch (error) {
-                showError(error.message);
-                return;
-            }
+            const paymentTarget = openPaymentTarget();
 
             whishPayButton.disabled = true;
             whishPayButton.classList.add('opacity-70');
             if (whishPayStatus) {
-                whishPayStatus.textContent = 'Opening payment...';
+                whishPayStatus.textContent = paymentTarget.mode === 'popup' ? 'Opening payment...' : 'Opening payment in this tab...';
             }
 
             try {
@@ -1254,11 +1248,11 @@
                 if (!paymentUrl) {
                     throw new Error('Whish Pay did not return a checkout link.');
                 }
-                paymentPopup.location.href = paymentUrl;
+                paymentTarget.target.location.href = paymentUrl;
                 console.info('[timing] Whish CV popup navigated', { msFromClick: Math.round(performance.now() - clickAt) });
             } catch (error) {
-                if (paymentPopup && !paymentPopup.closed) {
-                    paymentPopup.close();
+                if (paymentTarget.mode === 'popup' && paymentTarget.target && !paymentTarget.target.closed) {
+                    paymentTarget.target.close();
                 }
                 console.error('Whish Pay error:', error);
                 showError(error.message || 'Whish Pay checkout failed. Please try again.');
@@ -1425,9 +1419,9 @@
             linkedinWhishButton.onclick = async () => {
                 const clickAt = performance.now();
                 console.info('[timing] LinkedIn Whish click', { at: clickAt });
-                let paymentPopup;
+                let paymentTarget = null;
                 try {
-                    paymentPopup = openPaymentPopup();
+                    paymentTarget = openPaymentTarget();
                     const providedLinkedInUrl = linkedinUrlInput.value.trim();
                     if (!looksLikeLinkedInUrl(providedLinkedInUrl)) {
                         throw new Error('Please provide a valid LinkedIn profile URL.');
@@ -1444,7 +1438,7 @@
                     if (!response.ok) {
                         if (response.status === 409) {
                             showLinkedInGenerationRetryState();
-                            if (paymentPopup && !paymentPopup.closed) paymentPopup.close();
+                            if (paymentTarget && paymentTarget.mode === 'popup' && paymentTarget.target && !paymentTarget.target.closed) paymentTarget.target.close();
                             return;
                         }
                         throw new Error(getApiErrorMessage(payload, 'Unable to start Whish payment.'));
@@ -1455,10 +1449,10 @@
                         throw new Error('Unable to start Whish payment. Please try again.');
                     }
                     sessionStorage.setItem('linkedinWhishExternalId', externalId.toString());
-                    paymentPopup.location.href = collectUrl;
+                    paymentTarget.target.location.href = collectUrl;
                     console.info('[timing] LinkedIn Whish popup navigated', { msFromClick: Math.round(performance.now() - clickAt) });
                 } catch (error) {
-                    if (paymentPopup && !paymentPopup.closed) paymentPopup.close();
+                    if (paymentTarget && paymentTarget.mode === 'popup' && paymentTarget.target && !paymentTarget.target.closed) paymentTarget.target.close();
                     showError(error.message || 'LinkedIn Whish payment failed.');
                 }
             };
@@ -1640,9 +1634,9 @@
             coverLetterWhishButton.onclick = async () => {
                 const clickAt = performance.now();
                 console.info('[timing] Cover letter Whish click', { at: clickAt });
-                let paymentPopup;
+                let paymentTarget = null;
                 try {
-                    paymentPopup = openPaymentPopup();
+                    paymentTarget = openPaymentTarget();
                     const jobLink = coverLetterJobLinkInput.value.trim();
                     if (!looksLikeHttpUrl(jobLink)) { throw new Error('Please provide a valid job URL.'); }
                     showCoverLetterValidation('');
@@ -1655,17 +1649,17 @@
                     console.info('[timing] Cover letter Whish create-payment response', { ms: Math.round(performance.now() - createStart) });
                     const payload = await readJsonSafely(response);
                     if (!response.ok) {
-                        if (response.status === 409) { showCoverLetterGenerationRetryState(); if (paymentPopup && !paymentPopup.closed) paymentPopup.close(); return; }
+                        if (response.status === 409) { showCoverLetterGenerationRetryState(); if (paymentTarget && paymentTarget.mode === 'popup' && paymentTarget.target && !paymentTarget.target.closed) paymentTarget.target.close(); return; }
                         throw new Error(getApiErrorMessage(payload, 'Unable to start Whish payment.'));
                     }
                     const externalId = payload?.externalId;
                     const collectUrl = payload?.data?.collectUrl || payload?.collectUrl;
                     if (!externalId || !collectUrl) throw new Error('Unable to start Whish payment. Please try again.');
                     sessionStorage.setItem('coverLetterWhishExternalId', externalId.toString());
-                    paymentPopup.location.href = collectUrl;
+                    paymentTarget.target.location.href = collectUrl;
                     console.info('[timing] Cover letter Whish popup navigated', { msFromClick: Math.round(performance.now() - clickAt) });
                 } catch (error) {
-                    if (paymentPopup && !paymentPopup.closed) paymentPopup.close();
+                    if (paymentTarget && paymentTarget.mode === 'popup' && paymentTarget.target && !paymentTarget.target.closed) paymentTarget.target.close();
                     showError(error.message || 'Cover letter Whish payment failed.');
                 }
             };
