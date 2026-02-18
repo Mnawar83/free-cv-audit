@@ -772,6 +772,34 @@
             primaryDownloadLink.setAttribute('aria-disabled', primaryDownloadLink.href === '#' ? 'true' : 'false');
         }
 
+        async function downloadDocxFromUrl(downloadUrl, fallbackFileName) {
+            if (!downloadUrl || downloadUrl === '#') {
+                throw new Error('Download URL is unavailable. Please try again.');
+            }
+
+            const response = await fetch(downloadUrl, { method: 'GET' });
+            if (!response.ok) {
+                const payload = await readJsonSafely(response);
+                throw new Error(getApiErrorMessage(payload, 'Download failed. Please try again.'));
+            }
+
+            const contentType = (response.headers.get('content-type') || '').toLowerCase();
+            if (!contentType.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document')) {
+                const payload = await readJsonSafely(response);
+                throw new Error(getApiErrorMessage(payload, 'Unexpected download response. Please try again.'));
+            }
+
+            const blob = await response.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            const tempLink = document.createElement('a');
+            tempLink.href = objectUrl;
+            tempLink.download = fallbackFileName;
+            document.body.appendChild(tempLink);
+            tempLink.click();
+            tempLink.remove();
+            URL.revokeObjectURL(objectUrl);
+        }
+
         function applyPaidGatedLayout() {
             syncAuditVisibility();
             if (!hasPaidCV) return;
@@ -1850,8 +1878,30 @@
         }
 
         if (primaryDownloadLink) {
-            primaryDownloadLink.addEventListener('click', () => {
-                // Keep per-product download state isolated.
+            primaryDownloadLink.addEventListener('click', async (event) => {
+                const targetType = activeDownloadType || (hasPaidCoverLetter ? 'cover-letter' : hasPaidLinkedIn ? 'linkedin' : 'revised');
+                if (targetType !== 'cover-letter' && targetType !== 'linkedin') {
+                    return;
+                }
+                event.preventDefault();
+                try {
+                    const url = targetType === 'cover-letter' ? coverLetterDownloadUrl : linkedinDownloadUrl;
+                    const fileName = targetType === 'cover-letter' ? 'cover-letter.docx' : 'linkedin-optimization.docx';
+                    await downloadDocxFromUrl(url, fileName);
+                } catch (error) {
+                    showError(error.message || 'Unable to download your file right now.');
+                }
+            });
+        }
+
+        if (coverLetterDownloadLink) {
+            coverLetterDownloadLink.addEventListener('click', async (event) => {
+                event.preventDefault();
+                try {
+                    await downloadDocxFromUrl(coverLetterDownloadUrl, 'cover-letter.docx');
+                } catch (error) {
+                    showError(error.message || 'Unable to download your cover letter right now.');
+                }
             });
         }
 
