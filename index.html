@@ -639,7 +639,8 @@
 
         async function readJsonSafely(response) {
             try {
-                const text = await response.text();
+                const safeResponse = typeof response.clone === 'function' ? response.clone() : response;
+                const text = await safeResponse.text();
                 if (!text || !text.trim()) return {};
                 return JSON.parse(text);
             } catch (error) {
@@ -1630,6 +1631,8 @@
                     return;
                 }
                 await generateLinkedInDocxForRun(runId);
+                activeDownloadType = 'linkedin';
+                applyPaidGatedLayout();
                 if (upsellCards) upsellCards.classList.remove('hidden');
                 linkedinUpsellCard.classList.remove('hidden');
                 linkedinUpsellStatus.textContent = 'Payment confirmed. LinkedIn Word file is ready.';
@@ -1820,6 +1823,8 @@
                     return;
                 }
                 await generateCoverLetterDocxForRun(runId);
+                activeDownloadType = 'cover-letter';
+                applyPaidGatedLayout();
                 coverLetterStatus.textContent = 'Payment confirmed. Cover letter is ready.';
                 url.searchParams.delete('coverLetterPayment');
                 url.searchParams.delete('runId');
