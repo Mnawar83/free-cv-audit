@@ -29,6 +29,8 @@ exports.handler = async (event) => {
   }
 
   try {
+    const functionStart = Date.now();
+    console.info('[timing] whishpay-create-payment start', { at: functionStart });
     assertWhishPayConfigured();
     const payload = JSON.parse(event.body || '{}');
     const amount = WHISHPAY_AMOUNT;
@@ -52,6 +54,7 @@ exports.handler = async (event) => {
       externalId,
     );
 
+    const providerStart = Date.now();
     const response = await fetch(getWhishPayCreateUrl(), {
       method: 'POST',
       headers: getWhishPayHeaders(),
@@ -68,6 +71,7 @@ exports.handler = async (event) => {
     });
 
     const responseText = await response.text();
+    console.info('[timing] whishpay-create-payment provider response', { ms: Date.now() - providerStart });
     if (!response.ok) {
       return {
         statusCode: 502,
@@ -92,6 +96,7 @@ exports.handler = async (event) => {
       };
     }
 
+    console.info('[timing] whishpay-create-payment complete', { ms: Date.now() - functionStart });
     return { statusCode: 200, body: JSON.stringify({ ...data, externalId }) };
   } catch (error) {
     return {
