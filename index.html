@@ -1198,6 +1198,21 @@
             return { mode: 'popup', target: popup };
         }
 
+        function handoffReturnToOpener(paramName) {
+            try {
+                const url = new URL(window.location.href);
+                if (!url.searchParams.get(paramName)) return false;
+                if (!window.opener || window.opener.closed) return false;
+                if (window.opener.location.origin !== window.location.origin) return false;
+                window.opener.location.href = url.toString();
+                window.close();
+                return true;
+            } catch (error) {
+                console.warn('[timing] Unable to hand off payment return to opener', error);
+                return false;
+            }
+        }
+
         async function startWhishPayCheckout() {
             if (!whishPayButton) return;
             const clickAt = performance.now();
@@ -1262,6 +1277,7 @@
         }
 
         async function handleWhishPayReturn() {
+            if (handoffReturnToOpener('payment')) return;
             const url = new URL(window.location.href);
             const paymentStatus = url.searchParams.get('payment');
             if (!paymentStatus) return;
@@ -1516,6 +1532,7 @@
 
         async function handleLinkedinWhishReturn() {
             try {
+                if (handoffReturnToOpener('linkedinPayment')) return;
                 const url = new URL(window.location.href);
                 const linkedinPaymentStatus = url.searchParams.get('linkedinPayment');
                 if (linkedinPaymentStatus !== 'success') return;
@@ -1705,6 +1722,7 @@
 
         async function handleCoverLetterWhishReturn() {
             try {
+                if (handoffReturnToOpener('coverLetterPayment')) return;
                 const url = new URL(window.location.href);
                 const paymentStatus = url.searchParams.get('coverLetterPayment');
                 if (paymentStatus !== 'success') return;
