@@ -1430,14 +1430,11 @@
             }
 
             if (data && (data.status === 'PAID' || data.status === 'GENERATED') && data.downloadUrl) {
-                linkedinUnlocked = true;
-                setPaidState('linkedin', true);
-                linkedinDownloadUrl = data.downloadUrl;
+                markUpsellUnlocked('linkedin', data.downloadUrl);
                 linkedinUpsellStatus.textContent = 'Already unlocked. Download your LinkedIn Word file.';
                 linkedinGenerateButton.classList.add('hidden');
                 linkedinPayPalButtonsContainer.innerHTML = '';
                 linkedinWhishButton.classList.add('hidden');
-                applyPaidGatedLayout();
                 return;
             }
 
@@ -1649,14 +1646,11 @@
             } catch {}
 
             if (data && (data.status === 'PAID' || data.status === 'GENERATED') && data.downloadUrl) {
-                coverLetterUnlocked = true;
-                setPaidState('cover-letter', true);
-                coverLetterDownloadUrl = data.downloadUrl;
+                markUpsellUnlocked('cover-letter', data.downloadUrl);
                 coverLetterStatus.textContent = 'Already unlocked. Download your cover letter.';
                 coverLetterGenerateButton.classList.add('hidden');
                 coverLetterPayPalButtonsContainer.innerHTML = '';
                 coverLetterWhishButton.classList.add('hidden');
-                applyPaidGatedLayout();
                 return;
             }
             if (data && (data.status === 'PAID' || data.status === 'GENERATED') && !data.downloadUrl) {
