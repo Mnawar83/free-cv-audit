@@ -357,6 +357,8 @@
         let coverLetterDownloaded = false;
         let linkedinDownloadUrl = '';
         let coverLetterDownloadUrl = '';
+        let linkedinObjectDownloadUrl = '';
+        let coverLetterObjectDownloadUrl = '';
         let auditRequestController = null;
         let auditRequestToken = 0;
         const auditMountParent = auditSection ? auditSection.parentElement : null;
@@ -480,6 +482,14 @@
                 extractedCvAnalysis = '';
                 sessionStorage.removeItem('cvText');
                 sessionStorage.removeItem('cvAnalysis');
+                if (linkedinObjectDownloadUrl) {
+                    URL.revokeObjectURL(linkedinObjectDownloadUrl);
+                    linkedinObjectDownloadUrl = '';
+                }
+                if (coverLetterObjectDownloadUrl) {
+                    URL.revokeObjectURL(coverLetterObjectDownloadUrl);
+                    coverLetterObjectDownloadUrl = '';
+                }
                 if (linkedinDownloadLink) {
                     linkedinDownloadLink.classList.add('hidden');
                     linkedinDownloadLink.removeAttribute('href');
@@ -1384,11 +1394,32 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ runId }),
             });
-            const docData = await docResponse.json();
             if (!docResponse.ok) {
-                throw new Error(docData.error || 'Unable to generate LinkedIn file.');
+                const errorData = await readJsonSafely(docResponse);
+                throw new Error(errorData.error || 'Unable to generate LinkedIn file.');
             }
-            markUpsellUnlocked('linkedin', docData.downloadUrl);
+
+            let docBlob = null;
+            const contentType = (docResponse.headers.get('content-type') || '').toLowerCase();
+            if (contentType.includes('application/json')) {
+                const docData = await readJsonSafely(docResponse);
+                if (!docData.downloadUrl) {
+                    throw new Error('LinkedIn download URL was missing.');
+                }
+                const fileResponse = await fetch(docData.downloadUrl);
+                if (!fileResponse.ok) {
+                    throw new Error('Unable to download LinkedIn file.');
+                }
+                docBlob = await fileResponse.blob();
+            } else {
+                docBlob = await docResponse.blob();
+            }
+
+            if (linkedinObjectDownloadUrl) {
+                URL.revokeObjectURL(linkedinObjectDownloadUrl);
+            }
+            linkedinObjectDownloadUrl = URL.createObjectURL(docBlob);
+            markUpsellUnlocked('linkedin', linkedinObjectDownloadUrl);
             linkedinGenerateButton.classList.add('hidden');
             linkedinGenerateButton.disabled = false;
             linkedinUpsellStatus.textContent = 'LinkedIn Word file is ready.';
@@ -1598,9 +1629,32 @@
             const docResponse = await fetch('/.netlify/functions/cover-letter-generate-docx', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId }),
             });
-            const docData = await readJsonSafely(docResponse);
-            if (!docResponse.ok) throw new Error(docData.error || 'Unable to generate cover letter.');
-            markUpsellUnlocked('cover-letter', docData.downloadUrl);
+            if (!docResponse.ok) {
+                const docData = await readJsonSafely(docResponse);
+                throw new Error(docData.error || 'Unable to generate cover letter.');
+            }
+
+            let docBlob = null;
+            const contentType = (docResponse.headers.get('content-type') || '').toLowerCase();
+            if (contentType.includes('application/json')) {
+                const docData = await readJsonSafely(docResponse);
+                if (!docData.downloadUrl) {
+                    throw new Error('Cover letter download URL was missing.');
+                }
+                const fileResponse = await fetch(docData.downloadUrl);
+                if (!fileResponse.ok) {
+                    throw new Error('Unable to download cover letter file.');
+                }
+                docBlob = await fileResponse.blob();
+            } else {
+                docBlob = await docResponse.blob();
+            }
+
+            if (coverLetterObjectDownloadUrl) {
+                URL.revokeObjectURL(coverLetterObjectDownloadUrl);
+            }
+            coverLetterObjectDownloadUrl = URL.createObjectURL(docBlob);
+            markUpsellUnlocked('cover-letter', coverLetterObjectDownloadUrl);
             coverLetterGenerateButton.classList.add('hidden');
             coverLetterStatus.textContent = 'Cover letter is ready.';
             coverLetterPayPalButtonsContainer.innerHTML = '';
