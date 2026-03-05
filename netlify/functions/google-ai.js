@@ -1,4 +1,4 @@
-const GOOGLE_AI_MODEL = 'gemini-2.5-flash-lite';
+const GOOGLE_AI_MODEL = 'gemini-3.1-pro-preview';
 
 function buildGoogleAiUrl(apiKey) {
   if (!apiKey) {
