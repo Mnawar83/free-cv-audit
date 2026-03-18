@@ -206,9 +206,6 @@
                             Download Revised CV (PDF)
                         </a>
                         <p id="download-note" class="mt-2 text-xs text-slate-500">Complete payment to unlock your download.</p>
-                        <button id="retry-download" type="button" class="hidden mt-3 text-xs text-blue-300 hover:text-blue-200 underline">
-                            Retry generating your revised CV
-                        </button>
                     </div>
 
                     <div id="revised-download-only" class="hidden mt-8 rounded-lg border border-emerald-500/50 bg-emerald-950/30 p-8 text-center">
@@ -298,7 +295,6 @@
         const whishPayStatus = document.getElementById('whishpay-status');
         const downloadLink = document.getElementById('download-link');
         const downloadNote = document.getElementById('download-note');
-        const retryDownloadButton = document.getElementById('retry-download');
         const auditSection = document.getElementById('audit-section');
         const revisedPaymentSection = document.getElementById('revised-payment-section');
         const revisedDownloadOnly = document.getElementById('revised-download-only');
@@ -934,7 +930,6 @@
                 initializeLinkedInUpsell();
                 initializeCoverLetterUpsell();
             }
-            updateRetryVisibility();
         }
 
         function restoreAuditResultsFromSession() {
@@ -960,18 +955,6 @@
             return true;
         }
 
-        function updateRetryVisibility() {
-            if (!retryDownloadButton) return;
-            if (hasPaidCV && !revisedCvBlobUrl && !isGeneratingPdf) {
-                retryDownloadButton.classList.remove('hidden');
-                if (downloadNote) {
-                    downloadNote.textContent = 'Payment received. Generate your revised CV to download.';
-                }
-            } else {
-                retryDownloadButton.classList.add('hidden');
-            }
-        }
-
         async function generateRevisedPdf(cvText) {
             if (!cvText) {
                 throw new Error('Unable to generate the revised CV. Please run the audit again.');
@@ -979,7 +962,6 @@
             if (isGeneratingPdf) return;
             isGeneratingPdf = true;
             downloadNote.textContent = 'Preparing your revised CV PDF...';
-            updateRetryVisibility();
             try {
                 const cvAnalysis = extractedCvAnalysis || sessionStorage.getItem('cvAnalysis') || '';
                 const response = await fetch('/.netlify/functions/generate-pdf', {
@@ -1017,7 +999,6 @@
                 downloadLink.setAttribute('download', 'revised-cv.pdf');
             } finally {
                 isGeneratingPdf = false;
-                updateRetryVisibility();
             }
         }
 
@@ -1155,7 +1136,6 @@
                             } catch (error) {
                                 console.error('PDF generation error:', error);
                                 showError(error.message || 'Unable to generate your revised CV yet.');
-                                updateRetryVisibility();
                             }
                         } else {
                             showError('Payment is still processing. Please wait for confirmation.');
@@ -1425,7 +1405,6 @@
                         console.error('Whish Pay confirmation error:', error);
                         setPaidState('cv', false);
                         showError(error.message || 'Unable to confirm your payment yet.');
-                        updateRetryVisibility();
                     });
             } else {
                 if (whishPayStatus) {
@@ -1907,23 +1886,9 @@
 
         hydratePayPalPricing();
         hydrateWhishPayPricing();
-        updateRetryVisibility();
         handleWhishPayReturn();
         handleLinkedinWhishReturn();
         handleCoverLetterWhishReturn();
-
-        if (retryDownloadButton) {
-            retryDownloadButton.addEventListener('click', async () => {
-                try {
-                    await generateRevisedPdf(extractedCvText);
-                    setDownloadLocked(false);
-                } catch (error) {
-                    console.error('Retry PDF generation error:', error);
-                    showError(error.message || 'Unable to generate your revised CV yet.');
-                    updateRetryVisibility();
-                }
-            });
-        }
     </script>
 </body>
 </html>
