@@ -1,4 +1,4 @@
-const { buildGoogleAiUrl } = require('./google-ai');
+const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { LINKEDIN_UPSELL_STATUS, createRunId, getRun, upsertRun } = require('./run-store');
 
 const PDF_FILENAME = 'revised-cv.pdf';
@@ -197,7 +197,7 @@ exports.handler = async (event) => {
         body: JSON.stringify({ error: 'Google AI API key is missing.' }),
       };
     }
-    const apiUrl = buildGoogleAiUrl(apiKey);
+    const candidateModels = getGoogleAiCandidateModels();
 
     const systemPrompt = `You are an expert CV writer for Work Waves Career Services.
 Rewrite the CV for ATS compatibility and professional impact.
@@ -211,13 +211,21 @@ Return only the revised CV content, formatted as plain text with clear section h
       contents: [{ parts: [{ text: `Rewrite this CV:\n\n${cvText}${analysisNote}` }] }],
     };
 
-    const fetchResponse = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    let result;
+    let lastErrorMessage = 'AI request failed';
+    for (const model of candidateModels) {
+      const apiUrl = buildGoogleAiUrl(apiKey, model);
+      const fetchResponse = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-    if (!fetchResponse.ok) {
+      if (fetchResponse.ok) {
+        result = await fetchResponse.json();
+        break;
+      }
+
       let errorMessage = 'AI request failed';
       try {
         const errorData = await fetchResponse.json();
@@ -227,13 +235,24 @@ Return only the revised CV content, formatted as plain text with clear section h
       } catch (parseError) {
         console.error('Unable to parse AI error response.', parseError);
       }
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: errorMessage }),
-      };
+
+      const modelNotAvailable =
+        fetchResponse.status === 404 || /not found|unsupported|not available/i.test(errorMessage);
+      if (!modelNotAvailable) {
+        return {
+          statusCode: 500,
+          body: JSON.stringify({ error: errorMessage }),
+        };
+      }
+      lastErrorMessage = `${model}: ${errorMessage}`;
     }
 
-    const result = await fetchResponse.json();
+    if (!result) {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: `No compatible Google AI model available. ${lastErrorMessage}` }),
+      };
+    }
     const revisedText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
 
     if (!revisedText) {
