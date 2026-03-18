@@ -186,78 +186,109 @@ exports.handler = async (event) => {
 
   try {
     const { cvText, cvAnalysis, runId: incomingRunId } = JSON.parse(event.body || '{}');
-    if (!cvText) {
+    const existingRun = incomingRunId ? await getRun(incomingRunId) : null;
+    const resolvedCvText = cvText || existingRun?.original_cv_text || '';
+    const resolvedCvAnalysis = cvAnalysis || existingRun?.audit_result || '';
+
+    if (existingRun?.revised_cv_text) {
+      const cachedPdfBuffer = buildPdfBuffer(existingRun.revised_cv_text);
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="${PDF_FILENAME}"`,
+          'x-run-id': incomingRunId,
+        },
+        body: cachedPdfBuffer.toString('base64'),
+        isBase64Encoded: true,
+      };
+    }
+
+    if (!resolvedCvText) {
       return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
     }
 
     const apiKey = process.env.GOOGLE_AI_API_KEY;
-    if (!apiKey) {
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: 'Google AI API key is missing.' }),
-      };
-    }
-    const apiUrl = buildGoogleAiUrl(apiKey);
-
     const systemPrompt = `You are an expert CV writer for Work Waves Career Services.
 Rewrite the CV for ATS compatibility and professional impact.
 Return only the revised CV content, formatted as plain text with clear section headings.`;
 
-    const analysisNote = cvAnalysis
-      ? `\n\nUse this CV analysis as reference while revising:\n${cvAnalysis}`
+    const analysisNote = resolvedCvAnalysis
+      ? `\n\nUse this CV analysis as reference while revising:\n${resolvedCvAnalysis}`
       : '';
     const payload = {
       systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ parts: [{ text: `Rewrite this CV:\n\n${cvText}${analysisNote}` }] }],
+      contents: [{ parts: [{ text: `Rewrite this CV:\n\n${resolvedCvText}${analysisNote}` }] }],
     };
 
-    const fetchResponse = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!fetchResponse.ok) {
-      let errorMessage = 'AI request failed';
+    let revisedText = '';
+    let usedFallbackText = false;
+    if (!apiKey) {
+      console.warn('GOOGLE_AI_API_KEY is missing. Falling back to original CV text.');
+      revisedText = resolvedCvText;
+      usedFallbackText = true;
+    } else {
+      const apiUrl = buildGoogleAiUrl(apiKey);
       try {
-        const errorData = await fetchResponse.json();
-        if (errorData?.error?.message) {
-          errorMessage = errorData.error.message;
+        const fetchResponse = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (!fetchResponse.ok) {
+          let errorMessage = 'AI request failed';
+          try {
+            const errorData = await fetchResponse.json();
+            if (errorData?.error?.message) {
+              errorMessage = errorData.error.message;
+            }
+          } catch (parseError) {
+            console.error('Unable to parse AI error response.', parseError);
+          }
+          console.warn(`AI rewrite failed (${errorMessage}). Falling back to original CV text.`);
+          revisedText = resolvedCvText;
+          usedFallbackText = true;
+        } else {
+          const result = await fetchResponse.json();
+          revisedText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
         }
-      } catch (parseError) {
-        console.error('Unable to parse AI error response.', parseError);
+      } catch (error) {
+        console.warn(`AI rewrite request threw an error (${error?.message || 'unknown'}). Falling back to original CV text.`);
+        revisedText = resolvedCvText;
+        usedFallbackText = true;
       }
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: errorMessage }),
-      };
     }
 
-    const result = await fetchResponse.json();
-    const revisedText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-
     if (!revisedText) {
-      return { statusCode: 500, body: JSON.stringify({ error: 'No response from AI' }) };
+      revisedText = resolvedCvText;
+      usedFallbackText = true;
     }
 
     const pdfBuffer = buildPdfBuffer(revisedText);
     let runId = incomingRunId || createRunId();
 
-    if (incomingRunId) {
-      const existingRun = await getRun(incomingRunId);
-      if (
-        existingRun &&
-        existingRun.linkedin_upsell_status &&
-        existingRun.linkedin_upsell_status !== LINKEDIN_UPSELL_STATUS.NOT_STARTED
-      ) {
-        runId = createRunId();
-      }
+    if (
+      existingRun &&
+      existingRun.linkedin_upsell_status &&
+      existingRun.linkedin_upsell_status !== LINKEDIN_UPSELL_STATUS.NOT_STARTED
+    ) {
+      runId = createRunId();
     }
 
-    await upsertRun(runId, {
-      revised_cv_text: revisedText,
-      revised_cv_generated_at: new Date().toISOString(),
-    });
+    const runUpdates = {
+      original_cv_text: resolvedCvText,
+      audit_result: resolvedCvAnalysis,
+    };
+    if (usedFallbackText) {
+      runUpdates.revised_cv_fallback_generated_at = new Date().toISOString();
+    } else {
+      runUpdates.revised_cv_text = revisedText;
+      runUpdates.revised_cv_generated_at = new Date().toISOString();
+      runUpdates.revised_cv_fallback_generated_at = null;
+    }
+
+    await upsertRun(runId, runUpdates);
 
     return {
       statusCode: 200,
