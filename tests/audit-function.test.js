@@ -7,6 +7,7 @@ function clearModule(modulePath) {
 
 async function run() {
   process.env.GOOGLE_AI_API_KEY = 'test-key';
+  delete process.env.RUN_STORE_DURABLE_URL;
 
   let capturedPayload;
   global.fetch = async (_url, options) => {
@@ -19,6 +20,7 @@ async function run() {
     };
   };
 
+  clearModule('../netlify/functions/run-store');
   clearModule('../netlify/functions/audit');
   const handler = require('../netlify/functions/audit').handler;
 

@@ -14,6 +14,7 @@ async function run() {
 
   process.env.CONTEXT = 'deploy-preview';
   process.env.RUN_STORE_PATH = storePath;
+  delete process.env.RUN_STORE_DURABLE_URL;
   process.env.WHISHPAY_CHANNEL = 'test-channel';
   process.env.WHISHPAY_SECRET = 'test-secret';
   process.env.WHISHPAY_WEBSITE_URL = 'https://example.test';

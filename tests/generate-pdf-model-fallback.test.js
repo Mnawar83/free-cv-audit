@@ -11,6 +11,7 @@ async function run() {
   process.env.RUN_STORE_PATH = '/tmp/free-cv-audit-generate-pdf-fallback-test.json';
   delete process.env.GOOGLE_AI_MODEL;
   delete process.env.CONTEXT;
+  delete process.env.RUN_STORE_DURABLE_URL;
 
   try {
     fs.unlinkSync(process.env.RUN_STORE_PATH);

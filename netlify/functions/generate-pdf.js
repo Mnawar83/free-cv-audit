@@ -208,20 +208,6 @@ exports.handler = async (event) => {
       return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
     }
 
-    if (existingRun?.revised_cv_text) {
-      const cachedPdfBuffer = buildPdfBuffer(existingRun.revised_cv_text);
-      return {
-        statusCode: 200,
-        headers: {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `attachment; filename="${PDF_FILENAME}"`,
-          'x-run-id': incomingRunId,
-        },
-        body: cachedPdfBuffer.toString('base64'),
-        isBase64Encoded: true,
-      };
-    }
-
     const apiKey = process.env.GOOGLE_AI_API_KEY;
     if (!apiKey) {
       return {
@@ -258,23 +244,23 @@ Return only the revised CV content, formatted as plain text with clear section h
         break;
       }
 
-    let revisedText = '';
-    let usedFallbackText = false;
-    if (!fetchResponse.ok) {
-      let errorMessage = 'AI request failed';
       try {
         const errorData = await fetchResponse.json();
         if (errorData?.error?.message) {
-          errorMessage = errorData.error.message;
+          lastErrorMessage = errorData.error.message;
         }
       } catch (parseError) {
         console.error('Unable to parse AI error response.', parseError);
       }
-      console.warn(`AI rewrite failed (${errorMessage}). Falling back to original CV text.`);
+    }
+
+    let revisedText = '';
+    let usedFallbackText = false;
+    if (!result) {
+      console.warn(`AI rewrite failed (${lastErrorMessage}). Falling back to original CV text.`);
       revisedText = resolvedCvText;
       usedFallbackText = true;
     } else {
-      const result = await fetchResponse.json();
       revisedText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
     }
 
