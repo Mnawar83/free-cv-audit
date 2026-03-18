@@ -13,9 +13,9 @@ function loadGoogleAi() {
 function run() {
   delete process.env.GOOGLE_AI_MODEL;
   let googleAi = loadGoogleAi();
-  assert.strictEqual(googleAi.getGoogleAiModel(), 'gemini-3.1-pro');
-  assert.ok(googleAi.buildGoogleAiUrl('test-key').includes('/models/gemini-3.1-pro:generateContent'));
-  assert.deepStrictEqual(googleAi.getGoogleAiCandidateModels(), ['gemini-3.1-pro', 'gemini-3.1-flash']);
+  assert.strictEqual(googleAi.getGoogleAiModel(), 'gemini-3.1-pro-preview');
+  assert.ok(googleAi.buildGoogleAiUrl('test-key').includes('/models/gemini-3.1-pro-preview:generateContent'));
+  assert.deepStrictEqual(googleAi.getGoogleAiCandidateModels(), ['gemini-3.1-pro-preview', 'gemini-3.1-flash']);
   assert.ok(
     googleAi
       .buildGoogleAiUrl('test-key', 'gemini-3.1-flash')

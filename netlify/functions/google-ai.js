@@ -1,4 +1,4 @@
-const DEFAULT_GOOGLE_AI_MODEL = 'gemini-3.1-pro';
+const DEFAULT_GOOGLE_AI_MODEL = 'gemini-3.1-pro-preview';
 const FALLBACK_GOOGLE_AI_MODELS = ['gemini-3.1-flash'];
 
 function getGoogleAiModel() {

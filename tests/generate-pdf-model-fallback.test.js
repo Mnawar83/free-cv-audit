@@ -50,7 +50,7 @@ async function run() {
   });
 
   assert.strictEqual(response.statusCode, 200);
-  assert.ok(fetchCalls[0].includes('/models/gemini-3.1-pro:generateContent'));
+  assert.ok(fetchCalls[0].includes('/models/gemini-3.1-pro-preview:generateContent'));
   assert.ok(fetchCalls[1].includes('/models/gemini-3.1-flash:generateContent'));
 
   console.log('Generate PDF model fallback test passed');
