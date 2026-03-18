@@ -1371,6 +1371,7 @@
                 const formattedPrice = `${config.currency || 'USD'} ${config.amount || '3.99'}`;
                 const priceElements = [
                     document.getElementById('payment-price-whish'),
+                    document.getElementById('payment-price-paypal'),
                 ];
                 priceElements.forEach((element) => {
                     if (element) element.textContent = formattedPrice;
