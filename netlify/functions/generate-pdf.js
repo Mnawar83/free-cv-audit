@@ -210,6 +210,17 @@ exports.handler = async (event) => {
     }
 
     const apiKey = process.env.GOOGLE_AI_API_KEY;
+
+    let result;
+    let revisedText = '';
+    let usedFallbackText = false;
+    let lastErrorMessage = 'AI request failed';
+
+    if (!apiKey) {
+      console.warn('Google AI API key is missing. Falling back to original CV text.');
+      revisedText = resolvedCvText;
+      usedFallbackText = true;
+    } else {
     const systemPrompt = `You are an expert CV writer for Work Waves Career Services.
 Rewrite the CV for ATS compatibility and professional impact.
 Return only the revised CV content, formatted as plain text with clear section headings.`;
@@ -222,8 +233,6 @@ Return only the revised CV content, formatted as plain text with clear section h
       contents: [{ parts: [{ text: `Rewrite this CV:\n\n${resolvedCvText}${analysisNote}` }] }],
     };
 
-    let result;
-    let lastErrorMessage = 'AI request failed';
     for (const model of candidateModels) {
       const apiUrl = buildGoogleAiUrl(apiKey, model);
       const fetchResponse = await fetch(apiUrl, {
@@ -239,18 +248,19 @@ Return only the revised CV content, formatted as plain text with clear section h
 
       try {
         const errorData = await fetchResponse.json();
-        if (errorData?.error?.message) {
-          lastErrorMessage = errorData.error.message;
+        const errorMsg = errorData?.error?.message || '';
+        if (errorMsg) {
+          lastErrorMessage = errorMsg;
         }
 
         const modelNotAvailable =
-          fetchResponse.status === 404 || /not found|unsupported|not available/i.test(errorMessage);
+          fetchResponse.status === 404 || /not found|unsupported|not available/i.test(errorMsg);
         if (modelNotAvailable) {
-          lastErrorMessage = `${model}: ${errorMessage}`;
+          lastErrorMessage = `${model}: ${errorMsg}`;
           continue;
         }
 
-        console.warn(`AI rewrite failed (${errorMessage}). Falling back to original CV text.`);
+        console.warn(`AI rewrite failed (${errorMsg}). Falling back to original CV text.`);
         revisedText = resolvedCvText;
         usedFallbackText = true;
         break;
@@ -268,15 +278,14 @@ Return only the revised CV content, formatted as plain text with clear section h
       }
     }
 
-    let revisedText = '';
-    let usedFallbackText = false;
-    if (!result) {
+    if (!result && !usedFallbackText) {
       console.warn(`AI rewrite failed (${lastErrorMessage}). Falling back to original CV text.`);
       revisedText = resolvedCvText;
       usedFallbackText = true;
-    } else {
+    } else if (result) {
       revisedText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
     }
+    } // end of apiKey else block
 
     if (!revisedText) {
       console.warn(`No compatible Google AI model available (${lastErrorMessage}). Falling back to original CV text.`);

@@ -19,9 +19,12 @@ function buildGoogleAiUrl(apiKey, modelOverride) {
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 }
 
+const GOOGLE_AI_MODEL = getGoogleAiModel();
+
 module.exports = {
   DEFAULT_GOOGLE_AI_MODEL,
   FALLBACK_GOOGLE_AI_MODELS,
+  GOOGLE_AI_MODEL,
   getGoogleAiModel,
   getGoogleAiCandidateModels,
   buildGoogleAiUrl,
