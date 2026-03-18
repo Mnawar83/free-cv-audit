@@ -1,7 +1,7 @@
 const WHISHPAY_CHANNEL = process.env.WHISHPAY_CHANNEL;
 const WHISHPAY_SECRET = process.env.WHISHPAY_SECRET;
 const WHISHPAY_WEBSITE_URL = process.env.WHISHPAY_WEBSITE_URL;
-const WHISHPAY_AMOUNT = process.env.WHISHPAY_AMOUNT || '1.99';
+const WHISHPAY_AMOUNT = '3.99';
 const WHISHPAY_CURRENCY = process.env.WHISHPAY_CURRENCY || 'USD';
 const WHISHPAY_BASE_URL = process.env.WHISHPAY_BASE_URL;
 const WHISHPAY_CREATE_PATH = process.env.WHISHPAY_CREATE_PATH || '/payment/whish';
