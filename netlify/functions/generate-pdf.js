@@ -190,10 +190,6 @@ exports.handler = async (event) => {
     const resolvedCvText = cvText || existingRun?.original_cv_text || '';
     const resolvedCvAnalysis = cvAnalysis || existingRun?.audit_result || '';
 
-    if (!resolvedCvText) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
-    }
-
     if (existingRun?.revised_cv_text) {
       const cachedPdfBuffer = buildPdfBuffer(existingRun.revised_cv_text);
       return {
@@ -206,6 +202,10 @@ exports.handler = async (event) => {
         body: cachedPdfBuffer.toString('base64'),
         isBase64Encoded: true,
       };
+    }
+
+    if (!resolvedCvText) {
+      return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
     }
 
     const apiKey = process.env.GOOGLE_AI_API_KEY;
