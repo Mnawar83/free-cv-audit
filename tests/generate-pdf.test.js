@@ -72,8 +72,30 @@ async function run() {
 
   const fallbackRun = await runStore.getRun(fallbackResponse.headers['x-run-id']);
   assert.ok(fallbackRun);
-  assert.ok(!fallbackRun.revised_cv_text, 'Fallback generation should not be persisted as final revised text.');
+  assert.strictEqual(
+    fallbackRun.revised_cv_text,
+    'Bob Example\nExperience\n- Shipped products',
+    'Fallback generation should persist the fallback revised text for downstream document generation.',
+  );
+  assert.ok(fallbackRun.revised_cv_generated_at, 'Revised CV generation timestamp should be stored.');
   assert.ok(fallbackRun.revised_cv_fallback_generated_at, 'Fallback generation timestamp should be stored.');
+
+  delete process.env.GOOGLE_AI_API_KEY;
+  global.fetch = async () => {
+    throw new Error('fetch should not be called when API key is missing');
+  };
+  clearModule('../netlify/functions/generate-pdf');
+  handler = require('../netlify/functions/generate-pdf').handler;
+
+  const noApiKeyResponse = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ cvText: 'No Key Candidate\nExperience\n- Did things' }),
+  });
+  assert.strictEqual(noApiKeyResponse.statusCode, 200);
+  assert.strictEqual(noApiKeyResponse.headers['Content-Type'], 'application/pdf');
+  assert.ok(noApiKeyResponse.headers['x-run-id']);
+  assert.ok(noApiKeyResponse.body.length > 0);
+  assert.strictEqual(noApiKeyResponse.isBase64Encoded, true);
 
   await fs.rm(storePath, { force: true });
   console.log('Generate PDF fallback test passed');

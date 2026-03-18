@@ -205,9 +205,6 @@
                             Download Revised CV (PDF)
                         </a>
                         <p id="download-note" class="mt-2 text-xs text-slate-500">Complete payment to unlock your download.</p>
-                        <button id="retry-download" type="button" class="hidden mt-3 text-xs text-blue-300 hover:text-blue-200 underline">
-                            Retry generating your revised CV
-                        </button>
                     </div>
 
                     <div id="revised-download-only" class="hidden mt-8 rounded-lg border border-emerald-500/50 bg-emerald-950/30 p-8 text-center">
@@ -297,7 +294,6 @@
         const whishPayStatus = document.getElementById('whishpay-status');
         const downloadLink = document.getElementById('download-link');
         const downloadNote = document.getElementById('download-note');
-        const retryDownloadButton = document.getElementById('retry-download');
         const auditSection = document.getElementById('audit-section');
         const revisedPaymentSection = document.getElementById('revised-payment-section');
         const revisedDownloadOnly = document.getElementById('revised-download-only');
@@ -988,7 +984,6 @@
                 initializeLinkedInUpsell();
                 initializeCoverLetterUpsell();
             }
-            updateRetryVisibility();
         }
 
         function restoreAuditResultsFromSession() {
@@ -1079,7 +1074,6 @@
             if (isGeneratingPdf) return;
             isGeneratingPdf = true;
             downloadNote.textContent = 'Preparing your revised CV PDF...';
-            updateRetryVisibility();
             try {
                 const cvAnalysis = extractedCvAnalysis || getStoredValue('cvAnalysis') || '';
                 const response = await fetch('/.netlify/functions/generate-pdf', {
@@ -1117,7 +1111,6 @@
                 downloadLink.setAttribute('download', 'revised-cv.pdf');
             } finally {
                 isGeneratingPdf = false;
-                updateRetryVisibility();
             }
         }
 
@@ -1255,7 +1248,6 @@
                             } catch (error) {
                                 console.error('PDF generation error:', error);
                                 showError(error.message || 'Unable to generate your revised CV yet.');
-                                updateRetryVisibility();
                             }
                         } else {
                             showError('Payment is still processing. Please wait for confirmation.');
@@ -1545,7 +1537,6 @@
                             setDownloadLocked(true);
                         }
                         showError(error.message || 'Unable to confirm your payment yet.');
-                        updateRetryVisibility();
                     });
             } else {
                 if (whishPayStatus) {
@@ -2027,7 +2018,6 @@
 
         hydratePayPalPricing();
         hydrateWhishPayPricing();
-        updateRetryVisibility();
         handleWhishPayReturn();
         handleLinkedinWhishReturn();
         handleCoverLetterWhishReturn();

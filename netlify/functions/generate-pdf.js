@@ -203,20 +203,13 @@ exports.handler = async (event) => {
         isBase64Encoded: true,
       };
     }
+    const candidateModels = getGoogleAiCandidateModels();
 
     if (!resolvedCvText) {
       return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
     }
 
     const apiKey = process.env.GOOGLE_AI_API_KEY;
-    if (!apiKey) {
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: 'Google AI API key is missing.' }),
-      };
-    }
-    const candidateModels = getGoogleAiCandidateModels();
-
     const systemPrompt = `You are an expert CV writer for Work Waves Career Services.
 Rewrite the CV for ATS compatibility and professional impact.
 Return only the revised CV content, formatted as plain text with clear section headings.`;
@@ -249,8 +242,29 @@ Return only the revised CV content, formatted as plain text with clear section h
         if (errorData?.error?.message) {
           lastErrorMessage = errorData.error.message;
         }
-      } catch (parseError) {
-        console.error('Unable to parse AI error response.', parseError);
+
+        const modelNotAvailable =
+          fetchResponse.status === 404 || /not found|unsupported|not available/i.test(errorMessage);
+        if (modelNotAvailable) {
+          lastErrorMessage = `${model}: ${errorMessage}`;
+          continue;
+        }
+
+        console.warn(`AI rewrite failed (${errorMessage}). Falling back to original CV text.`);
+        revisedText = resolvedCvText;
+        usedFallbackText = true;
+        break;
+      } catch (error) {
+        const errorMessage = error?.message || 'unknown';
+        const modelNotAvailable = /missing|not found|unsupported|not available/i.test(errorMessage);
+        if (modelNotAvailable) {
+          lastErrorMessage = `${model}: ${errorMessage}`;
+          continue;
+        }
+        console.warn(`AI rewrite request threw an error (${errorMessage}). Falling back to original CV text.`);
+        revisedText = resolvedCvText;
+        usedFallbackText = true;
+        break;
       }
     }
 
@@ -265,6 +279,7 @@ Return only the revised CV content, formatted as plain text with clear section h
     }
 
     if (!revisedText) {
+      console.warn(`No compatible Google AI model available (${lastErrorMessage}). Falling back to original CV text.`);
       revisedText = resolvedCvText;
       usedFallbackText = true;
     }
@@ -283,12 +298,12 @@ Return only the revised CV content, formatted as plain text with clear section h
     const runUpdates = {
       original_cv_text: resolvedCvText,
       audit_result: resolvedCvAnalysis,
+      revised_cv_text: revisedText,
+      revised_cv_generated_at: new Date().toISOString(),
     };
     if (usedFallbackText) {
       runUpdates.revised_cv_fallback_generated_at = new Date().toISOString();
     } else {
-      runUpdates.revised_cv_text = revisedText;
-      runUpdates.revised_cv_generated_at = new Date().toISOString();
       runUpdates.revised_cv_fallback_generated_at = null;
     }
 
