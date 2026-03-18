@@ -299,12 +299,12 @@ Return only the revised CV content, formatted as plain text with clear section h
     const runUpdates = {
       original_cv_text: resolvedCvText,
       audit_result: resolvedCvAnalysis,
+      revised_cv_text: revisedText,
+      revised_cv_generated_at: new Date().toISOString(),
     };
     if (usedFallbackText) {
       runUpdates.revised_cv_fallback_generated_at = new Date().toISOString();
     } else {
-      runUpdates.revised_cv_text = revisedText;
-      runUpdates.revised_cv_generated_at = new Date().toISOString();
       runUpdates.revised_cv_fallback_generated_at = null;
     }
 
