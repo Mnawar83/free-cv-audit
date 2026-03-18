@@ -30,6 +30,7 @@ async function run() {
   assert.strictEqual(response.statusCode, 200);
   const payload = JSON.parse(response.body);
   assert.ok(payload.auditResult.includes('Overall ATS Match'));
+  assert.ok(typeof payload.runId === 'string' && payload.runId.length > 10);
 
   const promptText = capturedPayload.systemInstruction.parts[0].text;
   assert.ok(promptText.includes('Return a complete audit immediately'));
