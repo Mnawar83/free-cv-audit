@@ -1,4 +1,5 @@
 const { buildGoogleAiUrl } = require('./google-ai');
+const { createRunId, upsertRun } = require('./run-store');
 
 const AUDIT_SYSTEM_PROMPT = `You are a senior ATS CV auditor for Work Waves Career Services.
 
@@ -39,6 +40,7 @@ exports.handler = async (event) => {
   try {
     const { cvText } = JSON.parse(event.body || '{}');
     if (!cvText) return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
+    const runId = createRunId();
 
     const apiUrl = buildGoogleAiUrl(process.env.GOOGLE_AI_API_KEY);
 
@@ -68,10 +70,17 @@ exports.handler = async (event) => {
 
     const result = await fetchResponse.json();
     const text = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    const auditResult = text || 'No response from AI';
+
+    await upsertRun(runId, {
+      original_cv_text: cvText,
+      audit_result: auditResult,
+      audit_completed_at: new Date().toISOString(),
+    });
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ auditResult: text || 'No response from AI' }),
+      body: JSON.stringify({ auditResult, runId }),
     };
   } catch (error) {
     return { statusCode: 500, body: JSON.stringify({ error: 'Internal Server Error' }) };

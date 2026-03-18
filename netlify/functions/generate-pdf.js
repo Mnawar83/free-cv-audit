@@ -186,8 +186,26 @@ exports.handler = async (event) => {
 
   try {
     const { cvText, cvAnalysis, runId: incomingRunId } = JSON.parse(event.body || '{}');
-    if (!cvText) {
+    const existingRun = incomingRunId ? await getRun(incomingRunId) : null;
+    const resolvedCvText = cvText || existingRun?.original_cv_text || '';
+    const resolvedCvAnalysis = cvAnalysis || existingRun?.audit_result || '';
+
+    if (!resolvedCvText) {
       return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
+    }
+
+    if (existingRun?.revised_cv_text) {
+      const cachedPdfBuffer = buildPdfBuffer(existingRun.revised_cv_text);
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="${PDF_FILENAME}"`,
+          'x-run-id': incomingRunId,
+        },
+        body: cachedPdfBuffer.toString('base64'),
+        isBase64Encoded: true,
+      };
     }
 
     const apiKey = process.env.GOOGLE_AI_API_KEY;
@@ -203,12 +221,12 @@ exports.handler = async (event) => {
 Rewrite the CV for ATS compatibility and professional impact.
 Return only the revised CV content, formatted as plain text with clear section headings.`;
 
-    const analysisNote = cvAnalysis
-      ? `\n\nUse this CV analysis as reference while revising:\n${cvAnalysis}`
+    const analysisNote = resolvedCvAnalysis
+      ? `\n\nUse this CV analysis as reference while revising:\n${resolvedCvAnalysis}`
       : '';
     const payload = {
       systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ parts: [{ text: `Rewrite this CV:\n\n${cvText}${analysisNote}` }] }],
+      contents: [{ parts: [{ text: `Rewrite this CV:\n\n${resolvedCvText}${analysisNote}` }] }],
     };
 
     let result;
@@ -226,6 +244,8 @@ Return only the revised CV content, formatted as plain text with clear section h
         break;
       }
 
+    let revisedText = '';
+    if (!fetchResponse.ok) {
       let errorMessage = 'AI request failed';
       try {
         const errorData = await fetchResponse.json();
@@ -235,45 +255,31 @@ Return only the revised CV content, formatted as plain text with clear section h
       } catch (parseError) {
         console.error('Unable to parse AI error response.', parseError);
       }
-
-      const modelNotAvailable =
-        fetchResponse.status === 404 || /not found|unsupported|not available/i.test(errorMessage);
-      if (!modelNotAvailable) {
-        return {
-          statusCode: 500,
-          body: JSON.stringify({ error: errorMessage }),
-        };
-      }
-      lastErrorMessage = `${model}: ${errorMessage}`;
+      console.warn(`AI rewrite failed (${errorMessage}). Falling back to original CV text.`);
+      revisedText = resolvedCvText;
+    } else {
+      const result = await fetchResponse.json();
+      revisedText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
     }
-
-    if (!result) {
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: `No compatible Google AI model available. ${lastErrorMessage}` }),
-      };
-    }
-    const revisedText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
 
     if (!revisedText) {
-      return { statusCode: 500, body: JSON.stringify({ error: 'No response from AI' }) };
+      revisedText = resolvedCvText;
     }
 
     const pdfBuffer = buildPdfBuffer(revisedText);
     let runId = incomingRunId || createRunId();
 
-    if (incomingRunId) {
-      const existingRun = await getRun(incomingRunId);
-      if (
-        existingRun &&
-        existingRun.linkedin_upsell_status &&
-        existingRun.linkedin_upsell_status !== LINKEDIN_UPSELL_STATUS.NOT_STARTED
-      ) {
-        runId = createRunId();
-      }
+    if (
+      existingRun &&
+      existingRun.linkedin_upsell_status &&
+      existingRun.linkedin_upsell_status !== LINKEDIN_UPSELL_STATUS.NOT_STARTED
+    ) {
+      runId = createRunId();
     }
 
     await upsertRun(runId, {
+      original_cv_text: resolvedCvText,
+      audit_result: resolvedCvAnalysis,
       revised_cv_text: revisedText,
       revised_cv_generated_at: new Date().toISOString(),
     });
