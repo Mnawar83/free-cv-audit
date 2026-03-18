@@ -69,6 +69,11 @@ async function run() {
   assert.ok(fallbackResponse.body.length > 0);
   assert.strictEqual(fallbackResponse.isBase64Encoded, true);
 
+  const fallbackRun = await runStore.getRun(fallbackResponse.headers['x-run-id']);
+  assert.ok(fallbackRun);
+  assert.ok(!fallbackRun.revised_cv_text, 'Fallback generation should not be persisted as final revised text.');
+  assert.ok(fallbackRun.revised_cv_fallback_generated_at, 'Fallback generation timestamp should be stored.');
+
   await fs.rm(storePath, { force: true });
   console.log('Generate PDF fallback test passed');
 }
