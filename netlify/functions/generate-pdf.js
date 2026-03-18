@@ -222,72 +222,65 @@ Return only the revised CV content, formatted as plain text with clear section h
       contents: [{ parts: [{ text: `Rewrite this CV:\n\n${resolvedCvText}${analysisNote}` }] }],
     };
 
-    let result;
+    let revisedText = '';
+    let usedFallbackText = false;
     let lastErrorMessage = 'AI request failed';
     for (const model of candidateModels) {
-      const apiUrl = buildGoogleAiUrl(apiKey, model);
-      const fetchResponse = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (fetchResponse.ok) {
-        result = await fetchResponse.json();
-        break;
-      }
-
-      let errorMessage = 'AI request failed';
       try {
+        const apiUrl = buildGoogleAiUrl(apiKey, model);
         const fetchResponse = await fetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
 
-        if (!fetchResponse.ok) {
-          let errorMessage = 'AI request failed';
-          try {
-            const errorData = await fetchResponse.json();
-            if (errorData?.error?.message) {
-              errorMessage = errorData.error.message;
-            }
-          } catch (parseError) {
-            console.error('Unable to parse AI error response.', parseError);
-          }
-          console.warn(`AI rewrite failed (${errorMessage}). Falling back to original CV text.`);
-          revisedText = resolvedCvText;
-          usedFallbackText = true;
-        } else {
+        if (fetchResponse.ok) {
           const result = await fetchResponse.json();
           revisedText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+          if (!revisedText) {
+            revisedText = resolvedCvText;
+            usedFallbackText = true;
+          }
+          break;
         }
-      } catch (error) {
-        console.warn(`AI rewrite request threw an error (${error?.message || 'unknown'}). Falling back to original CV text.`);
+
+        let errorMessage = 'AI request failed';
+        try {
+          const errorData = await fetchResponse.json();
+          if (errorData?.error?.message) {
+            errorMessage = errorData.error.message;
+          }
+        } catch (parseError) {
+          console.error('Unable to parse AI error response.', parseError);
+        }
+
+        const modelNotAvailable =
+          fetchResponse.status === 404 || /not found|unsupported|not available/i.test(errorMessage);
+        if (modelNotAvailable) {
+          lastErrorMessage = `${model}: ${errorMessage}`;
+          continue;
+        }
+
+        console.warn(`AI rewrite failed (${errorMessage}). Falling back to original CV text.`);
         revisedText = resolvedCvText;
         usedFallbackText = true;
+        break;
+      } catch (error) {
+        const errorMessage = error?.message || 'unknown';
+        const modelNotAvailable = /missing|not found|unsupported|not available/i.test(errorMessage);
+        if (modelNotAvailable) {
+          lastErrorMessage = `${model}: ${errorMessage}`;
+          continue;
+        }
+        console.warn(`AI rewrite request threw an error (${errorMessage}). Falling back to original CV text.`);
+        revisedText = resolvedCvText;
+        usedFallbackText = true;
+        break;
       }
-
-      const modelNotAvailable =
-        fetchResponse.status === 404 || /not found|unsupported|not available/i.test(errorMessage);
-      if (!modelNotAvailable) {
-        return {
-          statusCode: 500,
-          body: JSON.stringify({ error: errorMessage }),
-        };
-      }
-      lastErrorMessage = `${model}: ${errorMessage}`;
     }
-
-    if (!result) {
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: `No compatible Google AI model available. ${lastErrorMessage}` }),
-      };
-    }
-    const revisedText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
 
     if (!revisedText) {
+      console.warn(`No compatible Google AI model available (${lastErrorMessage}). Falling back to original CV text.`);
       revisedText = resolvedCvText;
       usedFallbackText = true;
     }
