@@ -1000,6 +1000,10 @@
                 resultsSection.classList.remove('hidden');
                 initializePayPalButtons();
                 initializeWhishPayCheckout();
+                if (hasPaidCV && !revisedCvBlobUrl) {
+                    applyPaidGatedLayout();
+                    regeneratePdfOnRestore();
+                }
                 return true;
             }
             extractedCvAnalysis = storedAnalysis;
@@ -1018,8 +1022,37 @@
                 applyPaidGatedLayout();
                 initializeLinkedInUpsell();
                 initializeCoverLetterUpsell();
+                if (hasPaidCV && !revisedCvBlobUrl) {
+                    regeneratePdfOnRestore();
+                }
             }
             return true;
+        }
+
+        let regeneratePdfTriggered = false;
+        function regeneratePdfOnRestore() {
+            if (regeneratePdfTriggered || isGeneratingPdf) return;
+            regeneratePdfTriggered = true;
+            if (primaryDownloadLink) {
+                primaryDownloadLink.textContent = 'Preparing your revised CV...';
+                primaryDownloadLink.setAttribute('aria-disabled', 'true');
+                primaryDownloadLink.classList.add('opacity-50', 'pointer-events-none');
+            }
+            generateRevisedPdf(extractedCvText)
+                .then(() => {
+                    setDownloadLocked(false);
+                })
+                .catch((error) => {
+                    console.error('Auto PDF regeneration failed:', error);
+                    regeneratePdfTriggered = false;
+                    if (primaryDownloadLink) {
+                        primaryDownloadLink.textContent = 'Download Revised CV (PDF)';
+                        primaryDownloadLink.classList.remove('opacity-50', 'pointer-events-none');
+                    }
+                    showError(error.message || 'Unable to generate your revised CV. Please try again.');
+                    if (revisedPaymentSection) revisedPaymentSection.classList.remove('hidden');
+                    updateRetryVisibility();
+                });
         }
 
         function updateRetryVisibility() {
@@ -1994,6 +2027,7 @@
         handleWhishPayReturn();
         handleLinkedinWhishReturn();
         handleCoverLetterWhishReturn();
+        restoreAuditResultsFromSession();
 
         if (retryDownloadButton) {
             retryDownloadButton.addEventListener('click', async () => {
