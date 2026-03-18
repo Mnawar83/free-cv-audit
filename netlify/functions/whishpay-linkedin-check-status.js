@@ -64,7 +64,7 @@ exports.handler = async (event) => {
 
     const collectStatus = data?.data?.collectStatus;
     const normalizedCollectStatus = String(collectStatus || '').toLowerCase();
-    const isPaidStatus = normalizedCollectStatus === 'paid' || normalizedCollectStatus === 'success';
+    const isPaidStatus = ['paid', 'success', 'collected'].includes(normalizedCollectStatus);
 
     if (isPaidStatus) {
       await updateRun(runId, () => ({

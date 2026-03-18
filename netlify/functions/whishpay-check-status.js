@@ -52,11 +52,14 @@ exports.handler = async (event) => {
     }
 
     const collectStatus = data?.data?.collectStatus;
+    const normalizedCollectStatus = String(collectStatus || '').toLowerCase();
+    const isPaidStatus = ['paid', 'success', 'collected'].includes(normalizedCollectStatus);
     return {
       statusCode: 200,
       body: JSON.stringify({
         status: true,
         collectStatus,
+        isPaidStatus,
       }),
     };
   } catch (error) {

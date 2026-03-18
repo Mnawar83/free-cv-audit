@@ -37,7 +37,7 @@ exports.handler = async function handler(event) {
       const { data, etag } = result;
       return {
         statusCode: 200,
-        headers: { 'Content-Type': 'application/json', ETag: etag },
+        headers: { 'Content-Type': 'application/json', ...(etag ? { ETag: etag } : {}) },
         body: JSON.stringify(data ?? {}),
       };
     } catch (error) {
@@ -53,31 +53,16 @@ exports.handler = async function handler(event) {
       return jsonResponse(400, { error: 'Invalid JSON body.' });
     }
 
-    const ifMatch = headers['if-match'] || headers['If-Match'];
-    const ifNoneMatch = headers['if-none-match'] || headers['If-None-Match'];
     try {
-      const options = {};
-      if (ifMatch) options.onlyIfMatch = ifMatch;
-      else if (ifNoneMatch === '*') options.onlyIfNew = true;
+      await store.setJSON(STORE_KEY, payload);
 
-      const result = await store.setJSON(STORE_KEY, payload, options);
-
-      if (options.onlyIfMatch && !result?.modified) {
-        return jsonResponse(412, { error: 'ETag mismatch.' });
-      }
-      if (options.onlyIfNew && !result?.modified) {
-        return jsonResponse(412, { error: 'Store already exists.' });
-      }
-
-      // Get the ETag either from the result or by reading metadata
-      let etag = result?.etag;
-      if (!etag) {
-        try {
-          const meta = await store.getWithMetadata(STORE_KEY, { type: 'json' });
-          etag = meta?.etag;
-        } catch {
-          // ignore if metadata is unavailable
-        }
+      // Read back to obtain the new ETag when available
+      let etag;
+      try {
+        const meta = await store.getWithMetadata(STORE_KEY, { type: 'json' });
+        etag = meta?.etag;
+      } catch {
+        // ignore if metadata is unavailable
       }
 
       return {

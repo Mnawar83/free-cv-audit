@@ -43,6 +43,13 @@ exports.handler = async (event) => {
     const runId = createRunId();
 
     const apiKey = process.env.GOOGLE_AI_API_KEY;
+    if (!apiKey) {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: 'Google AI API key is missing.' }),
+      };
+    }
+
     const candidateModels = getGoogleAiCandidateModels();
 
     const payload = {
@@ -54,62 +61,41 @@ exports.handler = async (event) => {
       ],
     };
 
-    let auditResult = '';
+    let result;
     let lastErrorMessage = 'AI request failed';
-
     for (const model of candidateModels) {
+      const apiUrl = buildGoogleAiUrl(apiKey, model);
+      const fetchResponse = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (fetchResponse.ok) {
+        result = await fetchResponse.json();
+        break;
+      }
+
       try {
-        const apiUrl = buildGoogleAiUrl(apiKey, model);
-        const fetchResponse = await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-
-        if (fetchResponse.ok) {
-          const result = await fetchResponse.json();
-          auditResult = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-          break;
+        const errorData = await fetchResponse.json();
+        console.error('API Error:', errorData);
+        if (errorData?.error?.message) {
+          lastErrorMessage = errorData.error.message;
         }
-
-        let errorMessage = 'AI request failed';
-        try {
-          const errorData = await fetchResponse.json();
-          if (errorData?.error?.message) {
-            errorMessage = errorData.error.message;
-          }
-        } catch (parseError) {
-          console.error('Unable to parse AI error response.', parseError);
-        }
-
-        const modelNotAvailable =
-          fetchResponse.status === 404 || /not found|unsupported|not available/i.test(errorMessage);
-        if (modelNotAvailable) {
-          lastErrorMessage = `${model}: ${errorMessage}`;
-          continue;
-        }
-
-        lastErrorMessage = errorMessage;
-        break;
-      } catch (error) {
-        const errorMessage = error?.message || 'unknown';
-        const modelNotAvailable = /missing|not found|unsupported|not available/i.test(errorMessage);
-        if (modelNotAvailable) {
-          lastErrorMessage = `${model}: ${errorMessage}`;
-          continue;
-        }
-        lastErrorMessage = errorMessage;
-        break;
+      } catch (parseError) {
+        console.error('Unable to parse AI error response.', parseError);
       }
     }
 
-    if (!auditResult) {
-      console.error('Audit AI call failed:', lastErrorMessage);
+    if (!result) {
       return {
         statusCode: 500,
         body: JSON.stringify({ error: lastErrorMessage }),
       };
     }
+
+    const text = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    const auditResult = text || 'No response from AI';
 
     await upsertRun(runId, {
       original_cv_text: cvText,

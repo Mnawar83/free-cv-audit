@@ -7,10 +7,7 @@ function clearModule(modulePath) {
 
 async function run() {
   process.env.GOOGLE_AI_API_KEY = 'test-key';
-  process.env.RUN_STORE_PATH = '/tmp/free-cv-audit-audit-test.json';
   delete process.env.RUN_STORE_DURABLE_URL;
-  delete process.env.RUN_STORE_DURABLE_TOKEN;
-  delete process.env.CONTEXT;
 
   let capturedPayload;
   global.fetch = async (_url, options) => {
@@ -24,7 +21,6 @@ async function run() {
   };
 
   clearModule('../netlify/functions/run-store');
-  clearModule('../netlify/functions/google-ai');
   clearModule('../netlify/functions/audit');
   const handler = require('../netlify/functions/audit').handler;
 

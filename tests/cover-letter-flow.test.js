@@ -17,6 +17,7 @@ async function run() {
   delete process.env.RUN_STORE_DURABLE_URL;
   delete process.env.RUN_STORE_DURABLE_TOKEN;
   process.env.GOOGLE_AI_API_KEY = 'test-key';
+  delete process.env.RUN_STORE_DURABLE_URL;
 
   clearModule('../netlify/functions/run-store');
   clearModule('../netlify/functions/cover-letter-init');

@@ -222,36 +222,25 @@ Return only the revised CV content, formatted as plain text with clear section h
       contents: [{ parts: [{ text: `Rewrite this CV:\n\n${resolvedCvText}${analysisNote}` }] }],
     };
 
-    let revisedText = '';
-    let usedFallbackText = false;
+    let result;
     let lastErrorMessage = 'AI request failed';
     for (const model of candidateModels) {
+      const apiUrl = buildGoogleAiUrl(apiKey, model);
+      const fetchResponse = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (fetchResponse.ok) {
+        result = await fetchResponse.json();
+        break;
+      }
+
       try {
-        const apiUrl = buildGoogleAiUrl(apiKey, model);
-        const fetchResponse = await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-
-        if (fetchResponse.ok) {
-          const result = await fetchResponse.json();
-          revisedText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-          if (!revisedText) {
-            revisedText = resolvedCvText;
-            usedFallbackText = true;
-          }
-          break;
-        }
-
-        let errorMessage = 'AI request failed';
-        try {
-          const errorData = await fetchResponse.json();
-          if (errorData?.error?.message) {
-            errorMessage = errorData.error.message;
-          }
-        } catch (parseError) {
-          console.error('Unable to parse AI error response.', parseError);
+        const errorData = await fetchResponse.json();
+        if (errorData?.error?.message) {
+          lastErrorMessage = errorData.error.message;
         }
 
         const modelNotAvailable =
@@ -277,6 +266,16 @@ Return only the revised CV content, formatted as plain text with clear section h
         usedFallbackText = true;
         break;
       }
+    }
+
+    let revisedText = '';
+    let usedFallbackText = false;
+    if (!result) {
+      console.warn(`AI rewrite failed (${lastErrorMessage}). Falling back to original CV text.`);
+      revisedText = resolvedCvText;
+      usedFallbackText = true;
+    } else {
+      revisedText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
     }
 
     if (!revisedText) {

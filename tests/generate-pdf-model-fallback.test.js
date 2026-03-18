@@ -12,7 +12,6 @@ async function run() {
   delete process.env.GOOGLE_AI_MODEL;
   delete process.env.CONTEXT;
   delete process.env.RUN_STORE_DURABLE_URL;
-  delete process.env.RUN_STORE_DURABLE_TOKEN;
 
   try {
     fs.unlinkSync(process.env.RUN_STORE_PATH);
