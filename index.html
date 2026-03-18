@@ -514,6 +514,12 @@
             setPaidState('cover-letter', false);
             linkedinButtonsRendered = false;
             coverLetterButtonsRendered = false;
+            if (linkedinPayPalButtonsContainer) {
+                linkedinPayPalButtonsContainer.innerHTML = '';
+            }
+            if (coverLetterPayPalButtonsContainer) {
+                coverLetterPayPalButtonsContainer.innerHTML = '';
+            }
             if (upsellCards) {
                 upsellCards.classList.add('hidden');
             }
@@ -540,6 +546,32 @@
                     coverLetterDownloadLink.removeAttribute('href');
                 }
             }
+        }
+
+        function hasPaymentReturnParams() {
+            try {
+                const params = new URL(window.location.href).searchParams;
+                return Boolean(params.get('payment') || params.get('linkedinPayment') || params.get('coverLetterPayment'));
+            } catch (error) {
+                console.warn('Unable to inspect URL parameters.', error);
+                return false;
+            }
+        }
+
+        function shouldStartFreshVisit() {
+            if (hasPaymentReturnParams()) return false;
+            try {
+                const navigationEntry = performance.getEntriesByType('navigation')[0];
+                const navigationType = navigationEntry?.type || '';
+                return navigationType === 'navigate';
+            } catch (error) {
+                console.warn('Unable to inspect navigation type.', error);
+                return false;
+            }
+        }
+
+        if (shouldStartFreshVisit()) {
+            resetRunStateForNewAudit({ clearAuditArtifacts: true });
         }
         
         auditButton.addEventListener('click', async () => {
@@ -1682,6 +1714,7 @@
             if (!linkedinButtonsRendered) {
                 try {
                     const sdk = await loadPayPalSdk();
+                    linkedinPayPalButtonsContainer.innerHTML = '';
                     await sdk.Buttons({
                         createOrder: async () => {
                             const providedLinkedInUrl = linkedinUrlInput.value.trim();
@@ -1898,6 +1931,7 @@
             if (!coverLetterButtonsRendered) {
                 try {
                     const sdk = await loadPayPalSdk();
+                    coverLetterPayPalButtonsContainer.innerHTML = '';
                     await sdk.Buttons({
                         createOrder: async () => {
                             const jobLink = coverLetterJobLinkInput.value.trim();
