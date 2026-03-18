@@ -1,4 +1,4 @@
-const { buildGoogleAiUrl } = require('./google-ai');
+const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { LINKEDIN_UPSELL_STATUS, createRunId, getRun, upsertRun } = require('./run-store');
 
 const PDF_FILENAME = 'revised-cv.pdf';
