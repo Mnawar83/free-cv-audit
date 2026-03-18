@@ -14,6 +14,8 @@ async function run() {
 
   process.env.CONTEXT = 'deploy-preview';
   process.env.RUN_STORE_PATH = storePath;
+  delete process.env.RUN_STORE_DURABLE_URL;
+  delete process.env.RUN_STORE_DURABLE_TOKEN;
   process.env.GOOGLE_AI_API_KEY = 'test-key';
 
   clearModule('../netlify/functions/run-store');

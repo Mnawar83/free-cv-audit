@@ -10,6 +10,9 @@ function clearModule(modulePath) {
 async function run() {
   const storePath = path.join('/tmp', `free-cv-audit-generate-test-${process.pid}-${Date.now()}.json`);
   process.env.RUN_STORE_PATH = storePath;
+  delete process.env.RUN_STORE_DURABLE_URL;
+  delete process.env.RUN_STORE_DURABLE_TOKEN;
+  delete process.env.CONTEXT;
 
   clearModule('../netlify/functions/run-store');
   const runStore = require('../netlify/functions/run-store');

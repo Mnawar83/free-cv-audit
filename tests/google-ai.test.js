@@ -15,18 +15,18 @@ function run() {
   let googleAi = loadGoogleAi();
   assert.strictEqual(googleAi.getGoogleAiModel(), 'gemini-3.1-pro-preview');
   assert.ok(googleAi.buildGoogleAiUrl('test-key').includes('/models/gemini-3.1-pro-preview:generateContent'));
-  assert.deepStrictEqual(googleAi.getGoogleAiCandidateModels(), ['gemini-3.1-pro-preview', 'gemini-3.1-flash']);
+  assert.deepStrictEqual(googleAi.getGoogleAiCandidateModels(), ['gemini-3.1-pro-preview', 'gemini-2.5-flash']);
   assert.ok(
     googleAi
-      .buildGoogleAiUrl('test-key', 'gemini-3.1-flash')
-      .includes('/models/gemini-3.1-flash:generateContent'),
+      .buildGoogleAiUrl('test-key', 'gemini-2.5-flash')
+      .includes('/models/gemini-2.5-flash:generateContent'),
   );
 
   process.env.GOOGLE_AI_MODEL = 'gemini-2.5-pro';
   googleAi = loadGoogleAi();
   assert.strictEqual(googleAi.getGoogleAiModel(), 'gemini-2.5-pro');
   assert.ok(googleAi.buildGoogleAiUrl('test-key').includes('/models/gemini-2.5-pro:generateContent'));
-  assert.deepStrictEqual(googleAi.getGoogleAiCandidateModels(), ['gemini-2.5-pro', 'gemini-3.1-flash']);
+  assert.deepStrictEqual(googleAi.getGoogleAiCandidateModels(), ['gemini-2.5-pro', 'gemini-2.5-flash']);
 
   console.log('Google AI helper test passed');
 }
