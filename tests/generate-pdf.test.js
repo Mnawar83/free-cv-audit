@@ -71,7 +71,12 @@ async function run() {
 
   const fallbackRun = await runStore.getRun(fallbackResponse.headers['x-run-id']);
   assert.ok(fallbackRun);
-  assert.ok(!fallbackRun.revised_cv_text, 'Fallback generation should not be persisted as final revised text.');
+  assert.strictEqual(
+    fallbackRun.revised_cv_text,
+    'Bob Example\nExperience\n- Shipped products',
+    'Fallback generation should persist the fallback revised text for downstream document generation.',
+  );
+  assert.ok(fallbackRun.revised_cv_generated_at, 'Revised CV generation timestamp should be stored.');
   assert.ok(fallbackRun.revised_cv_fallback_generated_at, 'Fallback generation timestamp should be stored.');
 
   delete process.env.GOOGLE_AI_API_KEY;
