@@ -1,5 +1,5 @@
 const DEFAULT_GOOGLE_AI_MODEL = 'gemini-3.1-pro-preview';
-const GOOGLE_AI_MODEL = (process.env.GOOGLE_AI_MODEL || DEFAULT_GOOGLE_AI_MODEL).trim();
+const FALLBACK_GOOGLE_AI_MODELS = ['gemini-3.1-flash'];
 
 function getGoogleAiModel() {
   const configuredModel = (process.env.GOOGLE_AI_MODEL || '').trim();
@@ -21,6 +21,8 @@ function buildGoogleAiUrl(apiKey, modelOverride) {
 
 module.exports = {
   DEFAULT_GOOGLE_AI_MODEL,
-  GOOGLE_AI_MODEL,
+  FALLBACK_GOOGLE_AI_MODELS,
+  getGoogleAiModel,
+  getGoogleAiCandidateModels,
   buildGoogleAiUrl,
 };
