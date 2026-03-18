@@ -223,53 +223,59 @@ Return only the revised CV content, formatted as plain text with clear section h
     };
 
     let result;
+    let revisedText = '';
+    let usedFallbackText = false;
     let lastErrorMessage = 'AI request failed';
-    for (const model of candidateModels) {
-      const apiUrl = buildGoogleAiUrl(apiKey, model);
-      const fetchResponse = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
 
-      if (fetchResponse.ok) {
-        result = await fetchResponse.json();
-        break;
-      }
+    if (!apiKey) {
+      lastErrorMessage = 'Google AI API key is missing';
+    } else {
+      for (const model of candidateModels) {
+        const apiUrl = buildGoogleAiUrl(apiKey, model);
+        const fetchResponse = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
 
-      try {
-        const errorData = await fetchResponse.json();
-        if (errorData?.error?.message) {
-          lastErrorMessage = errorData.error.message;
+        if (fetchResponse.ok) {
+          result = await fetchResponse.json();
+          break;
         }
 
-        const modelNotAvailable =
-          fetchResponse.status === 404 || /not found|unsupported|not available/i.test(errorMessage);
-        if (modelNotAvailable) {
-          lastErrorMessage = `${model}: ${errorMessage}`;
-          continue;
-        }
+        try {
+          const errorData = await fetchResponse.json();
+          if (errorData?.error?.message) {
+            lastErrorMessage = errorData.error.message;
+          }
 
-        console.warn(`AI rewrite failed (${errorMessage}). Falling back to original CV text.`);
-        revisedText = resolvedCvText;
-        usedFallbackText = true;
-        break;
-      } catch (error) {
-        const errorMessage = error?.message || 'unknown';
-        const modelNotAvailable = /missing|not found|unsupported|not available/i.test(errorMessage);
-        if (modelNotAvailable) {
-          lastErrorMessage = `${model}: ${errorMessage}`;
-          continue;
+          const responseErrorMessage = errorData?.error?.message || 'unknown';
+          const modelNotAvailable =
+            fetchResponse.status === 404 || /not found|unsupported|not available/i.test(responseErrorMessage);
+          if (modelNotAvailable) {
+            lastErrorMessage = `${model}: ${responseErrorMessage}`;
+            continue;
+          }
+
+          console.warn(`AI rewrite failed (${responseErrorMessage}). Falling back to original CV text.`);
+          revisedText = resolvedCvText;
+          usedFallbackText = true;
+          break;
+        } catch (error) {
+          const errorMessage = error?.message || 'unknown';
+          const modelNotAvailable = /missing|not found|unsupported|not available/i.test(errorMessage);
+          if (modelNotAvailable) {
+            lastErrorMessage = `${model}: ${errorMessage}`;
+            continue;
+          }
+          console.warn(`AI rewrite request threw an error (${errorMessage}). Falling back to original CV text.`);
+          revisedText = resolvedCvText;
+          usedFallbackText = true;
+          break;
         }
-        console.warn(`AI rewrite request threw an error (${errorMessage}). Falling back to original CV text.`);
-        revisedText = resolvedCvText;
-        usedFallbackText = true;
-        break;
       }
     }
 
-    let revisedText = '';
-    let usedFallbackText = false;
     if (!result) {
       console.warn(`AI rewrite failed (${lastErrorMessage}). Falling back to original CV text.`);
       revisedText = resolvedCvText;
