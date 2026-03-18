@@ -1040,6 +1040,10 @@
             }
             generateRevisedPdf(extractedCvText)
                 .then(() => {
+                    if (primaryDownloadLink) {
+                        primaryDownloadLink.classList.remove('opacity-50', 'pointer-events-none');
+                        primaryDownloadLink.removeAttribute('aria-disabled');
+                    }
                     setDownloadLocked(false);
                 })
                 .catch((error) => {
@@ -1511,7 +1515,7 @@
                     })
                     .then((statusData) => {
                         const collectStatus = (statusData.collectStatus || '').toString().toUpperCase();
-                        const isPaid = collectStatus === 'SUCCESS' || collectStatus === 'PAID' || statusData.isPaidStatus === true;
+                        const isPaid = collectStatus === 'SUCCESS' || collectStatus === 'PAID' || collectStatus === 'COLLECTED' || statusData.isPaidStatus === true;
                         if (!isPaid) {
                             const paymentError = new Error('Whish Pay payment is not confirmed yet.');
                             paymentError.code = 'PAYMENT_NOT_CONFIRMED';
@@ -1769,7 +1773,7 @@
                 });
                 console.info('[timing] LinkedIn Whish verify response', { ms: Math.round(performance.now() - verifyStart) });
                 const verifyData = await readJsonSafely(verifyResponse);
-                if (!verifyResponse.ok || (verifyData.collectStatus !== 'PAID' && verifyData.collectStatus !== 'success' && verifyData.isPaidStatus !== true)) {
+                if (!verifyResponse.ok || (verifyData.collectStatus !== 'PAID' && verifyData.collectStatus !== 'success' && verifyData.collectStatus !== 'COLLECTED' && verifyData.isPaidStatus !== true)) {
                     setPaidState('linkedin', false);
                     showError(verifyData.error || 'LinkedIn Whish payment is not confirmed yet.');
                     return;
@@ -1961,7 +1965,7 @@
                 });
                 console.info('[timing] Cover letter Whish verify response', { ms: Math.round(performance.now() - verifyStart) });
                 const verifyData = await readJsonSafely(verifyResponse);
-                if (!verifyResponse.ok || (verifyData.collectStatus !== 'PAID' && verifyData.collectStatus !== 'success' && verifyData.isPaidStatus !== true)) {
+                if (!verifyResponse.ok || (verifyData.collectStatus !== 'PAID' && verifyData.collectStatus !== 'success' && verifyData.collectStatus !== 'COLLECTED' && verifyData.isPaidStatus !== true)) {
                     setPaidState('cover-letter', false);
                     showError(verifyData.error || 'Cover letter Whish payment is not confirmed yet.');
                     return;

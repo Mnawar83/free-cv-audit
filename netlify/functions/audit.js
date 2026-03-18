@@ -1,4 +1,4 @@
-const { buildGoogleAiUrl } = require('./google-ai');
+const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { createRunId, upsertRun } = require('./run-store');
 
 const AUDIT_SYSTEM_PROMPT = `You are a senior ATS CV auditor for Work Waves Career Services.
@@ -42,7 +42,15 @@ exports.handler = async (event) => {
     if (!cvText) return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
     const runId = createRunId();
 
-    const apiUrl = buildGoogleAiUrl(process.env.GOOGLE_AI_API_KEY);
+    const apiKey = process.env.GOOGLE_AI_API_KEY;
+    if (!apiKey) {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: 'Google AI API key is missing.' }),
+      };
+    }
+
+    const candidateModels = getGoogleAiCandidateModels();
 
     const payload = {
       systemInstruction: {
@@ -53,22 +61,39 @@ exports.handler = async (event) => {
       ],
     };
 
-    const fetchResponse = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    let result;
+    let lastErrorMessage = 'AI request failed';
+    for (const model of candidateModels) {
+      const apiUrl = buildGoogleAiUrl(apiKey, model);
+      const fetchResponse = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-    if (!fetchResponse.ok) {
-      const errorData = await fetchResponse.json();
-      console.error('API Error:', errorData);
+      if (fetchResponse.ok) {
+        result = await fetchResponse.json();
+        break;
+      }
+
+      try {
+        const errorData = await fetchResponse.json();
+        console.error('API Error:', errorData);
+        if (errorData?.error?.message) {
+          lastErrorMessage = errorData.error.message;
+        }
+      } catch (parseError) {
+        console.error('Unable to parse AI error response.', parseError);
+      }
+    }
+
+    if (!result) {
       return {
         statusCode: 500,
-        body: JSON.stringify({ error: errorData.error?.message || 'AI request failed' }),
+        body: JSON.stringify({ error: lastErrorMessage }),
       };
     }
 
-    const result = await fetchResponse.json();
     const text = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     const auditResult = text || 'No response from AI';
 
