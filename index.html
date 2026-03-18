@@ -1477,8 +1477,12 @@
                         return readJsonSafely(response);
                     })
                     .then((statusData) => {
-                        if (statusData.collectStatus !== 'success') {
-                            throw new Error('Whish Pay payment is not confirmed yet.');
+                        const collectStatus = (statusData.collectStatus || '').toString().toUpperCase();
+                        const isPaid = collectStatus === 'SUCCESS' || collectStatus === 'PAID' || statusData.isPaidStatus === true;
+                        if (!isPaid) {
+                            const paymentError = new Error('Whish Pay payment is not confirmed yet.');
+                            paymentError.code = 'PAYMENT_NOT_CONFIRMED';
+                            throw paymentError;
                         }
                         setPaidState('cv', true);
                         console.info('[timing] CV Whish payment verified');
@@ -1497,7 +1501,12 @@
                     .then(() => setDownloadLocked(false))
                     .catch((error) => {
                         console.error('Whish Pay confirmation error:', error);
-                        setPaidState('cv', false);
+                        if (error?.code === 'PAYMENT_NOT_CONFIRMED') {
+                            setPaidState('cv', false);
+                        } else {
+                            setPaidState('cv', true);
+                            setDownloadLocked(true);
+                        }
                         showError(error.message || 'Unable to confirm your payment yet.');
                         updateRetryVisibility();
                     });

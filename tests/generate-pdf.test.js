@@ -19,6 +19,10 @@ async function run() {
     original_cv_text: 'Alice Example\nExperience\n- Built systems',
     revised_cv_text: 'Alice Example\nEXPERIENCE\n- Built resilient systems',
   });
+  const legacySeededRunId = 'run_legacy_cached_pdf_only';
+  await runStore.upsertRun(legacySeededRunId, {
+    revised_cv_text: 'Legacy Candidate\nEXPERIENCE\n- Existing revised CV only',
+  });
 
   clearModule('../netlify/functions/generate-pdf');
   let handler = require('../netlify/functions/generate-pdf').handler;
@@ -33,6 +37,17 @@ async function run() {
   assert.strictEqual(cachedResponse.headers['x-run-id'], seededRunId);
   assert.ok(cachedResponse.body.length > 0);
   assert.strictEqual(cachedResponse.isBase64Encoded, true);
+
+  const legacyCachedResponse = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ runId: legacySeededRunId }),
+  });
+
+  assert.strictEqual(legacyCachedResponse.statusCode, 200);
+  assert.strictEqual(legacyCachedResponse.headers['Content-Type'], 'application/pdf');
+  assert.strictEqual(legacyCachedResponse.headers['x-run-id'], legacySeededRunId);
+  assert.ok(legacyCachedResponse.body.length > 0);
+  assert.strictEqual(legacyCachedResponse.isBase64Encoded, true);
 
   process.env.GOOGLE_AI_API_KEY = 'test-key';
   global.fetch = async () => ({
@@ -53,6 +68,11 @@ async function run() {
   assert.ok(fallbackResponse.headers['x-run-id']);
   assert.ok(fallbackResponse.body.length > 0);
   assert.strictEqual(fallbackResponse.isBase64Encoded, true);
+
+  const fallbackRun = await runStore.getRun(fallbackResponse.headers['x-run-id']);
+  assert.ok(fallbackRun);
+  assert.ok(!fallbackRun.revised_cv_text, 'Fallback generation should not be persisted as final revised text.');
+  assert.ok(fallbackRun.revised_cv_fallback_generated_at, 'Fallback generation timestamp should be stored.');
 
   await fs.rm(storePath, { force: true });
   console.log('Generate PDF fallback test passed');

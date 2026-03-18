@@ -190,6 +190,20 @@ exports.handler = async (event) => {
     const resolvedCvText = cvText || existingRun?.original_cv_text || '';
     const resolvedCvAnalysis = cvAnalysis || existingRun?.audit_result || '';
 
+    if (existingRun?.revised_cv_text) {
+      const cachedPdfBuffer = buildPdfBuffer(existingRun.revised_cv_text);
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="${PDF_FILENAME}"`,
+          'x-run-id': incomingRunId,
+        },
+        body: cachedPdfBuffer.toString('base64'),
+        isBase64Encoded: true,
+      };
+    }
+
     if (!resolvedCvText) {
       return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
     }
@@ -245,6 +259,7 @@ Return only the revised CV content, formatted as plain text with clear section h
       }
 
     let revisedText = '';
+    let usedFallbackText = false;
     if (!fetchResponse.ok) {
       let errorMessage = 'AI request failed';
       try {
@@ -257,6 +272,7 @@ Return only the revised CV content, formatted as plain text with clear section h
       }
       console.warn(`AI rewrite failed (${errorMessage}). Falling back to original CV text.`);
       revisedText = resolvedCvText;
+      usedFallbackText = true;
     } else {
       const result = await fetchResponse.json();
       revisedText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
@@ -264,6 +280,7 @@ Return only the revised CV content, formatted as plain text with clear section h
 
     if (!revisedText) {
       revisedText = resolvedCvText;
+      usedFallbackText = true;
     }
 
     const pdfBuffer = buildPdfBuffer(revisedText);
@@ -277,12 +294,19 @@ Return only the revised CV content, formatted as plain text with clear section h
       runId = createRunId();
     }
 
-    await upsertRun(runId, {
+    const runUpdates = {
       original_cv_text: resolvedCvText,
       audit_result: resolvedCvAnalysis,
-      revised_cv_text: revisedText,
-      revised_cv_generated_at: new Date().toISOString(),
-    });
+    };
+    if (usedFallbackText) {
+      runUpdates.revised_cv_fallback_generated_at = new Date().toISOString();
+    } else {
+      runUpdates.revised_cv_text = revisedText;
+      runUpdates.revised_cv_generated_at = new Date().toISOString();
+      runUpdates.revised_cv_fallback_generated_at = null;
+    }
+
+    await upsertRun(runId, runUpdates);
 
     return {
       statusCode: 200,
