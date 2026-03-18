@@ -17,7 +17,7 @@ export default async function handler(req, res) {
     }
 
     // Get the secret API key from environment variables
-    const apiKey = process.env.GOOGLE_AI_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
 
     if (!apiKey) {
         console.error("API Key is not configured.");
@@ -25,7 +25,7 @@ export default async function handler(req, res) {
         return;
     }
 
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+    const apiUrl = 'https://api.openai.com/v1/chat/completions';
 
     const systemPrompt = `
         You are an expert CV auditor for a company called 'Work Waves Career Services'.
@@ -46,32 +46,38 @@ export default async function handler(req, res) {
     const userPrompt = `Here is the CV text to audit:\n\n${cvText}`;
 
     const payload = {
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ parts: [{ text: userPrompt }] }],
+        model: process.env.OPENAI_MODEL || 'gpt-4.1-mini',
+        messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+        ]
     };
 
     try {
         const fetchResponse = await fetch(apiUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
             body: JSON.stringify(payload)
         });
 
         if (!fetchResponse.ok) {
             const errorData = await fetchResponse.json();
-            const errorMessage = errorData?.error?.message || `Google AI API request failed with status ${fetchResponse.status}.`;
-            console.error("Google AI API Error:", errorMessage);
+            const errorMessage = errorData?.error?.message || `OpenAI API request failed with status ${fetchResponse.status}.`;
+            console.error("OpenAI API Error:", errorMessage);
             res.status(500).json({ error: errorMessage });
             return;
         }
         
         const result = await fetchResponse.json();
-        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        const text = result?.choices?.[0]?.message?.content;
 
         if (text) {
             res.status(200).json({ auditResult: text.trim() });
         } else {
-            console.error("Invalid response structure from Google AI API:", result);
+            console.error("Invalid response structure from OpenAI API:", result);
             res.status(500).json({ error: "The AI returned an empty or invalid response." });
         }
 

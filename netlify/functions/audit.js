@@ -1,4 +1,4 @@
-const { buildGoogleAiUrl } = require('./google-ai');
+const { buildOpenAiUrl, getOpenAiModel, extractOpenAiText } = require('./open-ai');
 
 const AUDIT_SYSTEM_PROMPT = `You are a senior ATS CV auditor for Work Waves Career Services.
 
@@ -40,20 +40,21 @@ exports.handler = async (event) => {
     const { cvText } = JSON.parse(event.body || '{}');
     if (!cvText) return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
 
-    const apiUrl = buildGoogleAiUrl(process.env.GOOGLE_AI_API_KEY);
-
+    const apiUrl = buildOpenAiUrl(process.env.OPENAI_API_KEY);
     const payload = {
-      systemInstruction: {
-        parts: [{ text: AUDIT_SYSTEM_PROMPT }],
-      },
-      contents: [
-        { parts: [{ text: `Audit this CV now:\n\n${cvText}` }] },
+      model: getOpenAiModel(),
+      messages: [
+        { role: 'system', content: AUDIT_SYSTEM_PROMPT },
+        { role: 'user', content: `Audit this CV now:\n\n${cvText}` },
       ],
     };
 
     const fetchResponse = await fetch(apiUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
       body: JSON.stringify(payload),
     });
 
@@ -67,7 +68,7 @@ exports.handler = async (event) => {
     }
 
     const result = await fetchResponse.json();
-    const text = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    const text = extractOpenAiText(result);
 
     return {
       statusCode: 200,

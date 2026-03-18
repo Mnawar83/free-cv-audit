@@ -1,5 +1,5 @@
 const { Document, Packer, Paragraph, TextRun } = require('docx');
-const { buildGoogleAiUrl } = require('./google-ai');
+const { buildOpenAiUrl, getOpenAiModel, extractOpenAiText } = require('./open-ai');
 const { COVER_LETTER_STATUS, getRun, updateRun } = require('./run-store');
 const { fetchJobPageWithPuppeteer } = require('./job-page-fetcher');
 const { COVER_LETTER_AI_JOB_TEXT_MAX, COVER_LETTER_JOB_TEXT_THRESHOLD } = require('./cover-letter-constants');
@@ -94,20 +94,26 @@ exports.handler = async (event) => {
 
     const usedJobText = jobPageTextLength >= COVER_LETTER_JOB_TEXT_THRESHOLD;
     const prompt = buildPrompt(run.revised_cv_text, jobPageText, jobPageTextLength);
-    const apiUrl = buildGoogleAiUrl(process.env.GOOGLE_AI_API_KEY);
+    const apiUrl = buildOpenAiUrl(process.env.OPENAI_API_KEY);
 
     const response = await fetch(apiUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        systemInstruction: { parts: [{ text: 'You are writing a professional job application cover letter.' }] },
+        model: getOpenAiModel(),
+        messages: [
+          { role: 'system', content: 'You are writing a professional job application cover letter.' },
+          { role: 'user', content: prompt },
+        ],
       }),
     });
 
     if (!response.ok) return { statusCode: 500, body: JSON.stringify({ error: 'AI generation failed.' }) };
     const result = await response.json();
-    const outputText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    const outputText = extractOpenAiText(result);
     if (!outputText) return { statusCode: 500, body: JSON.stringify({ error: 'No AI output generated.' }) };
 
     const bodyParagraphs = outputText.split(/\n+/).map((line) => line.trim()).filter(Boolean);

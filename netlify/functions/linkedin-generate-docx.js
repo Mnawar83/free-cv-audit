@@ -1,5 +1,5 @@
 const { Document, Packer, Paragraph, TextRun, HeadingLevel } = require('docx');
-const { buildGoogleAiUrl } = require('./google-ai');
+const { buildOpenAiUrl, getOpenAiModel, extractOpenAiText } = require('./open-ai');
 const { LINKEDIN_UPSELL_STATUS, getRun, updateRun } = require('./run-store');
 
 const RATE_LIMIT_MS = 20_000;
@@ -43,20 +43,26 @@ exports.handler = async (event) => {
 
     await updateRun(runId, () => ({ linkedin_last_generate_attempt_at: new Date().toISOString() }));
 
-    const apiKey = process.env.GOOGLE_AI_API_KEY;
-    const apiUrl = buildGoogleAiUrl(apiKey);
+    const apiKey = process.env.OPENAI_API_KEY;
+    const apiUrl = buildOpenAiUrl(apiKey);
     const prompt = `Using ONLY the revised CV text below, generate:\n1) LinkedIn Headline (180-220 characters, professional, keyword-rich, no invented employers/titles)\n2) LinkedIn About section (1800-2600 characters; hook line, 2-3 short paragraphs, inline 'Core strengths:' list with 6-10 items, CV-grounded achievements only, soft CTA).\nDo not fetch LinkedIn data.\nReturn exactly in this format:\nHeadline: ...\nAbout: ...\n\nRevised CV:\n${run.revised_cv_text}`;
 
     const response = await fetch(apiUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: getOpenAiModel(),
+        messages: [{ role: 'user', content: prompt }],
+      }),
     });
     if (!response.ok) {
       return { statusCode: 500, body: JSON.stringify({ error: 'AI generation failed.' }) };
     }
     const result = await response.json();
-    const text = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    const text = extractOpenAiText(result);
     if (!text) return { statusCode: 500, body: JSON.stringify({ error: 'No AI output generated.' }) };
 
     const { headline, about } = parseLinkedinOutput(text);

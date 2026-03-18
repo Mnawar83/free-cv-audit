@@ -14,7 +14,7 @@ async function run() {
 
   process.env.CONTEXT = 'deploy-preview';
   process.env.RUN_STORE_PATH = storePath;
-  process.env.GOOGLE_AI_API_KEY = 'test-key';
+  process.env.OPENAI_API_KEY = 'test-key';
 
   clearModule('../netlify/functions/run-store');
   clearModule('../netlify/functions/cover-letter-init');
@@ -42,11 +42,11 @@ async function run() {
   let capturedPrompt = '';
   global.fetch = async (_url, options) => {
     const body = JSON.parse(options.body || '{}');
-    capturedPrompt = body?.contents?.[0]?.parts?.[0]?.text || '';
+    capturedPrompt = body?.messages?.[1]?.content || '';
     return {
       ok: true,
       json: async () => ({
-        candidates: [{ content: { parts: [{ text: 'Dear Hiring Manager\n\nI am excited to apply for this role.\n\nThank you for your consideration.' }] } }],
+        choices: [{ message: { content: 'Dear Hiring Manager\n\nI am excited to apply for this role.\n\nThank you for your consideration.' } }],
       }),
     };
   };

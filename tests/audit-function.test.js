@@ -6,7 +6,7 @@ function clearModule(modulePath) {
 }
 
 async function run() {
-  process.env.GOOGLE_AI_API_KEY = 'test-key';
+  process.env.OPENAI_API_KEY = 'test-key';
 
   let capturedPayload;
   global.fetch = async (_url, options) => {
@@ -14,7 +14,7 @@ async function run() {
     return {
       ok: true,
       json: async () => ({
-        candidates: [{ content: { parts: [{ text: 'Overall ATS Match: 82%\n\nStrengths:\n- Strong impact bullets' }] } }],
+        choices: [{ message: { content: 'Overall ATS Match: 82%\n\nStrengths:\n- Strong impact bullets' } }],
       }),
     };
   };
@@ -31,12 +31,12 @@ async function run() {
   const payload = JSON.parse(response.body);
   assert.ok(payload.auditResult.includes('Overall ATS Match'));
 
-  const promptText = capturedPayload.systemInstruction.parts[0].text;
+  const promptText = capturedPayload.messages[0].content;
   assert.ok(promptText.includes('Return a complete audit immediately'));
   assert.ok(promptText.includes('Never say you are ready to begin'));
   assert.ok(promptText.includes('Do not include a rewritten professional summary section'));
   assert.ok(!promptText.includes('Rewritten Professional Summary'));
-  assert.ok(capturedPayload.contents[0].parts[0].text.startsWith('Audit this CV now:'));
+  assert.ok(capturedPayload.messages[1].content.startsWith('Audit this CV now:'));
 
   console.log('Audit function test passed');
 }

@@ -1,4 +1,4 @@
-const { buildGoogleAiUrl } = require('./google-ai');
+const { buildOpenAiUrl, getOpenAiCandidateModels, getOpenAiModel, extractOpenAiText } = require('./open-ai');
 const { LINKEDIN_UPSELL_STATUS, createRunId, getRun, upsertRun } = require('./run-store');
 
 const PDF_FILENAME = 'revised-cv.pdf';
@@ -190,14 +190,14 @@ exports.handler = async (event) => {
       return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
     }
 
-    const apiKey = process.env.GOOGLE_AI_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return {
         statusCode: 500,
-        body: JSON.stringify({ error: 'Google AI API key is missing.' }),
+        body: JSON.stringify({ error: 'OpenAI API key is missing.' }),
       };
     }
-    const apiUrl = buildGoogleAiUrl(apiKey);
+    const candidateModels = getOpenAiCandidateModels();
 
     const systemPrompt = `You are an expert CV writer for Work Waves Career Services.
 Rewrite the CV for ATS compatibility and professional impact.
@@ -206,18 +206,30 @@ Return only the revised CV content, formatted as plain text with clear section h
     const analysisNote = cvAnalysis
       ? `\n\nUse this CV analysis as reference while revising:\n${cvAnalysis}`
       : '';
-    const payload = {
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ parts: [{ text: `Rewrite this CV:\n\n${cvText}${analysisNote}` }] }],
-    };
+    let result;
+    let lastErrorMessage = 'AI request failed';
+    for (const model of candidateModels) {
+      const apiUrl = buildOpenAiUrl(apiKey);
+      const fetchResponse = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: model || getOpenAiModel(),
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Rewrite this CV:\n\n${cvText}${analysisNote}` },
+          ],
+        }),
+      });
 
-    const fetchResponse = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+      if (fetchResponse.ok) {
+        result = await fetchResponse.json();
+        break;
+      }
 
-    if (!fetchResponse.ok) {
       let errorMessage = 'AI request failed';
       try {
         const errorData = await fetchResponse.json();
@@ -227,14 +239,25 @@ Return only the revised CV content, formatted as plain text with clear section h
       } catch (parseError) {
         console.error('Unable to parse AI error response.', parseError);
       }
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: errorMessage }),
-      };
+
+      const modelNotAvailable =
+        fetchResponse.status === 404 || /not found|unsupported|not available|model/i.test(errorMessage);
+      if (!modelNotAvailable) {
+        return {
+          statusCode: 500,
+          body: JSON.stringify({ error: errorMessage }),
+        };
+      }
+      lastErrorMessage = `${model}: ${errorMessage}`;
     }
 
-    const result = await fetchResponse.json();
-    const revisedText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!result) {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: `No compatible OpenAI model available. ${lastErrorMessage}` }),
+      };
+    }
+    const revisedText = extractOpenAiText(result);
 
     if (!revisedText) {
       return { statusCode: 500, body: JSON.stringify({ error: 'No response from AI' }) };
