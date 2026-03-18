@@ -1,4 +1,4 @@
-const { buildGoogleAiUrl } = require('./google-ai');
+const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { LINKEDIN_UPSELL_STATUS, createRunId, getRun, upsertRun } = require('./run-store');
 
 const PDF_FILENAME = 'revised-cv.pdf';
@@ -215,7 +215,7 @@ exports.handler = async (event) => {
         body: JSON.stringify({ error: 'Google AI API key is missing.' }),
       };
     }
-    const apiUrl = buildGoogleAiUrl(apiKey);
+    const candidateModels = getGoogleAiCandidateModels();
 
     const systemPrompt = `You are an expert CV writer for Work Waves Career Services.
 Rewrite the CV for ATS compatibility and professional impact.
@@ -229,11 +229,20 @@ Return only the revised CV content, formatted as plain text with clear section h
       contents: [{ parts: [{ text: `Rewrite this CV:\n\n${resolvedCvText}${analysisNote}` }] }],
     };
 
-    const fetchResponse = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    let result;
+    let lastErrorMessage = 'AI request failed';
+    for (const model of candidateModels) {
+      const apiUrl = buildGoogleAiUrl(apiKey, model);
+      const fetchResponse = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (fetchResponse.ok) {
+        result = await fetchResponse.json();
+        break;
+      }
 
     let revisedText = '';
     if (!fetchResponse.ok) {
