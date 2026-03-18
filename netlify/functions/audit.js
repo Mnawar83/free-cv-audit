@@ -1,4 +1,4 @@
-const { buildGoogleAiUrl } = require('./google-ai');
+const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { createRunId, upsertRun } = require('./run-store');
 
 const AUDIT_SYSTEM_PROMPT = `You are a senior ATS CV auditor for Work Waves Career Services.
@@ -42,7 +42,8 @@ exports.handler = async (event) => {
     if (!cvText) return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
     const runId = createRunId();
 
-    const apiUrl = buildGoogleAiUrl(process.env.GOOGLE_AI_API_KEY);
+    const apiKey = process.env.GOOGLE_AI_API_KEY;
+    const candidateModels = getGoogleAiCandidateModels();
 
     const payload = {
       systemInstruction: {
@@ -53,24 +54,62 @@ exports.handler = async (event) => {
       ],
     };
 
-    const fetchResponse = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    let auditResult = '';
+    let lastErrorMessage = 'AI request failed';
 
-    if (!fetchResponse.ok) {
-      const errorData = await fetchResponse.json();
-      console.error('API Error:', errorData);
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: errorData.error?.message || 'AI request failed' }),
-      };
+    for (const model of candidateModels) {
+      try {
+        const apiUrl = buildGoogleAiUrl(apiKey, model);
+        const fetchResponse = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (fetchResponse.ok) {
+          const result = await fetchResponse.json();
+          auditResult = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+          break;
+        }
+
+        let errorMessage = 'AI request failed';
+        try {
+          const errorData = await fetchResponse.json();
+          if (errorData?.error?.message) {
+            errorMessage = errorData.error.message;
+          }
+        } catch (parseError) {
+          console.error('Unable to parse AI error response.', parseError);
+        }
+
+        const modelNotAvailable =
+          fetchResponse.status === 404 || /not found|unsupported|not available/i.test(errorMessage);
+        if (modelNotAvailable) {
+          lastErrorMessage = `${model}: ${errorMessage}`;
+          continue;
+        }
+
+        lastErrorMessage = errorMessage;
+        break;
+      } catch (error) {
+        const errorMessage = error?.message || 'unknown';
+        const modelNotAvailable = /missing|not found|unsupported|not available/i.test(errorMessage);
+        if (modelNotAvailable) {
+          lastErrorMessage = `${model}: ${errorMessage}`;
+          continue;
+        }
+        lastErrorMessage = errorMessage;
+        break;
+      }
     }
 
-    const result = await fetchResponse.json();
-    const text = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    const auditResult = text || 'No response from AI';
+    if (!auditResult) {
+      console.error('Audit AI call failed:', lastErrorMessage);
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: lastErrorMessage }),
+      };
+    }
 
     await upsertRun(runId, {
       original_cv_text: cvText,

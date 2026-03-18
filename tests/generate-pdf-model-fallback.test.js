@@ -11,6 +11,8 @@ async function run() {
   process.env.RUN_STORE_PATH = '/tmp/free-cv-audit-generate-pdf-fallback-test.json';
   delete process.env.GOOGLE_AI_MODEL;
   delete process.env.CONTEXT;
+  delete process.env.RUN_STORE_DURABLE_URL;
+  delete process.env.RUN_STORE_DURABLE_TOKEN;
 
   try {
     fs.unlinkSync(process.env.RUN_STORE_PATH);
@@ -51,7 +53,7 @@ async function run() {
 
   assert.strictEqual(response.statusCode, 200);
   assert.ok(fetchCalls[0].includes('/models/gemini-3.1-pro-preview:generateContent'));
-  assert.ok(fetchCalls[1].includes('/models/gemini-3.1-flash:generateContent'));
+  assert.ok(fetchCalls[1].includes('/models/gemini-2.5-flash:generateContent'));
 
   console.log('Generate PDF model fallback test passed');
 }
