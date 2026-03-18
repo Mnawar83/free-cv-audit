@@ -58,12 +58,11 @@
         }
         @media (max-width: 768px) {
             .no-cv-banner {
-                top: auto;
-                bottom: 16px;
-                right: 12px;
+                position: static;
+                margin: 14px auto 0;
             }
             .no-cv-banner img {
-                max-height: 22vh;
+                max-height: 130px;
             }
         }
         #audit-output {
@@ -367,11 +366,53 @@
             auditMountParent.insertBefore(auditMountAnchor, auditSection);
         }
 
-        const storedCvText = sessionStorage.getItem('cvText');
+        function getStoredValue(key) {
+            let sessionValue = '';
+            try {
+                sessionValue = sessionStorage.getItem(key) || '';
+            } catch (error) {
+                console.warn('Session storage is unavailable.', error);
+            }
+            if (sessionValue) return sessionValue;
+            try {
+                return localStorage.getItem(key) || '';
+            } catch (error) {
+                console.warn('Local storage is unavailable.', error);
+                return '';
+            }
+        }
+
+        function setStoredValue(key, value) {
+            try {
+                sessionStorage.setItem(key, value);
+            } catch (error) {
+                console.warn('Unable to write to session storage.', error);
+            }
+            try {
+                localStorage.setItem(key, value);
+            } catch (error) {
+                console.warn('Unable to write to local storage.', error);
+            }
+        }
+
+        function removeStoredValue(key) {
+            try {
+                sessionStorage.removeItem(key);
+            } catch (error) {
+                console.warn('Unable to clear session storage.', error);
+            }
+            try {
+                localStorage.removeItem(key);
+            } catch (error) {
+                console.warn('Unable to clear local storage.', error);
+            }
+        }
+
+        const storedCvText = getStoredValue('cvText');
         if (storedCvText) {
             extractedCvText = storedCvText;
         }
-        const storedCvAnalysis = sessionStorage.getItem('cvAnalysis');
+        const storedCvAnalysis = getStoredValue('cvAnalysis');
         if (storedCvAnalysis) {
             extractedCvAnalysis = storedCvAnalysis;
         }
@@ -480,8 +521,8 @@
             if (clearAuditArtifacts) {
                 extractedCvText = '';
                 extractedCvAnalysis = '';
-                sessionStorage.removeItem('cvText');
-                sessionStorage.removeItem('cvAnalysis');
+                removeStoredValue('cvText');
+                removeStoredValue('cvAnalysis');
                 if (linkedinObjectDownloadUrl) {
                     URL.revokeObjectURL(linkedinObjectDownloadUrl);
                     linkedinObjectDownloadUrl = '';
@@ -526,16 +567,26 @@
                 }
 
                 extractedCvText = text;
-                sessionStorage.setItem('cvText', text);
+                setStoredValue('cvText', text);
                 const requestToken = ++auditRequestToken;
                 auditRequestController = new AbortController();
-                const auditResult = await getAuditFeedback(text, auditRequestController.signal);
+                const auditPayload = await getAuditFeedback(text, auditRequestController.signal);
                 if (requestToken !== auditRequestToken || isAnyPaidStateActive()) {
                     console.info('[timing] Ignoring stale audit response', { requestToken, latest: auditRequestToken });
                     return;
                 }
+                const auditResult = auditPayload?.audit || '';
+                if (!auditResult) {
+                    throw new Error('Audit completed but returned no content. Please try again.');
+                }
+                const returnedRunId = auditPayload?.runId;
+                if (returnedRunId) {
+                    currentRunId = returnedRunId;
+                    hasActiveRunId = true;
+                    sessionStorage.setItem('runId', returnedRunId);
+                }
                 extractedCvAnalysis = auditResult;
-                sessionStorage.setItem('cvAnalysis', auditResult);
+                setStoredValue('cvAnalysis', auditResult);
                 auditOutput.innerHTML = formatAuditHtml(auditResult);
                 loadingSection.classList.add('hidden');
                 resultsSection.classList.remove('hidden');
@@ -614,7 +665,10 @@
                 }
                 
                 const result = await response.json();
-                return result.audit || result.auditResult;
+                return {
+                    audit: result.audit || result.auditResult || '',
+                    runId: result.runId || '',
+                };
 
             } catch (error) {
                  if (error.name === 'AbortError') {
@@ -938,10 +992,18 @@
         }
 
         function restoreAuditResultsFromSession() {
-            const storedAnalysis = sessionStorage.getItem('cvAnalysis');
-            if (!storedAnalysis) return false;
+            const storedAnalysis = getStoredValue('cvAnalysis');
+            if (!storedAnalysis) {
+                if (!hasActiveRunId) return false;
+                uploadSection.classList.add('hidden');
+                loadingSection.classList.add('hidden');
+                resultsSection.classList.remove('hidden');
+                initializePayPalButtons();
+                initializeWhishPayCheckout();
+                return true;
+            }
             extractedCvAnalysis = storedAnalysis;
-            const storedText = sessionStorage.getItem('cvText');
+            const storedText = getStoredValue('cvText');
             if (storedText) {
                 extractedCvText = storedText;
             }
@@ -973,7 +1035,8 @@
         }
 
         async function generateRevisedPdf(cvText) {
-            if (!cvText) {
+            const resolvedCvText = cvText || extractedCvText || getStoredValue('cvText');
+            if (!resolvedCvText && !hasActiveRunId) {
                 throw new Error('Unable to generate the revised CV. Please run the audit again.');
             }
             if (isGeneratingPdf) return;
@@ -981,11 +1044,11 @@
             downloadNote.textContent = 'Preparing your revised CV PDF...';
             updateRetryVisibility();
             try {
-                const cvAnalysis = extractedCvAnalysis || sessionStorage.getItem('cvAnalysis') || '';
+                const cvAnalysis = extractedCvAnalysis || getStoredValue('cvAnalysis') || '';
                 const response = await fetch('/.netlify/functions/generate-pdf', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cvText, cvAnalysis, runId: hasActiveRunId ? currentRunId : undefined }),
+                    body: JSON.stringify({ cvText: resolvedCvText || undefined, cvAnalysis, runId: hasActiveRunId ? currentRunId : undefined }),
                 });
 
                 if (!response.ok) {
@@ -1305,8 +1368,12 @@
                 if (config?.currency) {
                     sessionStorage.setItem('whishPayCurrency', config.currency);
                 }
-                const returnQuery = 'payment=success';
-                const failQuery = 'payment=failed';
+                const returnParams = new URLSearchParams({ payment: 'success' });
+                const failParams = new URLSearchParams({ payment: 'failed' });
+                if (hasActiveRunId && currentRunId) {
+                    returnParams.set('runId', currentRunId);
+                    failParams.set('runId', currentRunId);
+                }
                 const functionStart = performance.now();
                 const response = await fetch('/.netlify/functions/whishpay-create-payment', {
                     method: 'POST',
@@ -1315,10 +1382,10 @@
                         amount: config.amount,
                         currency: config.currency,
                         invoice: 'Revised CV download',
-                        successCallbackUrl: `${window.location.origin}${window.location.pathname}?${returnQuery}`,
-                        failureCallbackUrl: `${window.location.origin}${window.location.pathname}?${failQuery}`,
-                        successRedirectUrl: `${window.location.origin}${window.location.pathname}?${returnQuery}`,
-                        failureRedirectUrl: `${window.location.origin}${window.location.pathname}?${failQuery}`,
+                        successCallbackUrl: `${window.location.origin}${window.location.pathname}?${returnParams.toString()}`,
+                        failureCallbackUrl: `${window.location.origin}${window.location.pathname}?${failParams.toString()}`,
+                        successRedirectUrl: `${window.location.origin}${window.location.pathname}?${returnParams.toString()}`,
+                        failureRedirectUrl: `${window.location.origin}${window.location.pathname}?${failParams.toString()}`,
                     }),
                 });
                 console.info('[timing] Whish CV create-payment response', { ms: Math.round(performance.now() - functionStart) });
@@ -1356,6 +1423,12 @@
             const url = new URL(window.location.href);
             const paymentStatus = url.searchParams.get('payment');
             if (!paymentStatus) return;
+            const runIdFromUrl = url.searchParams.get('runId');
+            if (runIdFromUrl) {
+                currentRunId = runIdFromUrl;
+                hasActiveRunId = true;
+                sessionStorage.setItem('runId', runIdFromUrl);
+            }
             const restored = restoreAuditResultsFromSession();
             if (!restored) {
                 showError('Your audit results have expired. Please run the audit again to unlock your download.');
@@ -1404,8 +1477,12 @@
                         return readJsonSafely(response);
                     })
                     .then((statusData) => {
-                        if (statusData.collectStatus !== 'success') {
-                            throw new Error('Whish Pay payment is not confirmed yet.');
+                        const collectStatus = (statusData.collectStatus || '').toString().toUpperCase();
+                        const isPaid = collectStatus === 'SUCCESS' || collectStatus === 'PAID' || statusData.isPaidStatus === true;
+                        if (!isPaid) {
+                            const paymentError = new Error('Whish Pay payment is not confirmed yet.');
+                            paymentError.code = 'PAYMENT_NOT_CONFIRMED';
+                            throw paymentError;
                         }
                         setPaidState('cv', true);
                         console.info('[timing] CV Whish payment verified');
@@ -1417,13 +1494,19 @@
                         return generateRevisedPdf(extractedCvText).then(() => {
                             url.searchParams.delete('payment');
                             url.searchParams.delete('externalId');
+                            url.searchParams.delete('runId');
                             window.history.replaceState({}, document.title, url.toString());
                         });
                     })
                     .then(() => setDownloadLocked(false))
                     .catch((error) => {
                         console.error('Whish Pay confirmation error:', error);
-                        setPaidState('cv', false);
+                        if (error?.code === 'PAYMENT_NOT_CONFIRMED') {
+                            setPaidState('cv', false);
+                        } else {
+                            setPaidState('cv', true);
+                            setDownloadLocked(true);
+                        }
                         showError(error.message || 'Unable to confirm your payment yet.');
                         updateRetryVisibility();
                     });
