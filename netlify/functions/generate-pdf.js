@@ -1,4 +1,4 @@
-const { buildGoogleAiUrl } = require('./google-ai');
+const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { LINKEDIN_UPSELL_STATUS, createRunId, getRun, upsertRun } = require('./run-store');
 
 const PDF_FILENAME = 'revised-cv.pdf';
@@ -208,6 +208,20 @@ exports.handler = async (event) => {
       return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
     }
 
+    if (existingRun?.revised_cv_text) {
+      const cachedPdfBuffer = buildPdfBuffer(existingRun.revised_cv_text);
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="${PDF_FILENAME}"`,
+          'x-run-id': incomingRunId,
+        },
+        body: cachedPdfBuffer.toString('base64'),
+        isBase64Encoded: true,
+      };
+    }
+
     const apiKey = process.env.GOOGLE_AI_API_KEY;
     if (!apiKey) {
       return {
@@ -215,7 +229,7 @@ exports.handler = async (event) => {
         body: JSON.stringify({ error: 'Google AI API key is missing.' }),
       };
     }
-    const apiUrl = buildGoogleAiUrl(apiKey);
+    const candidateModels = getGoogleAiCandidateModels();
 
     const systemPrompt = `You are an expert CV writer for Work Waves Career Services.
 Rewrite the CV for ATS compatibility and professional impact.
@@ -229,11 +243,20 @@ Return only the revised CV content, formatted as plain text with clear section h
       contents: [{ parts: [{ text: `Rewrite this CV:\n\n${resolvedCvText}${analysisNote}` }] }],
     };
 
-    const fetchResponse = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    let result;
+    let lastErrorMessage = 'AI request failed';
+    for (const model of candidateModels) {
+      const apiUrl = buildGoogleAiUrl(apiKey, model);
+      const fetchResponse = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (fetchResponse.ok) {
+        result = await fetchResponse.json();
+        break;
+      }
 
     let revisedText = '';
     let usedFallbackText = false;
