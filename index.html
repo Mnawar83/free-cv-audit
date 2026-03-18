@@ -366,11 +366,53 @@
             auditMountParent.insertBefore(auditMountAnchor, auditSection);
         }
 
-        const storedCvText = sessionStorage.getItem('cvText');
+        function getStoredValue(key) {
+            let sessionValue = '';
+            try {
+                sessionValue = sessionStorage.getItem(key) || '';
+            } catch (error) {
+                console.warn('Session storage is unavailable.', error);
+            }
+            if (sessionValue) return sessionValue;
+            try {
+                return localStorage.getItem(key) || '';
+            } catch (error) {
+                console.warn('Local storage is unavailable.', error);
+                return '';
+            }
+        }
+
+        function setStoredValue(key, value) {
+            try {
+                sessionStorage.setItem(key, value);
+            } catch (error) {
+                console.warn('Unable to write to session storage.', error);
+            }
+            try {
+                localStorage.setItem(key, value);
+            } catch (error) {
+                console.warn('Unable to write to local storage.', error);
+            }
+        }
+
+        function removeStoredValue(key) {
+            try {
+                sessionStorage.removeItem(key);
+            } catch (error) {
+                console.warn('Unable to clear session storage.', error);
+            }
+            try {
+                localStorage.removeItem(key);
+            } catch (error) {
+                console.warn('Unable to clear local storage.', error);
+            }
+        }
+
+        const storedCvText = getStoredValue('cvText');
         if (storedCvText) {
             extractedCvText = storedCvText;
         }
-        const storedCvAnalysis = sessionStorage.getItem('cvAnalysis');
+        const storedCvAnalysis = getStoredValue('cvAnalysis');
         if (storedCvAnalysis) {
             extractedCvAnalysis = storedCvAnalysis;
         }
@@ -479,8 +521,8 @@
             if (clearAuditArtifacts) {
                 extractedCvText = '';
                 extractedCvAnalysis = '';
-                sessionStorage.removeItem('cvText');
-                sessionStorage.removeItem('cvAnalysis');
+                removeStoredValue('cvText');
+                removeStoredValue('cvAnalysis');
                 if (linkedinObjectDownloadUrl) {
                     URL.revokeObjectURL(linkedinObjectDownloadUrl);
                     linkedinObjectDownloadUrl = '';
@@ -525,7 +567,7 @@
                 }
 
                 extractedCvText = text;
-                sessionStorage.setItem('cvText', text);
+                setStoredValue('cvText', text);
                 const requestToken = ++auditRequestToken;
                 auditRequestController = new AbortController();
                 const auditResult = await getAuditFeedback(text, auditRequestController.signal);
@@ -534,7 +576,7 @@
                     return;
                 }
                 extractedCvAnalysis = auditResult;
-                sessionStorage.setItem('cvAnalysis', auditResult);
+                setStoredValue('cvAnalysis', auditResult);
                 auditOutput.innerHTML = formatAuditHtml(auditResult);
                 loadingSection.classList.add('hidden');
                 resultsSection.classList.remove('hidden');
@@ -937,10 +979,10 @@
         }
 
         function restoreAuditResultsFromSession() {
-            const storedAnalysis = sessionStorage.getItem('cvAnalysis');
+            const storedAnalysis = getStoredValue('cvAnalysis');
             if (!storedAnalysis) return false;
             extractedCvAnalysis = storedAnalysis;
-            const storedText = sessionStorage.getItem('cvText');
+            const storedText = getStoredValue('cvText');
             if (storedText) {
                 extractedCvText = storedText;
             }
@@ -972,7 +1014,8 @@
         }
 
         async function generateRevisedPdf(cvText) {
-            if (!cvText) {
+            const resolvedCvText = cvText || extractedCvText || getStoredValue('cvText');
+            if (!resolvedCvText) {
                 throw new Error('Unable to generate the revised CV. Please run the audit again.');
             }
             if (isGeneratingPdf) return;
@@ -980,11 +1023,11 @@
             downloadNote.textContent = 'Preparing your revised CV PDF...';
             updateRetryVisibility();
             try {
-                const cvAnalysis = extractedCvAnalysis || sessionStorage.getItem('cvAnalysis') || '';
+                const cvAnalysis = extractedCvAnalysis || getStoredValue('cvAnalysis') || '';
                 const response = await fetch('/.netlify/functions/generate-pdf', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cvText, cvAnalysis, runId: hasActiveRunId ? currentRunId : undefined }),
+                    body: JSON.stringify({ cvText: resolvedCvText, cvAnalysis, runId: hasActiveRunId ? currentRunId : undefined }),
                 });
 
                 if (!response.ok) {
