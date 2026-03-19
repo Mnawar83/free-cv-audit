@@ -1,5 +1,5 @@
 const { Document, Packer, Paragraph, TextRun } = require('docx');
-const { buildGoogleAiUrl } = require('./google-ai');
+const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { COVER_LETTER_STATUS, getRun, updateRun } = require('./run-store');
 const { fetchJobPageWithPuppeteer } = require('./job-page-fetcher');
 const { COVER_LETTER_AI_JOB_TEXT_MAX, COVER_LETTER_JOB_TEXT_THRESHOLD } = require('./cover-letter-constants');
@@ -95,7 +95,7 @@ exports.handler = async (event) => {
     }
     if (!run.revised_cv_text) return { statusCode: 400, body: JSON.stringify({ error: 'Missing revised_cv_text for this run.' }) };
     if (run.cover_letter_docx_base64) {
-      return { statusCode: 200, body: JSON.stringify({ ok: true, usedJobText: Boolean(run.used_job_text), downloadUrl: `/.netlify/functions/cover-letter-download-docx?runId=${encodeURIComponent(runId)}` }) };
+      return { statusCode: 200, body: JSON.stringify({ ok: true, usedJobText: Boolean(run.used_job_text), pdfUrl: `/.netlify/functions/cover-letter-download-pdf?runId=${encodeURIComponent(runId)}`, downloadUrl: `/.netlify/functions/cover-letter-download-docx?runId=${encodeURIComponent(runId)}` }) };
     }
 
     let jobPageText = run.job_page_text || '';
@@ -116,19 +116,76 @@ exports.handler = async (event) => {
 
     const usedJobText = jobPageTextLength >= COVER_LETTER_JOB_TEXT_THRESHOLD;
     const prompt = buildPrompt(run.revised_cv_text, jobPageText, jobPageTextLength);
-    const apiUrl = buildGoogleAiUrl(process.env.GOOGLE_AI_API_KEY);
+    const apiKey = process.env.GOOGLE_AI_API_KEY;
 
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        systemInstruction: { parts: [{ text: 'You are writing a professional job application cover letter.' }] },
-      }),
+    if (!apiKey) {
+      return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Google AI API key is missing.' }) };
+    }
+
+    const candidateModels = getGoogleAiCandidateModels().sort((a, b) => {
+      if (a.includes('flash') && !b.includes('flash')) return -1;
+      if (!a.includes('flash') && b.includes('flash')) return 1;
+      return 0;
     });
 
-    if (!response.ok) return { statusCode: 500, body: JSON.stringify({ error: 'AI generation failed.' }) };
-    const result = await response.json();
+    const aiPayload = {
+      contents: [{ parts: [{ text: prompt }] }],
+      systemInstruction: { parts: [{ text: 'You are writing a professional job application cover letter.' }] },
+    };
+
+    let result;
+    let lastErrorMessage = 'AI generation failed.';
+    for (const model of candidateModels) {
+      const apiUrl = buildGoogleAiUrl(apiKey, model);
+      const requestController = new AbortController();
+      const requestTimeout = setTimeout(() => requestController.abort(), 12000);
+      let fetchResponse;
+      try {
+        fetchResponse = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(aiPayload),
+          signal: requestController.signal,
+        });
+      } catch (requestError) {
+        if (requestError?.name === 'AbortError') {
+          lastErrorMessage = 'Cover letter generation request timed out. Please try again.';
+          continue;
+        }
+        lastErrorMessage = requestError?.message || lastErrorMessage;
+        continue;
+      } finally {
+        clearTimeout(requestTimeout);
+      }
+
+      if (fetchResponse.ok) {
+        result = await fetchResponse.json();
+        break;
+      }
+
+      try {
+        const errorText = await fetchResponse.text();
+        let errorData = {};
+        if (errorText && errorText.trim()) {
+          try {
+            errorData = JSON.parse(errorText);
+          } catch (_ignored) {
+            errorData = { error: { message: errorText.slice(0, 240) } };
+          }
+        }
+        console.error('Cover letter AI API Error:', errorData);
+        if (errorData?.error?.message) {
+          lastErrorMessage = errorData.error.message;
+        }
+      } catch (parseError) {
+        console.error('Unable to parse cover letter AI error response.', parseError);
+      }
+    }
+
+    if (!result) {
+      return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: lastErrorMessage }) };
+    }
+
     const outputText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     if (!outputText) return { statusCode: 500, body: JSON.stringify({ error: 'No AI output generated.' }) };
 
@@ -142,14 +199,16 @@ exports.handler = async (event) => {
 
     const doc = new Document({ sections: [{ children }] });
     const buffer = await Packer.toBuffer(doc);
+    const coverLetterPdfText = `Cover Letter\n\n${bodyParagraphs.join('\n\n')}`;
     await updateRun(runId, () => ({
       cover_letter_docx_base64: buffer.toString('base64'),
+      cover_letter_pdf_text: coverLetterPdfText,
       cover_letter_status: COVER_LETTER_STATUS.GENERATED,
       used_job_text: usedJobText,
       cover_letter_generated_at: new Date().toISOString(),
     }));
 
-    return { statusCode: 200, body: JSON.stringify({ ok: true, usedJobText, downloadUrl: `/.netlify/functions/cover-letter-download-docx?runId=${encodeURIComponent(runId)}` }) };
+    return { statusCode: 200, body: JSON.stringify({ ok: true, usedJobText, pdfUrl: `/.netlify/functions/cover-letter-download-pdf?runId=${encodeURIComponent(runId)}`, downloadUrl: `/.netlify/functions/cover-letter-download-docx?runId=${encodeURIComponent(runId)}` }) };
   } catch (error) {
     return { statusCode: 500, body: JSON.stringify({ error: error.message || 'Cover letter generation failed.' }) };
   }

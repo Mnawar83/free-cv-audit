@@ -1,5 +1,5 @@
 const { Document, Packer, Paragraph, TextRun, HeadingLevel } = require('docx');
-const { buildGoogleAiUrl } = require('./google-ai');
+const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { LINKEDIN_UPSELL_STATUS, getRun, updateRun } = require('./run-store');
 
 const RATE_LIMIT_MS = 20_000;
@@ -50,7 +50,7 @@ exports.handler = async (event) => {
       return { statusCode: 403, body: JSON.stringify({ error: 'Payment is required before generation.' }) };
     }
     if (run.linkedin_docx_base64) {
-      return { statusCode: 200, body: JSON.stringify({ ok: true, downloadUrl: `/.netlify/functions/linkedin-download-docx?runId=${encodeURIComponent(runId)}` }) };
+      return { statusCode: 200, body: JSON.stringify({ ok: true, pdfUrl: `/.netlify/functions/linkedin-download-pdf?runId=${encodeURIComponent(runId)}`, downloadUrl: `/.netlify/functions/linkedin-download-docx?runId=${encodeURIComponent(runId)}` }) };
     }
 
     const now = Date.now();
@@ -66,18 +66,75 @@ exports.handler = async (event) => {
     await updateRun(runId, () => ({ linkedin_last_generate_attempt_at: new Date().toISOString() }));
 
     const apiKey = process.env.GOOGLE_AI_API_KEY;
-    const apiUrl = buildGoogleAiUrl(apiKey);
+    if (!apiKey) {
+      return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Google AI API key is missing.' }) };
+    }
+
+    const candidateModels = getGoogleAiCandidateModels().sort((a, b) => {
+      if (a.includes('flash') && !b.includes('flash')) return -1;
+      if (!a.includes('flash') && b.includes('flash')) return 1;
+      return 0;
+    });
+
     const prompt = `Using ONLY the revised CV text below, generate:\n1) LinkedIn Headline (180-220 characters, professional, keyword-rich, no invented employers/titles)\n2) LinkedIn About section (1800-2600 characters; hook line, 2-3 short paragraphs, inline 'Core strengths:' list with 6-10 items, CV-grounded achievements only, soft CTA).\nDo not fetch LinkedIn data.\nReturn exactly in this format:\nHeadline: ...\nAbout: ...\n\nRevised CV:\n${run.revised_cv_text}`;
 
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-    });
-    if (!response.ok) {
-      return { statusCode: 500, body: JSON.stringify({ error: 'AI generation failed.' }) };
+    const payload = {
+      contents: [{ parts: [{ text: prompt }] }],
+    };
+
+    let result;
+    let lastErrorMessage = 'AI generation failed.';
+    for (const model of candidateModels) {
+      const apiUrl = buildGoogleAiUrl(apiKey, model);
+      const requestController = new AbortController();
+      const requestTimeout = setTimeout(() => requestController.abort(), 12000);
+      let fetchResponse;
+      try {
+        fetchResponse = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: requestController.signal,
+        });
+      } catch (requestError) {
+        if (requestError?.name === 'AbortError') {
+          lastErrorMessage = 'LinkedIn generation request timed out. Please try again.';
+          continue;
+        }
+        lastErrorMessage = requestError?.message || lastErrorMessage;
+        continue;
+      } finally {
+        clearTimeout(requestTimeout);
+      }
+
+      if (fetchResponse.ok) {
+        result = await fetchResponse.json();
+        break;
+      }
+
+      try {
+        const errorText = await fetchResponse.text();
+        let errorData = {};
+        if (errorText && errorText.trim()) {
+          try {
+            errorData = JSON.parse(errorText);
+          } catch (_ignored) {
+            errorData = { error: { message: errorText.slice(0, 240) } };
+          }
+        }
+        console.error('LinkedIn AI API Error:', errorData);
+        if (errorData?.error?.message) {
+          lastErrorMessage = errorData.error.message;
+        }
+      } catch (parseError) {
+        console.error('Unable to parse LinkedIn AI error response.', parseError);
+      }
     }
-    const result = await response.json();
+
+    if (!result) {
+      return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: lastErrorMessage }) };
+    }
+
     const text = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     if (!text) return { statusCode: 500, body: JSON.stringify({ error: 'No AI output generated.' }) };
 
@@ -106,13 +163,15 @@ exports.handler = async (event) => {
     });
 
     const buffer = await Packer.toBuffer(doc);
+    const linkedinPdfText = `LinkedIn Optimization\n\nLinkedIn Headline:\n${headline}\n\nAbout:\n${about}`;
     await updateRun(runId, () => ({
       linkedin_docx_base64: buffer.toString('base64'),
+      linkedin_pdf_text: linkedinPdfText,
       linkedin_upsell_status: LINKEDIN_UPSELL_STATUS.GENERATED,
       linkedin_upsell_generated_at: new Date().toISOString(),
     }));
 
-    return { statusCode: 200, body: JSON.stringify({ ok: true, downloadUrl: `/.netlify/functions/linkedin-download-docx?runId=${encodeURIComponent(runId)}` }) };
+    return { statusCode: 200, body: JSON.stringify({ ok: true, pdfUrl: `/.netlify/functions/linkedin-download-pdf?runId=${encodeURIComponent(runId)}`, downloadUrl: `/.netlify/functions/linkedin-download-docx?runId=${encodeURIComponent(runId)}` }) };
   } catch (error) {
     return { statusCode: 500, body: JSON.stringify({ error: error.message || 'LinkedIn doc generation failed.' }) };
   }

@@ -20,13 +20,13 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-function getHtml({ name, cvUrl, isResend }) {
+function getHtml({ name, pdfUrl, isResend }) {
   const greetingName = escapeHtml(toSafeText(name, 'there'));
-  const safeCvUrl = escapeHtml(toSafeText(cvUrl));
-  const heading = 'Your CV is ready';
+  const safePdfUrl = escapeHtml(toSafeText(pdfUrl));
+  const heading = 'Your Cover Letter is ready';
   const intro = isResend
-    ? 'Here is your CV again. You can open it anytime from any device.'
-    : 'Your revised CV is ready. Open it now or save this email to access it later.';
+    ? 'Here is your Cover Letter PDF again. You can open it anytime from any device.'
+    : 'Your cover letter is ready. Open the PDF now or save this email to access it later.';
 
   return `
     <div style="font-family:Arial,sans-serif;background:#f8fafc;padding:24px;">
@@ -34,8 +34,8 @@ function getHtml({ name, cvUrl, isResend }) {
         <h1 style="margin:0 0 12px;font-size:24px;color:#0f172a;">${heading}</h1>
         <p style="margin:0 0 16px;color:#334155;">Hi ${greetingName},</p>
         <p style="margin:0 0 24px;color:#334155;">${intro}</p>
-        <a href="${safeCvUrl}" style="display:inline-block;background:#059669;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:700;">Open My CV</a>
-        <p style="margin:20px 0 0;color:#475569;">You can access this CV anytime from any device.</p>
+        <a href="${safePdfUrl}" style="display:inline-block;background:#059669;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:700;">Open My Cover Letter</a>
+        <p style="margin:20px 0 0;color:#475569;">You can access this PDF anytime from any device.</p>
         <p style="margin:20px 0 0;color:#94a3b8;font-size:12px;">FreeCVAudit.com</p>
       </div>
     </div>
@@ -55,14 +55,14 @@ exports.handler = async (event) => {
 
     const payload = JSON.parse(event.body || '{}');
     const email = toSafeText(payload.email).toLowerCase();
-    const cvUrl = toSafeText(payload.cvUrl);
+    const pdfUrl = toSafeText(payload.pdfUrl);
     const name = toSafeText(payload.name);
     const isResend = Boolean(payload.resend);
 
     if (!email) return json(400, { error: 'email is required.' });
-    if (!cvUrl) return json(400, { error: 'cvUrl is required.' });
+    if (!pdfUrl) return json(400, { error: 'pdfUrl is required.' });
 
-    const subject = isResend ? 'Here Is Your CV Again' : 'Your CV is Ready';
+    const subject = isResend ? 'Here Is Your Cover Letter Again' : 'Your Cover Letter is Ready';
     const from = 'FreeCVAudit <noreply@freecvaudit.com>';
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -74,18 +74,18 @@ exports.handler = async (event) => {
         from,
         to: [email],
         subject,
-        html: getHtml({ name, cvUrl, isResend }),
+        html: getHtml({ name, pdfUrl, isResend }),
       }),
     });
 
     const payloadResponse = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const details = payloadResponse?.message || payloadResponse?.error || 'Unable to send CV email.';
+      const details = payloadResponse?.message || payloadResponse?.error || 'Unable to send cover letter email.';
       return json(502, { error: details });
     }
 
     return json(200, { ok: true, id: payloadResponse?.id || null });
   } catch (error) {
-    return json(500, { error: error.message || 'Unable to send CV email.' });
+    return json(500, { error: error.message || 'Unable to send cover letter email.' });
   }
 };
