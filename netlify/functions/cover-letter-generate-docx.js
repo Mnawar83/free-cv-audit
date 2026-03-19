@@ -58,6 +58,28 @@ INSTRUCTIONS:
 Return only the body content.`;
 }
 
+function sanitizeDocxText(input) {
+  if (!input) return '';
+
+  let output = '';
+  for (const char of input) {
+    const codePoint = char.codePointAt(0);
+    const isAllowedXmlChar =
+      codePoint === 0x09 ||
+      codePoint === 0x0a ||
+      codePoint === 0x0d ||
+      (codePoint >= 0x20 && codePoint <= 0xd7ff) ||
+      (codePoint >= 0xe000 && codePoint <= 0xfffd) ||
+      (codePoint >= 0x10000 && codePoint <= 0x10ffff);
+
+    if (isAllowedXmlChar) {
+      output += char;
+    }
+  }
+
+  return output;
+}
+
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
@@ -110,7 +132,8 @@ exports.handler = async (event) => {
     const outputText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     if (!outputText) return { statusCode: 500, body: JSON.stringify({ error: 'No AI output generated.' }) };
 
-    const bodyParagraphs = outputText.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+    const sanitizedOutputText = sanitizeDocxText(outputText);
+    const bodyParagraphs = sanitizedOutputText.split(/\n+/).map((line) => line.trim()).filter(Boolean);
     const children = [new Paragraph({ children: [new TextRun({ text: 'Cover Letter', bold: true, font: 'Times New Roman', size: 24 })] })];
     for (const paragraphText of bodyParagraphs) {
       children.push(new Paragraph({ children: [new TextRun({ text: paragraphText, font: 'Times New Roman', size: 24 })] }));

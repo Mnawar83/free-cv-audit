@@ -179,12 +179,39 @@ function buildPdfBuffer(text) {
   return Buffer.from(pdf, 'latin1');
 }
 
+function pdfResponse(pdfBuffer, runId, inline = false) {
+  const disposition = inline ? `inline; filename="${PDF_FILENAME}"` : `attachment; filename="${PDF_FILENAME}"`;
+  return {
+    statusCode: 200,
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': disposition,
+      ...(runId ? { 'x-run-id': runId } : {}),
+    },
+    body: pdfBuffer.toString('base64'),
+    isBase64Encoded: true,
+  };
+}
+
 exports.handler = async (event) => {
-  if (event.httpMethod !== 'POST') {
+  if (!['POST', 'GET'].includes(event.httpMethod)) {
     return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
   }
 
   try {
+    if (event.httpMethod === 'GET') {
+      const runId = event.queryStringParameters?.runId;
+      if (!runId) {
+        return { statusCode: 400, body: JSON.stringify({ error: 'runId is required.' }) };
+      }
+      const run = await getRun(runId);
+      if (!run?.revised_cv_text) {
+        return { statusCode: 404, body: JSON.stringify({ error: 'Revised CV not found.' }) };
+      }
+      const pdfBuffer = buildPdfBuffer(run.revised_cv_text);
+      return pdfResponse(pdfBuffer, runId, true);
+    }
+
     const { cvText, cvAnalysis, runId: incomingRunId } = JSON.parse(event.body || '{}');
     const existingRun = incomingRunId ? await getRun(incomingRunId) : null;
     const resolvedCvText = cvText || existingRun?.original_cv_text || '';
@@ -192,16 +219,7 @@ exports.handler = async (event) => {
 
     if (existingRun?.revised_cv_text) {
       const cachedPdfBuffer = buildPdfBuffer(existingRun.revised_cv_text);
-      return {
-        statusCode: 200,
-        headers: {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `attachment; filename="${PDF_FILENAME}"`,
-          'x-run-id': incomingRunId,
-        },
-        body: cachedPdfBuffer.toString('base64'),
-        isBase64Encoded: true,
-      };
+      return pdfResponse(cachedPdfBuffer, incomingRunId);
     }
     const candidateModels = getGoogleAiCandidateModels();
 
@@ -318,16 +336,7 @@ Return only the revised CV content, formatted as plain text with clear section h
 
     await upsertRun(runId, runUpdates);
 
-    return {
-      statusCode: 200,
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${PDF_FILENAME}"`,
-        'x-run-id': runId,
-      },
-      body: pdfBuffer.toString('base64'),
-      isBase64Encoded: true,
-    };
+    return pdfResponse(pdfBuffer, runId);
   } catch (error) {
     console.error('Generate PDF failure.', error);
     return {
