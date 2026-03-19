@@ -7,6 +7,10 @@
     <title>Free CV Audit | Work Waves Career Services</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js" as="script">
+    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.16/mammoth.browser.min.js" as="script">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.16/mammoth.browser.min.js"></script>
     <style>
@@ -365,7 +369,7 @@
         let extractedCvText = '';
         let extractedCvAnalysis = '';
         let revisedCvBlobUrl = null;
-        let revisedCvPublicUrl = '';
+        let revisedCvPublicUrl = localStorage.getItem('cv_url') || '';
         let hasPaidCV = false;
         let hasPaidLinkedIn = false;
         let hasPaidCoverLetter = false;
@@ -443,7 +447,6 @@
         if (storedCvAnalysis) {
             extractedCvAnalysis = storedCvAnalysis;
         }
-        revisedCvPublicUrl = localStorage.getItem('cv_url') || '';
         if (cvEmailInput) {
             cvEmailInput.value = localStorage.getItem('cv_email') || '';
             cvEmailInput.addEventListener('input', () => {
@@ -459,7 +462,7 @@
                 await sendCvEmail({ resend: emailCvButton.textContent.toLowerCase().includes('resend') });
             });
         }
-        if (revisedCvPublicUrl && emailCvButton) {
+        if (emailCvButton) {
             emailCvButton.textContent = localStorage.getItem('cv_email_last_sent_at') ? 'Resend Email' : 'Email Me My CV';
         }
 
@@ -520,7 +523,8 @@
 
             if (emailCvButton) {
                 const hasEmail = Boolean((cvEmailInput?.value || '').trim());
-                emailCvButton.disabled = !hasUrl || !hasEmail || isSendingCvEmail;
+                const hasEmailableUrl = hasUrl && !cvUrl.startsWith('blob:');
+                emailCvButton.disabled = !hasEmailableUrl || !hasEmail || isSendingCvEmail;
             }
         }
 
@@ -534,7 +538,7 @@
                 syncCvAccessActions();
                 return false;
             }
-            if (!cvUrl) {
+            if (!cvUrl || cvUrl.startsWith('blob:')) {
                 if (!silent && cvEmailStatus) cvEmailStatus.textContent = 'CV link is not ready yet. Please try again.';
                 syncCvAccessActions();
                 return false;
@@ -1575,20 +1579,9 @@
 
         async function hydrateWhishPayPricing() {
             try {
-                const config = await fetchWhishPayConfig();
-                const formattedPrice = `${config.currency || 'USD'} ${config.amount || '3.99'}`;
-                const priceElements = [
-                    document.getElementById('payment-price-whish'),
-                    document.getElementById('payment-price-paypal'),
-                ];
-                priceElements.forEach((element) => {
-                    if (element) element.textContent = formattedPrice;
-                });
+                await fetchWhishPayConfig();
             } catch (error) {
                 console.warn('Whish Pay pricing unavailable:', error);
-                if (downloadNote) {
-                    downloadNote.textContent = 'Whish Pay checkout is unavailable right now. Please try again later.';
-                }
                 if (whishPayStatus) {
                     whishPayStatus.textContent = 'Whish Pay checkout is currently unavailable.';
                 }

@@ -11,8 +11,18 @@ function toSafeText(value, fallback = '') {
   return trimmed || fallback;
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function getHtml({ name, cvUrl, isResend }) {
-  const greetingName = toSafeText(name, 'there');
+  const greetingName = escapeHtml(toSafeText(name, 'there'));
+  const safeCvUrl = escapeHtml(toSafeText(cvUrl));
   const heading = 'Your CV is ready';
   const intro = isResend
     ? 'Here is your CV again. You can open it anytime from any device.'
@@ -24,7 +34,7 @@ function getHtml({ name, cvUrl, isResend }) {
         <h1 style="margin:0 0 12px;font-size:24px;color:#0f172a;">${heading}</h1>
         <p style="margin:0 0 16px;color:#334155;">Hi ${greetingName},</p>
         <p style="margin:0 0 24px;color:#334155;">${intro}</p>
-        <a href="${cvUrl}" style="display:inline-block;background:#059669;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:700;">Open My CV</a>
+        <a href="${safeCvUrl}" style="display:inline-block;background:#059669;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:700;">Open My CV</a>
         <p style="margin:20px 0 0;color:#475569;">You can access this CV anytime from any device.</p>
         <p style="margin:20px 0 0;color:#94a3b8;font-size:12px;">FreeCVAudit.com</p>
       </div>
