@@ -11,8 +11,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js" as="script">
     <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.16/mammoth.browser.min.js" as="script">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.16/mammoth.browser.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.16/mammoth.browser.min.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -104,9 +104,6 @@
             flex-direction: column;
             flex: 1;
         }
-        .upsell-paypal-panel {
-            min-height: 168px;
-        }
         .upsell-primary-button {
             min-height: 48px;
         }
@@ -143,6 +140,12 @@
             color: #0f172a;
             font-size: 14px;
             font-weight: 700;
+        }
+        button:focus-visible,
+        a:focus-visible,
+        input:focus-visible {
+            outline: 3px solid #2563eb;
+            outline-offset: 2px;
         }
     </style>
 </head>
@@ -282,7 +285,11 @@
                                 <span class="text-2xl font-semibold">💼 Optimize your LinkedIn</span>
                                 <span class="text-xs font-semibold text-gray-600 md:hidden">Expand</span>
                             </button>
-                            <p class="mt-2 text-sm text-gray-700">Boost profile visibility with ATS-aligned headline + about copy tailored from your CV.</p>
+                            <ul class="mt-2 space-y-1 text-sm text-gray-700">
+                                <li>✅ ATS-ready headline + About section tailored to your revised CV</li>
+                                <li>✅ Recruiter-friendly profile summary to improve discovery</li>
+                                <li>✅ Fast delivery and instant PDF download after payment</li>
+                            </ul>
                             <p class="mt-2 text-xs text-gray-600">Trusted by 2,000+ job seekers this year.</p>
                             <div id="linkedin-checkout-section" class="upsell-checkout mt-4">
                                 <label class="inline-flex items-center gap-2 text-sm font-medium">
@@ -296,7 +303,7 @@
                                     <span>Price: <span class="font-semibold">$9.99</span></span>
                                     <span class="text-xs text-gray-600">🔒 Secure providers</span>
                                 </div>
-                                <button id="linkedin-pay-button" class="upsell-primary-button mt-3 w-full rounded-md bg-black py-3 text-sm font-semibold text-white">Pay $9.99 & Generate</button>
+                                <button id="linkedin-pay-button" aria-label="Pay 9 dollars and 99 cents and generate LinkedIn optimization" class="upsell-primary-button mt-3 w-full rounded-md bg-black py-3 text-sm font-semibold text-white">Pay $9.99 & Generate</button>
                                 <div class="mt-4">
                                     <div class="upsell-progress-track" aria-hidden="true"><div id="linkedin-progress-fill" class="upsell-progress-fill"></div></div>
                                     <p id="linkedin-progress-text" class="mt-2 text-xs text-gray-700">Step 1: Payment pending · Step 2: Generation pending · Step 3: Download pending</p>
@@ -324,7 +331,11 @@
                                 <span class="text-2xl font-semibold">✉️ Cover Letter</span>
                                 <span class="text-xs font-semibold text-gray-600 md:hidden">Expand</span>
                             </button>
-                            <p class="mt-2 text-sm text-gray-700">Get a tailored cover letter that maps your skills to the specific role requirements.</p>
+                            <ul class="mt-2 space-y-1 text-sm text-gray-700">
+                                <li>✅ Role-specific cover letter aligned to your skills and CV</li>
+                                <li>✅ Strong opening + impact-focused accomplishments</li>
+                                <li>✅ Ready-to-send PDF generated instantly after payment</li>
+                            </ul>
                             <p class="mt-2 text-xs text-gray-600">Candidates with cover letters are up to 38% more likely to get noticed.</p>
                             <div id="cover-letter-checkout-section" class="upsell-checkout mt-4">
                                 <label class="inline-flex items-center gap-2 text-sm font-medium">
@@ -338,7 +349,7 @@
                                     <span>Price: <span class="font-semibold">$0.99</span></span>
                                     <span class="text-xs text-gray-600">🔒 Secure providers</span>
                                 </div>
-                                <button id="cover-letter-pay-button" class="upsell-primary-button mt-3 w-full rounded-md bg-black py-3 text-sm font-semibold text-white">Pay $0.99 & Generate</button>
+                                <button id="cover-letter-pay-button" aria-label="Pay 99 cents and generate cover letter" class="upsell-primary-button mt-3 w-full rounded-md bg-black py-3 text-sm font-semibold text-white">Pay $0.99 & Generate</button>
                                 <div class="mt-4">
                                     <div class="upsell-progress-track" aria-hidden="true"><div id="cover-letter-progress-fill" class="upsell-progress-fill"></div></div>
                                     <p id="cover-letter-progress-text" class="mt-2 text-xs text-gray-700">Step 1: Payment pending · Step 2: Generation pending · Step 3: Download pending</p>
@@ -385,7 +396,7 @@
     </div>
 
     <a class="no-cv-banner" href="https://wa.me/9613690148?text=Hello%2C%20can%20you%20please%20help%20me%20write%20my%20CV%3F" target="_blank" rel="noopener noreferrer" aria-label="Don't have a CV? Click here">
-        <img src="assets/no-cv-banner.jpg" alt="DON'T HAVE A CV? CLICK HERE">
+        <img src="assets/no-cv-banner.jpg" alt="DON'T HAVE A CV? CLICK HERE" width="320" height="860" loading="lazy" decoding="async">
     </a>
 
     <div id="upsell-payment-modal" class="fixed inset-0 z-[70] hidden items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="payment-modal-title">
@@ -2262,6 +2273,16 @@
             if (paymentModalPaypal) paymentModalPaypal.innerHTML = '';
         }
 
+        function skipUpsellAndContinue() {
+            setPrimaryDownloadButton('revised');
+            if (upsellCards) upsellCards.classList.add('hidden');
+            if (revisedDownloadOnly) {
+                revisedDownloadOnly.classList.remove('hidden');
+                revisedDownloadOnly.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            setMobileUpsellSummary();
+        }
+
         function openPaymentModal(type) {
             if (!paymentModal || !paymentModalPaypal || !paymentModalWhish) return;
             paymentModal.classList.remove('hidden');
@@ -2367,7 +2388,7 @@
                 openPaymentModal('linkedin');
             };
             const link = document.getElementById('linkedin-skip-link');
-            if (link) link.onclick = (e) => { e.preventDefault(); linkedinUpsellCard.classList.add('hidden'); setMobileUpsellSummary(); };
+            if (link) link.onclick = (e) => { e.preventDefault(); skipUpsellAndContinue(); };
         }
 
         async function handleLinkedinWhishReturn() {
@@ -2460,7 +2481,7 @@
                 openPaymentModal('cover-letter');
             };
             const coverLetterSkip = document.getElementById('cover-letter-skip-link');
-            if (coverLetterSkip) coverLetterSkip.onclick = (e) => { e.preventDefault(); coverLetterCard.classList.add('hidden'); setMobileUpsellSummary(); };
+            if (coverLetterSkip) coverLetterSkip.onclick = (e) => { e.preventDefault(); skipUpsellAndContinue(); };
         }
 
         async function handleCoverLetterWhishReturn() {
