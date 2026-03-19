@@ -218,14 +218,14 @@
 
                     <!-- Payment Section -->
                     <div id="revised-payment-section" class="mt-8 bg-gray-900 border border-blue-500/40 p-6 rounded-lg text-center">
-                        <h3 class="text-xl font-bold text-white">Download Your Revised CV (PDF)</h3>
+                        <h3 class="text-xl font-bold text-white">Get Your Revised CV by Email</h3>
                         <p class="mt-2 text-slate-300">
                             Get the professionally revised, ATS-ready version of your CV based on this audit for
                             <span class="font-semibold text-white" id="payment-price-paypal">USD 3.99</span>
                             via PayPal, Whish or card.
                         </p>
                         <p class="mt-2 text-slate-400 text-sm">
-                            Pay securely through PayPal, debit/credit card, or Whish to unlock your download instantly.
+                            Pay securely through PayPal, debit/credit card, or Whish to unlock instant email delivery.
                         </p>
                         <div class="mt-6 flex flex-col items-center gap-4">
                             <div class="paypal-gateway-panel w-full max-w-md rounded-lg p-3">
@@ -245,19 +245,13 @@
                         <a id="download-link" href="#" class="hidden mt-4 inline-flex items-center justify-center bg-emerald-600 text-white font-bold py-3 px-8 rounded-lg opacity-50 pointer-events-none transition-colors" aria-disabled="true">
                             Download Revised CV (PDF)
                         </a>
-                        <p id="download-note" class="mt-2 text-xs text-slate-500">Complete payment to unlock your download.</p>
+                        <p id="download-note" class="mt-2 text-xs text-slate-500">Complete payment to unlock email delivery.</p>
                     </div>
 
                     <div id="revised-download-only" class="hidden mt-8 rounded-lg border border-emerald-500/50 bg-emerald-950/30 p-8 text-center">
                         <h3 class="text-2xl font-semibold text-white">Your CV is ready</h3>
-                        <p class="mt-2 text-sm text-slate-300">Open it now, download it, or access it later anytime.</p>
+                        <p class="mt-2 text-sm text-slate-300">Your revised CV is ready to be sent to your email.</p>
                         <div class="mx-auto mt-5 grid w-full max-w-md grid-cols-1 gap-3">
-                            <a id="cv-open-link" href="#" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-500 opacity-50 pointer-events-none" aria-disabled="true">
-                                Open CV
-                            </a>
-                            <a id="cv-download-link" href="#" class="inline-flex items-center justify-center rounded-lg bg-slate-700 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-600 opacity-50 pointer-events-none" aria-disabled="true">
-                                Download CV
-                            </a>
                             <input id="cv-email-input" type="email" class="w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white" placeholder="Email address (for later access)" />
                             <input id="cv-name-input" type="text" class="w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white" placeholder="Name (optional)" />
                             <button id="email-cv-button" class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60" disabled>
@@ -265,7 +259,7 @@
                             </button>
                         </div>
                         <p id="cv-email-status" class="mt-3 min-h-[20px] text-xs text-slate-300"></p>
-                        <p class="mt-2 text-xs text-slate-400">Perfect if you want to access it later or from another device.</p>
+                        <p class="mt-2 text-xs text-slate-400">We’ll send your revised CV link directly to your inbox.</p>
 
                         <a id="primary-download-link" href="#" class="hidden mt-5 inline-flex w-full max-w-md items-center justify-center rounded-lg bg-emerald-700/70 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-600/70" aria-disabled="true">
                             Download Linked Product
@@ -469,8 +463,6 @@
         const auditSection = document.getElementById('audit-section');
         const revisedPaymentSection = document.getElementById('revised-payment-section');
         const revisedDownloadOnly = document.getElementById('revised-download-only');
-        const cvOpenLink = document.getElementById('cv-open-link');
-        const cvDownloadLink = document.getElementById('cv-download-link');
         const cvEmailInput = document.getElementById('cv-email-input');
         const cvNameInput = document.getElementById('cv-name-input');
         const emailCvButton = document.getElementById('email-cv-button');
@@ -784,21 +776,6 @@
         function syncCvAccessActions() {
             const cvUrl = getCvAccessUrl();
             const hasUrl = Boolean(cvUrl);
-
-            if (cvOpenLink) {
-                cvOpenLink.href = hasUrl ? cvUrl : '#';
-                cvOpenLink.setAttribute('aria-disabled', hasUrl ? 'false' : 'true');
-                cvOpenLink.classList.toggle('opacity-50', !hasUrl);
-                cvOpenLink.classList.toggle('pointer-events-none', !hasUrl);
-            }
-
-            if (cvDownloadLink) {
-                cvDownloadLink.href = hasUrl ? cvUrl : '#';
-                cvDownloadLink.setAttribute('download', 'revised-cv.pdf');
-                cvDownloadLink.setAttribute('aria-disabled', hasUrl ? 'false' : 'true');
-                cvDownloadLink.classList.toggle('opacity-50', !hasUrl);
-                cvDownloadLink.classList.toggle('pointer-events-none', !hasUrl);
-            }
 
             if (emailCvButton) {
                 const hasEmail = Boolean((cvEmailInput?.value || '').trim());
@@ -1655,7 +1632,7 @@
                     URL.revokeObjectURL(revisedCvBlobUrl);
                     revisedCvBlobUrl = null;
                 }
-                downloadNote.textContent = 'Complete payment to unlock your download.';
+                downloadNote.textContent = 'Complete payment to unlock email delivery.';
             } else {
                 downloadLink.classList.remove('opacity-50', 'pointer-events-none');
                 downloadLink.setAttribute('aria-disabled', 'false');
@@ -1663,7 +1640,7 @@
                     downloadLink.href = revisedCvBlobUrl;
                 }
                 downloadLink.setAttribute('download', 'revised-cv.pdf');
-                downloadNote.textContent = 'Your revised CV PDF is ready to download.';
+                downloadNote.textContent = 'Your revised CV is ready. Enter your email to receive it.';
                 activeDownloadType = 'revised';
                 applyPaidGatedLayout();
                 initializeLinkedInUpsell();
@@ -1761,7 +1738,7 @@
                     console.error('Auto PDF regeneration failed:', error);
                     regeneratePdfTriggered = false;
                     if (primaryDownloadLink) {
-                        primaryDownloadLink.textContent = 'Download Revised CV (PDF)';
+                        primaryDownloadLink.textContent = 'Revised CV Ready';
                         primaryDownloadLink.classList.remove('opacity-50', 'pointer-events-none');
                     }
                     showError(error.message || 'Unable to generate your revised CV. Please try again.');
@@ -1775,7 +1752,7 @@
             if (hasPaidCV && !revisedCvBlobUrl && !isGeneratingPdf) {
                 retryDownloadButton.classList.remove('hidden');
                 if (downloadNote) {
-                    downloadNote.textContent = 'Payment received. Generate your revised CV to download.';
+                    downloadNote.textContent = 'Payment received. Generating your revised CV for email delivery.';
                 }
             } else {
                 retryDownloadButton.classList.add('hidden');
@@ -1795,7 +1772,7 @@
             }
             setDownloadLocked(true);
             if (whishPayStatus) {
-                whishPayStatus.textContent = 'Payment confirmed. Preparing your download...';
+                whishPayStatus.textContent = 'Payment confirmed. Preparing your revised CV...';
             }
             try {
                 await generateRevisedPdf(extractedCvText);
@@ -2243,7 +2220,7 @@
             }
             const restored = restoreAuditResultsFromSession();
             if (!restored) {
-                showError('Your audit results have expired. Please run the audit again to unlock your download.');
+                showError('Your audit results have expired. Please run the audit again to unlock email delivery.');
             }
             if (paymentStatus.startsWith('linkedin_')) return;
             if (paymentStatus !== 'success' && paymentStatus !== 'failed') return;
@@ -2301,7 +2278,7 @@
                         sessionStorage.removeItem('whishPayExternalId');
                         sessionStorage.removeItem('whishPayCurrency');
                         if (whishPayStatus) {
-                            whishPayStatus.textContent = 'Payment confirmed. Preparing your download...';
+                            whishPayStatus.textContent = 'Payment confirmed. Preparing your revised CV...';
                         }
                         return finalizeCvPaymentAndGenerate().then(() => {
                             url.searchParams.delete('payment');
