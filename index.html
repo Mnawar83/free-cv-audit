@@ -312,17 +312,14 @@
                                 <a id="linkedin-skip-link" href="#" class="mt-3 inline-block text-xs underline text-gray-700">No thanks, skip LinkedIn upsell</a>
                             </div>
                             <div id="linkedin-download-only" class="hidden mt-4">
-                                <h4 class="text-lg font-semibold text-black">Your LinkedIn PDF is ready</h4>
-                                <p class="mt-1 text-xs text-gray-600">Open it now, download it, or access it later anytime.</p>
+                                <h4 class="text-lg font-semibold text-black">Your LinkedIn Optimization is ready</h4>
+                                <p class="mt-1 text-xs text-gray-600">We’ll send your download link to your email.</p>
                                 <div class="mt-3 grid grid-cols-1 gap-2">
-                                    <a id="linkedin-open-pdf" href="#" target="_blank" rel="noopener noreferrer" class="inline-flex w-full items-center justify-center rounded-md bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-emerald-500 opacity-50 pointer-events-none" aria-disabled="true">Open PDF</a>
-                                    <a id="linkedin-download-pdf" href="#" class="inline-flex w-full items-center justify-center rounded-md bg-gray-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-gray-600 opacity-50 pointer-events-none" aria-disabled="true">Download PDF</a>
                                     <input id="linkedin-email-input" type="email" class="w-full rounded-md border border-gray-400 bg-white px-3 py-2 text-sm text-black" placeholder="Email address (for later access)" />
                                     <input id="linkedin-name-input" type="text" class="w-full rounded-md border border-gray-400 bg-white px-3 py-2 text-sm text-black" placeholder="Name (optional)" />
                                     <button id="linkedin-email-button" class="inline-flex w-full items-center justify-center rounded-md bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60" disabled>Email Me My LinkedIn PDF</button>
                                 </div>
                                 <p id="linkedin-email-status" class="mt-2 min-h-[18px] text-xs text-gray-600"></p>
-                                <a id="linkedin-download-link" href="#" class="hidden mt-2 inline-flex w-full items-center justify-center rounded-md bg-black px-4 py-3 text-sm font-semibold text-white">Download LinkedIn Word File</a>
                             </div>
                             <p id="linkedin-upsell-status" class="mt-3 min-h-[20px] text-xs text-gray-700"></p>
                         </div>
@@ -358,17 +355,14 @@
                                 <a id="cover-letter-skip-link" href="#" class="mt-3 inline-block text-xs underline text-gray-700">No thanks, skip cover letter</a>
                             </div>
                             <div id="cover-letter-download-only" class="hidden mt-4">
-                                <h4 class="text-lg font-semibold text-black">Your Cover Letter PDF is ready</h4>
-                                <p class="mt-1 text-xs text-gray-600">Open it now, download it, or access it later anytime.</p>
+                                <h4 class="text-lg font-semibold text-black">Your Cover Letter is ready</h4>
+                                <p class="mt-1 text-xs text-gray-600">We’ll send your download link to your email.</p>
                                 <div class="mt-3 grid grid-cols-1 gap-2">
-                                    <a id="cover-letter-open-pdf" href="#" target="_blank" rel="noopener noreferrer" class="inline-flex w-full items-center justify-center rounded-md bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-emerald-500 opacity-50 pointer-events-none" aria-disabled="true">Open PDF</a>
-                                    <a id="cover-letter-download-pdf" href="#" class="inline-flex w-full items-center justify-center rounded-md bg-gray-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-gray-600 opacity-50 pointer-events-none" aria-disabled="true">Download PDF</a>
                                     <input id="cover-letter-email-input" type="email" class="w-full rounded-md border border-gray-400 bg-white px-3 py-2 text-sm text-black" placeholder="Email address (for later access)" />
                                     <input id="cover-letter-name-input" type="text" class="w-full rounded-md border border-gray-400 bg-white px-3 py-2 text-sm text-black" placeholder="Name (optional)" />
                                     <button id="cover-letter-email-button" class="inline-flex w-full items-center justify-center rounded-md bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60" disabled>Email Me My Cover Letter</button>
                                 </div>
                                 <p id="cover-letter-email-status" class="mt-2 min-h-[18px] text-xs text-gray-600"></p>
-                                <a id="cover-letter-download-link" href="#" class="hidden mt-2 inline-flex w-full items-center justify-center rounded-md bg-black px-4 py-3 text-sm font-semibold text-white">Download Cover Letter Word File</a>
                             </div>
                             <p id="cover-letter-status" class="mt-3 min-h-[20px] text-xs text-gray-700"></p>
                         </div>
@@ -511,7 +505,6 @@
         const coverLetterStatus = document.getElementById('cover-letter-status');
         const coverLetterProgressFill = document.getElementById('cover-letter-progress-fill');
         const coverLetterProgressText = document.getElementById('cover-letter-progress-text');
-        const bundlePayButton = document.getElementById('bundle-pay-button');
         const upsellMobileSummary = document.getElementById('upsell-mobile-summary');
         const upsellMobileSummaryText = document.getElementById('upsell-mobile-summary-text');
         const upsellMobileProceed = document.getElementById('upsell-mobile-proceed');
@@ -1458,15 +1451,13 @@
             if (!revisedDownloadOnly || !primaryDownloadLink) return;
             revisedDownloadOnly.classList.remove('hidden');
             if (type === 'linkedin') {
-                primaryDownloadLink.classList.remove('hidden');
-                primaryDownloadLink.textContent = 'Download LinkedIn PDF';
-                primaryDownloadLink.href = linkedinPdfObjectUrl || linkedinPdfUrl || linkedinDownloadUrl || '#';
-                primaryDownloadLink.setAttribute('download', 'linkedin-optimization.pdf');
+                primaryDownloadLink.classList.add('hidden');
+                primaryDownloadLink.href = '#';
+                primaryDownloadLink.removeAttribute('download');
             } else if (type === 'cover-letter') {
-                primaryDownloadLink.classList.remove('hidden');
-                primaryDownloadLink.textContent = 'Download Cover Letter PDF';
-                primaryDownloadLink.href = coverLetterPdfObjectUrl || coverLetterPdfUrl || coverLetterDownloadUrl || '#';
-                primaryDownloadLink.setAttribute('download', 'cover-letter.pdf');
+                primaryDownloadLink.classList.add('hidden');
+                primaryDownloadLink.href = '#';
+                primaryDownloadLink.removeAttribute('download');
             } else {
                 primaryDownloadLink.classList.add('hidden');
                 primaryDownloadLink.href = '#';
@@ -2363,11 +2354,7 @@
             if (linkedinSelectInput?.checked) selected.push('LinkedIn ($9.99)');
             if (coverLetterSelectInput?.checked) selected.push('Cover Letter ($0.99)');
             upsellMobileSummary.classList.toggle('hidden', selected.length === 0 || upsellCards.classList.contains('hidden'));
-            if (selected.length === 2) {
-                upsellMobileSummaryText.textContent = 'Bundle selected: $8.99 total (save $2.99)';
-            } else {
-                upsellMobileSummaryText.textContent = selected.length ? `Selected: ${selected.join(' + ')}` : 'No upsells selected';
-            }
+            upsellMobileSummaryText.textContent = selected.length ? `Selected: ${selected.join(' + ')}` : 'No upsells selected';
         }
 
         function toggleUpsellCard(cardEl, bodyEl) {
@@ -2399,35 +2386,12 @@
             setMobileUpsellSummary();
         }
 
-        function startBundleCheckout() {
-            openPaymentModal('bundle');
-        }
-
-        function advanceBundleQueue(completedType) {
-            if (!bundleCheckoutQueue.length) {
-                closePaymentModal();
-                return;
-            }
-            if (bundleCheckoutQueue[0] === completedType) {
-                bundleCheckoutQueue.shift();
-            } else {
-                bundleCheckoutQueue = bundleCheckoutQueue.filter((item) => item !== completedType);
-            }
-            if (!bundleCheckoutQueue.length) {
-                closePaymentModal();
-                return;
-            }
-            openPaymentModal(bundleCheckoutQueue[0]);
-        }
-
         function openPaymentModal(type) {
             if (!paymentModal || !paymentModalPaypal || !paymentModalWhish) return;
             paymentModal.classList.remove('hidden');
             paymentModal.classList.add('flex');
             paymentModalStatus.textContent = '';
-            paymentModalTitle.textContent = type === 'bundle'
-                ? 'Pay $8.99 for LinkedIn + Cover Letter Bundle'
-                : type === 'linkedin'
+            paymentModalTitle.textContent = type === 'linkedin'
                     ? 'Pay for LinkedIn Optimization'
                     : 'Pay for Cover Letter';
             paymentModalWhish.onclick = () => startUpsellWhishCheckout(type);
@@ -2447,17 +2411,6 @@
                             if (!response.ok || !data?.orderID) throw new Error(getApiErrorMessage(data, 'Unable to create PayPal order.'));
                             return data.orderID;
                         }
-                        if (type === 'bundle') {
-                            const jobLink = coverLetterJobLinkInput.value.trim();
-                            if (!looksLikeHttpUrl(jobLink)) throw new Error('Please provide a valid job URL for the bundle.');
-                            showCoverLetterValidation('');
-                            await initializeLinkedInCheckout(currentRunId, getLinkedInDummyUrl());
-                            await initializeCoverLetterCheckout(currentRunId, jobLink);
-                            const response = await fetch('/.netlify/functions/paypal-bundle-create-order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId: currentRunId }) });
-                            const data = await readJsonSafely(response);
-                            if (!response.ok || !data?.orderID) throw new Error(getApiErrorMessage(data, 'Unable to create bundle PayPal order.'));
-                            return data.orderID;
-                        }
                         const jobLink = coverLetterJobLinkInput.value.trim();
                         if (!looksLikeHttpUrl(jobLink)) throw new Error('Please provide a valid job URL.');
                         showCoverLetterValidation('');
@@ -2469,26 +2422,18 @@
                     },
                     onApprove: async (payload) => {
                         setUpsellProgress(type, 1);
-                        const captureEndpoint = type === 'bundle'
-                            ? '/.netlify/functions/paypal-bundle-capture-order'
-                            : type === 'linkedin'
+                        const captureEndpoint = type === 'linkedin'
                                 ? '/.netlify/functions/paypal-linkedin-capture-order'
                                 : '/.netlify/functions/paypal-cover-letter-capture-order';
                         const captureResponse = await fetch(captureEndpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId: currentRunId, orderID: payload.orderID }) });
                         const captureData = await readJsonSafely(captureResponse);
                         if (!captureResponse.ok || !captureData.ok) throw new Error(captureData.error || 'PayPal capture failed.');
-                        if (type === 'bundle') {
-                            setUpsellProgress('linkedin', 2);
-                            setUpsellProgress('cover-letter', 2);
-                            await Promise.all([generateLinkedInDocxForRun(currentRunId), generateCoverLetterDocxForRun(currentRunId)]);
-                            closePaymentModal();
-                        } else if (type === 'linkedin') {
+                        if (type === 'linkedin') {
                             await generateLinkedInDocxForRun(currentRunId);
-                            advanceBundleQueue(type);
                         } else {
                             await generateCoverLetterDocxForRun(currentRunId);
-                            advanceBundleQueue(type);
                         }
+                        closePaymentModal();
                     },
                     onError: (error) => {
                         showError(error.message || 'PayPal checkout failed.');
@@ -2505,28 +2450,25 @@
                 paymentModalStatus.textContent = 'Opening secure payment...';
                 paymentTarget = openPaymentTarget();
                 const isLinkedin = type === 'linkedin';
-                const isBundle = type === 'bundle';
-                if (isLinkedin || isBundle) {
+                if (isLinkedin) {
                     await initializeLinkedInCheckout(currentRunId, getLinkedInDummyUrl());
                 }
-                if (!isLinkedin || isBundle) {
+                if (!isLinkedin) {
                     const jobLink = coverLetterJobLinkInput.value.trim();
-                    if (!looksLikeHttpUrl(jobLink)) throw new Error(isBundle ? 'Please provide a valid job URL for the bundle.' : 'Please provide a valid job URL.');
+                    if (!looksLikeHttpUrl(jobLink)) throw new Error('Please provide a valid job URL.');
                     await initializeCoverLetterCheckout(currentRunId, jobLink);
                 }
-                const endpoint = isBundle
-                    ? '/.netlify/functions/whishpay-bundle-create-payment'
-                    : isLinkedin
+                const endpoint = isLinkedin
                         ? '/.netlify/functions/whishpay-linkedin-create-payment'
                         : '/.netlify/functions/whishpay-cover-letter-create-payment';
-                const param = isBundle ? 'bundlePayment' : isLinkedin ? 'linkedinPayment' : 'coverLetterPayment';
+                const param = isLinkedin ? 'linkedinPayment' : 'coverLetterPayment';
                 const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId: currentRunId, successRedirectUrl: `${window.location.origin}${window.location.pathname}?${param}=success&runId=${encodeURIComponent(currentRunId)}`, failureRedirectUrl: `${window.location.origin}${window.location.pathname}?${param}=failed&runId=${encodeURIComponent(currentRunId)}` }) });
                 const payload = await readJsonSafely(response);
                 if (!response.ok) throw new Error(getApiErrorMessage(payload, 'Unable to start Whish payment.'));
                 const externalId = payload?.externalId;
                 const collectUrl = payload?.data?.collectUrl || payload?.collectUrl;
                 if (!externalId || !collectUrl) throw new Error('Unable to start Whish payment. Please try again.');
-                const externalStorageKey = isBundle ? 'bundleWhishExternalId' : isLinkedin ? 'linkedinWhishExternalId' : 'coverLetterWhishExternalId';
+                const externalStorageKey = isLinkedin ? 'linkedinWhishExternalId' : 'coverLetterWhishExternalId';
                 sessionStorage.setItem(externalStorageKey, String(externalId));
                 paymentTarget.target.location.href = collectUrl;
             } catch (error) {
@@ -2692,42 +2634,6 @@
             }
         }
 
-        async function handleBundleWhishReturn() {
-            try {
-                if (handoffReturnToOpener('bundlePayment')) return;
-                const url = new URL(window.location.href);
-                const paymentStatus = url.searchParams.get('bundlePayment');
-                if (paymentStatus !== 'success') return;
-                const restored = restoreAuditResultsFromSession();
-                if (!restored) return;
-
-                const runId = url.searchParams.get('runId') || currentRunId;
-                const externalId = sessionStorage.getItem('bundleWhishExternalId') || url.searchParams.get('externalId');
-                if (!runId || !externalId) return;
-
-                const verifyResponse = await fetch('/.netlify/functions/whishpay-bundle-check-status', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ runId, externalId }),
-                });
-                const verifyData = await readJsonSafely(verifyResponse);
-                if (!verifyResponse.ok || (verifyData.collectStatus !== 'PAID' && verifyData.collectStatus !== 'SUCCESS' && verifyData.collectStatus !== 'COLLECTED' && verifyData.isPaidStatus !== true)) {
-                    showError(verifyData.error || 'Bundle payment is not confirmed yet.');
-                    return;
-                }
-                setPaidState('linkedin', true);
-                setPaidState('cover-letter', true);
-                setUpsellProgress('linkedin', 2);
-                setUpsellProgress('cover-letter', 2);
-                await Promise.all([generateLinkedInDocxForRun(runId), generateCoverLetterDocxForRun(runId)]);
-                applyPaidGatedLayout();
-                url.searchParams.delete('bundlePayment');
-                url.searchParams.delete('runId');
-                window.history.replaceState({}, document.title, url.toString());
-            } catch (error) {
-                showError(error.message || 'Bundle Whish payment handling failed.');
-            }
-        }
 
         function initializeWhishPayCheckout() {
             if (whishPayButton && !whishPayListenerAttached) {
@@ -2752,10 +2658,6 @@
         if (coverLetterSelectInput) coverLetterSelectInput.addEventListener('change', setMobileUpsellSummary);
         if (upsellMobileProceed) {
             upsellMobileProceed.addEventListener('click', () => {
-                if (linkedinSelectInput?.checked && coverLetterSelectInput?.checked) {
-                    startBundleCheckout();
-                    return;
-                }
                 if (linkedinSelectInput?.checked && !hasPaidLinkedIn) {
                     linkedinPayButton?.click();
                     return;
@@ -2763,14 +2665,6 @@
                 if (coverLetterSelectInput?.checked && !hasPaidCoverLetter) {
                     coverLetterPayButton?.click();
                 }
-            });
-        }
-        if (bundlePayButton) {
-            bundlePayButton.addEventListener('click', () => {
-                linkedinSelectInput.checked = true;
-                coverLetterSelectInput.checked = true;
-                setMobileUpsellSummary();
-                startBundleCheckout();
             });
         }
 
