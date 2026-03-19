@@ -11,8 +11,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js" as="script">
     <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.16/mammoth.browser.min.js" as="script">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.16/mammoth.browser.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.16/mammoth.browser.min.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -276,6 +276,11 @@
                     </div>
 
                     <div id="upsell-cards" class="mt-8 hidden grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div id="bundle-offer-card" class="md:col-span-2 rounded-lg border border-blue-300 bg-blue-50 p-4 text-left text-blue-950">
+                            <h3 class="text-lg font-bold">Bundle & Save</h3>
+                            <p class="mt-1 text-sm">Get LinkedIn Optimization + Cover Letter together for <span class="font-semibold">$8.99</span> (save <span class="font-semibold">$2.99</span>).</p>
+                            <button id="bundle-pay-button" class="mt-3 rounded-md bg-blue-700 px-4 py-3 text-sm font-semibold text-white">Proceed with Bundle</button>
+                        </div>
                         <div id="linkedin-upsell-card" class="upsell-card bg-white text-black border border-gray-300 p-6 rounded-lg text-left">
                             <button id="linkedin-toggle" type="button" class="flex w-full items-center justify-between gap-3 rounded-md text-left md:pointer-events-none">
                                 <span class="text-2xl font-semibold">💼 Optimize your LinkedIn</span>
@@ -609,6 +614,7 @@
         let auditRequestToken = 0;
         let checkoutWarmupStarted = false;
         let isSendingCvEmail = false;
+        let bundleCheckoutQueue = [];
         const auditMountParent = auditSection ? auditSection.parentElement : null;
         const auditMountAnchor = document.createComment('audit-section-anchor');
         if (auditMountParent && auditSection) {
@@ -2522,6 +2528,7 @@
                 }
                 setUpsellProgress('linkedin', 1);
                 await generateLinkedInDocxForRun(runId);
+                advanceBundleQueue('linkedin');
                 activeDownloadType = 'linkedin';
                 applyPaidGatedLayout();
                 url.searchParams.delete('linkedinPayment');
@@ -2614,6 +2621,7 @@
                 }
                 setUpsellProgress('cover-letter', 1);
                 await generateCoverLetterDocxForRun(runId);
+                advanceBundleQueue('cover-letter');
                 activeDownloadType = 'cover-letter';
                 applyPaidGatedLayout();
                 coverLetterStatus.textContent = 'Payment confirmed. Cover letter PDF is ready.';
@@ -2703,6 +2711,7 @@
         handleWhishPayReturn();
         handleLinkedinWhishReturn();
         handleCoverLetterWhishReturn();
+        handleBundleWhishReturn();
         restoreAuditResultsFromSession();
         setMobileUpsellSummary();
         syncUpsellCardVisibilityForViewport();
