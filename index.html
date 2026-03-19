@@ -1599,7 +1599,6 @@
                     }
                 }
                 prefetchUpsellPdf('linkedin', linkedinPdfUrl);
-                sendUpsellEmailInBackground('linkedin');
             }
             if (type === 'cover-letter') {
                 coverLetterUnlocked = true;
@@ -1625,7 +1624,6 @@
                     }
                 }
                 prefetchUpsellPdf('cover-letter', coverLetterPdfUrl);
-                sendUpsellEmailInBackground('cover-letter');
             }
             applyPaidGatedLayout();
         }
@@ -2360,6 +2358,7 @@
             }
 
             markUpsellUnlocked('linkedin', resolvedDownloadUrl, resolvedPdfUrl);
+            sendUpsellEmailInBackground('linkedin');
             linkedinUpsellStatus.textContent = 'LinkedIn PDF is ready.';
             setUpsellProgress('linkedin', 3);
         }
@@ -2588,6 +2587,7 @@
             const resolvedDownloadUrl = new URL(docData.downloadUrl, window.location.origin).toString();
             const resolvedPdfUrl = docData.pdfUrl ? new URL(docData.pdfUrl, window.location.origin).toString() : '';
             markUpsellUnlocked('cover-letter', resolvedDownloadUrl, resolvedPdfUrl);
+            sendUpsellEmailInBackground('cover-letter');
             coverLetterStatus.textContent = 'Cover letter PDF is ready.';
             setUpsellProgress('cover-letter', 3);
         }
