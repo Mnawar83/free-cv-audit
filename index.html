@@ -818,7 +818,36 @@
             // This URL points to our secure backend function. It will work correctly once deployed.
             const functionUrl = '/.netlify/functions/audit';
 
-            try {
+            const parseAuditResponse = async (response) => {
+                const responseText = await response.text();
+                let parsed = {};
+                if (responseText && responseText.trim()) {
+                    try {
+                        parsed = JSON.parse(responseText);
+                    } catch (parseError) {
+                        if (!response.ok && response.status === 504) {
+                            throw new Error('The audit service is taking longer than expected. Please try again in a few seconds.');
+                        }
+                        if (!response.ok) {
+                            throw new Error(`Audit service returned a non-JSON error response (HTTP ${response.status}).`);
+                        }
+                        throw new Error('Audit service returned an invalid response format. Please try again.');
+                    }
+                }
+
+                if (!response.ok) {
+                    const fallbackMessage = response.status === 504
+                        ? 'The audit service timed out while processing your CV. Please try again.'
+                        : responseText && responseText.trim()
+                            ? `Server error: ${response.status}`
+                            : `Server error: ${response.status} (empty response)`;
+                    throw new Error(parsed?.error || fallbackMessage);
+                }
+
+                return parsed;
+            };
+
+            const requestAudit = async () => {
                 const auditStart = performance.now();
                 console.info('[timing] audit request start', { at: auditStart });
                 const response = await fetch(functionUrl, {
@@ -828,28 +857,20 @@
                     signal,
                 });
                 console.info('[timing] audit response received', { ms: Math.round(performance.now() - auditStart) });
+                return parseAuditResponse(response);
+            };
 
-                const responseText = await response.text();
-                let parsed = {};
-                if (responseText && responseText.trim()) {
-                    try {
-                        parsed = JSON.parse(responseText);
-                    } catch (parseError) {
-                        if (!response.ok) {
-                            throw new Error(`Audit service returned a non-JSON error response (HTTP ${response.status}).`);
-                        }
-                        throw new Error('Audit service returned an invalid response format. Please try again.');
+            try {
+                let result;
+                try {
+                    result = await requestAudit();
+                } catch (firstError) {
+                    if (!firstError.message.includes('504') && !firstError.message.toLowerCase().includes('timed out')) {
+                        throw firstError;
                     }
+                    await new Promise((resolve) => setTimeout(resolve, 500));
+                    result = await requestAudit();
                 }
-
-                if (!response.ok) {
-                    const fallbackMessage = responseText && responseText.trim()
-                        ? `Server error: ${response.status}`
-                        : `Server error: ${response.status} (empty response)`;
-                    throw new Error(parsed?.error || fallbackMessage);
-                }
-
-                const result = parsed;
                 return {
                     audit: result.audit || result.auditResult || '',
                     runId: result.runId || '',
