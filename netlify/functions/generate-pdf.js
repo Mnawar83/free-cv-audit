@@ -38,7 +38,14 @@ exports.handler = async (event) => {
     }
 
     const { cvText, cvAnalysis, runId: incomingRunId } = JSON.parse(event.body || '{}');
-    const existingRun = incomingRunId ? await getRun(incomingRunId) : null;
+    let existingRun = null;
+    if (incomingRunId) {
+      try {
+        existingRun = await getRun(incomingRunId);
+      } catch (lookupError) {
+        console.warn('Run store lookup failed; proceeding with request body data.', lookupError?.message || lookupError);
+      }
+    }
     const resolvedCvText = cvText || existingRun?.original_cv_text || '';
     const resolvedCvAnalysis = cvAnalysis || existingRun?.audit_result || '';
 
@@ -116,9 +123,9 @@ Return only the revised CV content, formatted as plain text with clear section h
         }
 
         const modelNotAvailable =
-          fetchResponse.status === 404 || /not found|unsupported|not available/i.test(errorMsg);
+          fetchResponse.status === 404 || fetchResponse.status === 429 || /not found|unsupported|not available|rate|quota/i.test(errorMsg);
         if (modelNotAvailable) {
-          lastErrorMessage = `${model}: ${errorMsg}`;
+          lastErrorMessage = `${model}: ${errorMsg || fetchResponse.status}`;
           continue;
         }
 
@@ -128,7 +135,7 @@ Return only the revised CV content, formatted as plain text with clear section h
         break;
       } catch (error) {
         const errorMessage = error?.message || 'unknown';
-        const modelNotAvailable = /missing|not found|unsupported|not available/i.test(errorMessage);
+        const modelNotAvailable = /missing|not found|unsupported|not available|rate|quota/i.test(errorMessage);
         if (modelNotAvailable) {
           lastErrorMessage = `${model}: ${errorMessage}`;
           continue;
@@ -178,7 +185,11 @@ Return only the revised CV content, formatted as plain text with clear section h
       runUpdates.revised_cv_fallback_generated_at = null;
     }
 
-    await upsertRun(runId, runUpdates);
+    try {
+      await upsertRun(runId, runUpdates);
+    } catch (storeError) {
+      console.warn('Run store upsert failed; returning PDF without caching.', storeError?.message || storeError);
+    }
 
     return pdfResponse(pdfBuffer, runId);
   } catch (error) {

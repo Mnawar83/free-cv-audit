@@ -395,6 +395,8 @@
         let cvFileKind = '';
         let paypalSdkLoading = null;
         let paypalButtonsRendered = false;
+        let paypalButtonsInitializing = false;
+        let sessionRestoredOnce = false;
         let paypalConfigCache = null;
         let paypalConfigError = null;
         let whishPayConfigCache = null;
@@ -1447,9 +1449,15 @@
         }
 
         function restoreAuditResultsFromSession() {
+            if (sessionRestoredOnce) return true;
             const storedAnalysis = getStoredValue('cvAnalysis');
             if (!storedAnalysis) {
                 if (!hasActiveRunId) return false;
+                sessionRestoredOnce = true;
+                const storedText = getStoredValue('cvText');
+                if (storedText) {
+                    extractedCvText = storedText;
+                }
                 uploadSection.classList.add('hidden');
                 loadingSection.classList.add('hidden');
                 resultsSection.classList.remove('hidden');
@@ -1462,6 +1470,7 @@
                 }
                 return true;
             }
+            sessionRestoredOnce = true;
             extractedCvAnalysis = storedAnalysis;
             const storedText = getStoredValue('cvText');
             if (storedText) {
@@ -1709,7 +1718,8 @@
         }
 
         async function initializePayPalButtons() {
-            if (!paypalButtonPayPalContainer || !paypalButtonCardContainer || paypalButtonsRendered) return;
+            if (!paypalButtonPayPalContainer || !paypalButtonCardContainer || paypalButtonsRendered || paypalButtonsInitializing) return;
+            paypalButtonsInitializing = true;
             try {
                 const paypalSdk = await loadPayPalSdk();
                 const createOrder = async () => {
@@ -1809,6 +1819,7 @@
             } catch (error) {
                 console.error('PayPal setup error:', error);
                 paypalButtonsRendered = false;
+                paypalButtonsInitializing = false;
                 showError(error.message || 'PayPal is not available right now.');
             }
         }
@@ -2017,6 +2028,7 @@
                         if (whishPayStatus) {
                             whishPayStatus.textContent = 'Payment confirmed. Preparing your download...';
                         }
+                        applyPaidGatedLayout();
                         return generateRevisedPdf(extractedCvText).then(() => {
                             url.searchParams.delete('payment');
                             url.searchParams.delete('externalId');
@@ -2031,9 +2043,10 @@
                             setPaidState('cv', false);
                         } else {
                             setPaidState('cv', true);
-                            setDownloadLocked(true);
+                            applyPaidGatedLayout();
                         }
                         showError(error.message || 'Unable to confirm your payment yet.');
+                        updateRetryVisibility();
                     });
             } else {
                 if (whishPayStatus) {
