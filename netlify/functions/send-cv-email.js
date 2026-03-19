@@ -1,5 +1,3 @@
-const { Resend } = require('resend');
-
 function json(statusCode, payload) {
   return {
     statusCode,
@@ -54,18 +52,29 @@ exports.handler = async (event) => {
     if (!email) return json(400, { error: 'email is required.' });
     if (!cvUrl) return json(400, { error: 'cvUrl is required.' });
 
-    const resend = new Resend(apiKey);
     const subject = isResend ? 'Here Is Your CV Again' : 'Your CV is Ready';
     const from = 'FreeCVAudit <noreply@freecvaudit.com>';
-
-    const result = await resend.emails.send({
-      from,
-      to: email,
-      subject,
-      html: getHtml({ name, cvUrl, isResend }),
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from,
+        to: [email],
+        subject,
+        html: getHtml({ name, cvUrl, isResend }),
+      }),
     });
 
-    return json(200, { ok: true, id: result?.data?.id || null });
+    const payloadResponse = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const details = payloadResponse?.message || payloadResponse?.error || 'Unable to send CV email.';
+      return json(502, { error: details });
+    }
+
+    return json(200, { ok: true, id: payloadResponse?.id || null });
   } catch (error) {
     return json(500, { error: error.message || 'Unable to send CV email.' });
   }

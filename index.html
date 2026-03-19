@@ -201,7 +201,7 @@
                             </div>
                             <p id="whishpay-status" class="text-xs text-slate-500"></p>
                         </div>
-                        <a id="download-link" href="#" class="mt-4 inline-flex items-center justify-center bg-emerald-600 text-white font-bold py-3 px-8 rounded-lg opacity-50 pointer-events-none transition-colors" aria-disabled="true">
+                        <a id="download-link" href="#" class="hidden mt-4 inline-flex items-center justify-center bg-emerald-600 text-white font-bold py-3 px-8 rounded-lg opacity-50 pointer-events-none transition-colors" aria-disabled="true">
                             Download Revised CV (PDF)
                         </a>
                         <p id="download-note" class="mt-2 text-xs text-slate-500">Complete payment to unlock your download.</p>
@@ -226,7 +226,7 @@
                         <p id="cv-email-status" class="mt-3 min-h-[20px] text-xs text-slate-300"></p>
                         <p class="mt-2 text-xs text-slate-400">Perfect if you want to access it later or from another device.</p>
 
-                        <a id="primary-download-link" href="#" class="mt-5 inline-flex w-full max-w-md items-center justify-center rounded-lg bg-emerald-700/70 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-600/70" aria-disabled="true">
+                        <a id="primary-download-link" href="#" class="hidden mt-5 inline-flex w-full max-w-md items-center justify-center rounded-lg bg-emerald-700/70 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-600/70" aria-disabled="true">
                             Download Linked Product
                         </a>
                         <button id="retry-download-button" class="hidden mt-4 inline-flex w-full max-w-md items-center justify-center rounded-lg bg-slate-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-500">
@@ -492,16 +492,6 @@
 
             fetchPayPalConfig().catch(() => {});
             fetchWhishPayConfig().catch(() => {});
-
-            const preloadPayPalSdk = () => {
-                loadPayPalSdk().catch(() => {});
-            };
-
-            if (typeof window.requestIdleCallback === 'function') {
-                window.requestIdleCallback(preloadPayPalSdk, { timeout: 2000 });
-            } else {
-                setTimeout(preloadPayPalSdk, 0);
-            }
         }
 
         function getCvAccessUrl() {
@@ -969,7 +959,7 @@
             if (primaryDownloadLink) {
                 primaryDownloadLink.setAttribute('href', '#');
                 primaryDownloadLink.setAttribute('aria-disabled', 'true');
-                primaryDownloadLink.textContent = 'Download Revised CV (PDF)';
+                primaryDownloadLink.classList.add('hidden');
             }
             if (upsellCards) upsellCards.classList.add('hidden');
             if (linkedinUpsellCard) linkedinUpsellCard.classList.remove('hidden');
@@ -992,17 +982,19 @@
             if (!revisedDownloadOnly || !primaryDownloadLink) return;
             revisedDownloadOnly.classList.remove('hidden');
             if (type === 'linkedin') {
+                primaryDownloadLink.classList.remove('hidden');
                 primaryDownloadLink.textContent = 'Download LinkedIn Optimization';
                 primaryDownloadLink.href = linkedinDownloadUrl || '#';
                 primaryDownloadLink.setAttribute('download', 'linkedin-optimization.docx');
             } else if (type === 'cover-letter') {
+                primaryDownloadLink.classList.remove('hidden');
                 primaryDownloadLink.textContent = 'Download Cover Letter';
                 primaryDownloadLink.href = coverLetterDownloadUrl || '#';
                 primaryDownloadLink.setAttribute('download', 'cover-letter.docx');
             } else {
-                primaryDownloadLink.textContent = 'Download Revised CV (PDF)';
-                primaryDownloadLink.href = revisedCvBlobUrl || '#';
-                primaryDownloadLink.setAttribute('download', 'revised-cv.pdf');
+                primaryDownloadLink.classList.add('hidden');
+                primaryDownloadLink.href = '#';
+                primaryDownloadLink.removeAttribute('download');
             }
             primaryDownloadLink.setAttribute('aria-disabled', primaryDownloadLink.href === '#' ? 'true' : 'false');
             syncCvAccessActions();
@@ -1310,10 +1302,13 @@
                     const autoSentKey = 'cv_email_auto_sent_run_id';
                     const sentRunId = localStorage.getItem(autoSentKey);
                     if (sentRunId !== currentRunId) {
-                        const sent = await sendCvEmail({ resend: false, silent: true });
-                        if (sent) {
-                            localStorage.setItem(autoSentKey, currentRunId);
-                        }
+                        sendCvEmail({ resend: false, silent: true })
+                            .then((sent) => {
+                                if (sent) {
+                                    localStorage.setItem(autoSentKey, currentRunId);
+                                }
+                            })
+                            .catch(() => {});
                     }
                 }
             } finally {
