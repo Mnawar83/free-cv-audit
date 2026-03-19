@@ -50,6 +50,17 @@ async function run() {
   assert.ok(legacyCachedResponse.body.length > 0);
   assert.strictEqual(legacyCachedResponse.isBase64Encoded, true);
 
+  const getResponse = await handler({
+    httpMethod: 'GET',
+    queryStringParameters: { runId: seededRunId },
+  });
+  assert.strictEqual(getResponse.statusCode, 200);
+  assert.strictEqual(getResponse.headers['Content-Type'], 'application/pdf');
+  assert.strictEqual(getResponse.headers['Content-Disposition'], 'inline; filename="revised-cv.pdf"');
+  assert.strictEqual(getResponse.headers['x-run-id'], seededRunId);
+  assert.ok(getResponse.body.length > 0);
+  assert.strictEqual(getResponse.isBase64Encoded, true);
+
   process.env.GOOGLE_AI_API_KEY = 'test-key';
   global.fetch = async () => ({
     ok: false,
