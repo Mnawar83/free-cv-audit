@@ -14,6 +14,7 @@ exports.handler = async (event) => {
 
     const hasDocx = Boolean(run.cover_letter_docx_base64);
     const downloadUrl = hasDocx ? `/.netlify/functions/cover-letter-download-docx?runId=${encodeURIComponent(runId)}` : undefined;
+    const pdfUrl = hasDocx ? `/.netlify/functions/cover-letter-download-pdf?runId=${encodeURIComponent(runId)}` : undefined;
 
     return {
       statusCode: 200,
@@ -21,6 +22,7 @@ exports.handler = async (event) => {
         status: run.cover_letter_status || 'NOT_STARTED',
         hasDocx,
         downloadUrl,
+        pdfUrl,
         lastFetch: {
           jobPageTextLength: Number(run.job_page_text_length || 0),
           jobPageFetchError: run.job_page_fetch_error || '',
