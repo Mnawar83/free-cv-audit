@@ -56,7 +56,7 @@ exports.handler = async (event) => {
 
     const resend = new Resend(apiKey);
     const subject = isResend ? 'Here Is Your CV Again' : 'Your CV is Ready';
-    const from = process.env.RESEND_FROM_EMAIL || 'FreeCVAudit <noreply@freecvaudit.com>';
+    const from = 'FreeCVAudit <noreply@freecvaudit.com>';
 
     const result = await resend.emails.send({
       from,
