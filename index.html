@@ -1256,7 +1256,7 @@
             downloadNote.textContent = 'Preparing your revised CV PDF...';
             try {
                 const cvAnalysis = extractedCvAnalysis || getStoredValue('cvAnalysis') || '';
-                const response = await fetch('/.netlify/functions/generate-pdf', {
+                let response = await fetch('/.netlify/functions/generate-pdf', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ cvText: resolvedCvText || undefined, cvAnalysis, runId: hasActiveRunId ? currentRunId : undefined }),
@@ -1272,7 +1272,16 @@
                     } catch (parseError) {
                         console.warn('Generate PDF error response could not be parsed.', parseError);
                     }
-                    throw new Error(message);
+                    if (currentRunId) {
+                        const fallbackResponse = await fetch(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(currentRunId)}`);
+                        if (fallbackResponse.ok) {
+                            response = fallbackResponse;
+                        } else {
+                            throw new Error(message);
+                        }
+                    } else {
+                        throw new Error(message);
+                    }
                 }
 
                 const generatedRunId = response.headers.get('x-run-id');
