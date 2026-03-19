@@ -13,6 +13,28 @@ function parseLinkedinOutput(text) {
   };
 }
 
+function sanitizeDocxText(input) {
+  if (!input) return '';
+
+  let output = '';
+  for (const char of input) {
+    const codePoint = char.codePointAt(0);
+    const isAllowedXmlChar =
+      codePoint === 0x09 ||
+      codePoint === 0x0a ||
+      codePoint === 0x0d ||
+      (codePoint >= 0x20 && codePoint <= 0xd7ff) ||
+      (codePoint >= 0xe000 && codePoint <= 0xfffd) ||
+      (codePoint >= 0x10000 && codePoint <= 0x10ffff);
+
+    if (isAllowedXmlChar) {
+      output += char;
+    }
+  }
+
+  return output;
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
@@ -59,7 +81,9 @@ exports.handler = async (event) => {
     const text = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     if (!text) return { statusCode: 500, body: JSON.stringify({ error: 'No AI output generated.' }) };
 
-    const { headline, about } = parseLinkedinOutput(text);
+    const parsedOutput = parseLinkedinOutput(text);
+    const headline = sanitizeDocxText(parsedOutput.headline);
+    const about = sanitizeDocxText(parsedOutput.about);
     const baseTextStyle = { font: 'Times New Roman', size: 24 };
     const aboutParagraphLines = about
       .split(/\n+/)

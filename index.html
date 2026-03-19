@@ -201,15 +201,33 @@
                             </div>
                             <p id="whishpay-status" class="text-xs text-slate-500"></p>
                         </div>
-                        <a id="download-link" href="#" class="mt-4 inline-flex items-center justify-center bg-emerald-600 text-white font-bold py-3 px-8 rounded-lg opacity-50 pointer-events-none transition-colors" aria-disabled="true">
+                        <a id="download-link" href="#" class="hidden mt-4 inline-flex items-center justify-center bg-emerald-600 text-white font-bold py-3 px-8 rounded-lg opacity-50 pointer-events-none transition-colors" aria-disabled="true">
                             Download Revised CV (PDF)
                         </a>
                         <p id="download-note" class="mt-2 text-xs text-slate-500">Complete payment to unlock your download.</p>
                     </div>
 
                     <div id="revised-download-only" class="hidden mt-8 rounded-lg border border-emerald-500/50 bg-emerald-950/30 p-8 text-center">
-                        <a id="primary-download-link" href="#" class="inline-flex w-full max-w-md items-center justify-center rounded-lg bg-emerald-600 px-6 py-4 text-base font-bold text-white transition hover:bg-emerald-500" aria-disabled="true">
-                            Download Revised CV (PDF)
+                        <h3 class="text-2xl font-semibold text-white">Your CV is ready</h3>
+                        <p class="mt-2 text-sm text-slate-300">Open it now, download it, or access it later anytime.</p>
+                        <div class="mx-auto mt-5 grid w-full max-w-md grid-cols-1 gap-3">
+                            <a id="cv-open-link" href="#" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-500 opacity-50 pointer-events-none" aria-disabled="true">
+                                Open CV
+                            </a>
+                            <a id="cv-download-link" href="#" class="inline-flex items-center justify-center rounded-lg bg-slate-700 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-600 opacity-50 pointer-events-none" aria-disabled="true">
+                                Download CV
+                            </a>
+                            <input id="cv-email-input" type="email" class="w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white" placeholder="Email address (for later access)" />
+                            <input id="cv-name-input" type="text" class="w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white" placeholder="Name (optional)" />
+                            <button id="email-cv-button" class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60" disabled>
+                                Email Me My CV
+                            </button>
+                        </div>
+                        <p id="cv-email-status" class="mt-3 min-h-[20px] text-xs text-slate-300"></p>
+                        <p class="mt-2 text-xs text-slate-400">Perfect if you want to access it later or from another device.</p>
+
+                        <a id="primary-download-link" href="#" class="hidden mt-5 inline-flex w-full max-w-md items-center justify-center rounded-lg bg-emerald-700/70 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-600/70" aria-disabled="true">
+                            Download Linked Product
                         </a>
                         <button id="retry-download-button" class="hidden mt-4 inline-flex w-full max-w-md items-center justify-center rounded-lg bg-slate-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-500">
                             Retry Download
@@ -300,6 +318,12 @@
         const auditSection = document.getElementById('audit-section');
         const revisedPaymentSection = document.getElementById('revised-payment-section');
         const revisedDownloadOnly = document.getElementById('revised-download-only');
+        const cvOpenLink = document.getElementById('cv-open-link');
+        const cvDownloadLink = document.getElementById('cv-download-link');
+        const cvEmailInput = document.getElementById('cv-email-input');
+        const cvNameInput = document.getElementById('cv-name-input');
+        const emailCvButton = document.getElementById('email-cv-button');
+        const cvEmailStatus = document.getElementById('cv-email-status');
         const primaryDownloadLink = document.getElementById('primary-download-link');
         const retryDownloadButton = document.getElementById('retry-download-button');
         const upsellCards = document.getElementById('upsell-cards');
@@ -341,6 +365,7 @@
         let extractedCvText = '';
         let extractedCvAnalysis = '';
         let revisedCvBlobUrl = null;
+        let revisedCvPublicUrl = '';
         let hasPaidCV = false;
         let hasPaidLinkedIn = false;
         let hasPaidCoverLetter = false;
@@ -360,6 +385,8 @@
         let coverLetterObjectDownloadUrl = '';
         let auditRequestController = null;
         let auditRequestToken = 0;
+        let checkoutWarmupStarted = false;
+        let isSendingCvEmail = false;
         const auditMountParent = auditSection ? auditSection.parentElement : null;
         const auditMountAnchor = document.createComment('audit-section-anchor');
         if (auditMountParent && auditSection) {
@@ -416,6 +443,25 @@
         if (storedCvAnalysis) {
             extractedCvAnalysis = storedCvAnalysis;
         }
+        revisedCvPublicUrl = localStorage.getItem('cv_url') || '';
+        if (cvEmailInput) {
+            cvEmailInput.value = localStorage.getItem('cv_email') || '';
+            cvEmailInput.addEventListener('input', () => {
+                if (cvEmailStatus) cvEmailStatus.textContent = '';
+                syncCvAccessActions();
+            });
+        }
+        if (cvNameInput) {
+            cvNameInput.value = localStorage.getItem('cv_name') || '';
+        }
+        if (emailCvButton) {
+            emailCvButton.addEventListener('click', async () => {
+                await sendCvEmail({ resend: emailCvButton.textContent.toLowerCase().includes('resend') });
+            });
+        }
+        if (revisedCvPublicUrl && emailCvButton) {
+            emailCvButton.textContent = localStorage.getItem('cv_email_last_sent_at') ? 'Resend Email' : 'Email Me My CV';
+        }
 
         hasPaidCV = sessionStorage.getItem('hasPaidCV') === 'true' || sessionStorage.getItem('paymentCompleted') === 'true';
         hasPaidLinkedIn = sessionStorage.getItem('hasPaidLinkedIn') === 'true';
@@ -440,6 +486,92 @@
             syncAuditVisibility();
         }
 
+        function warmUpCheckoutExperience() {
+            if (checkoutWarmupStarted) return;
+            checkoutWarmupStarted = true;
+
+            fetchPayPalConfig().catch(() => {});
+            fetchWhishPayConfig().catch(() => {});
+        }
+
+        function getCvAccessUrl() {
+            if (revisedCvPublicUrl) return revisedCvPublicUrl;
+            return revisedCvBlobUrl || '';
+        }
+
+        function syncCvAccessActions() {
+            const cvUrl = getCvAccessUrl();
+            const hasUrl = Boolean(cvUrl);
+
+            if (cvOpenLink) {
+                cvOpenLink.href = hasUrl ? cvUrl : '#';
+                cvOpenLink.setAttribute('aria-disabled', hasUrl ? 'false' : 'true');
+                cvOpenLink.classList.toggle('opacity-50', !hasUrl);
+                cvOpenLink.classList.toggle('pointer-events-none', !hasUrl);
+            }
+
+            if (cvDownloadLink) {
+                cvDownloadLink.href = hasUrl ? cvUrl : '#';
+                cvDownloadLink.setAttribute('download', 'revised-cv.pdf');
+                cvDownloadLink.setAttribute('aria-disabled', hasUrl ? 'false' : 'true');
+                cvDownloadLink.classList.toggle('opacity-50', !hasUrl);
+                cvDownloadLink.classList.toggle('pointer-events-none', !hasUrl);
+            }
+
+            if (emailCvButton) {
+                const hasEmail = Boolean((cvEmailInput?.value || '').trim());
+                emailCvButton.disabled = !hasUrl || !hasEmail || isSendingCvEmail;
+            }
+        }
+
+        async function sendCvEmail({ resend = false, silent = false } = {}) {
+            const email = (cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim();
+            const name = (cvNameInput?.value || localStorage.getItem('cv_name') || '').trim();
+            const cvUrl = getCvAccessUrl();
+
+            if (!email) {
+                if (!silent && cvEmailStatus) cvEmailStatus.textContent = 'Please add your email first.';
+                syncCvAccessActions();
+                return false;
+            }
+            if (!cvUrl) {
+                if (!silent && cvEmailStatus) cvEmailStatus.textContent = 'CV link is not ready yet. Please try again.';
+                syncCvAccessActions();
+                return false;
+            }
+
+            isSendingCvEmail = true;
+            if (cvEmailStatus && !silent) cvEmailStatus.textContent = 'Sending email...';
+            syncCvAccessActions();
+
+            try {
+                localStorage.setItem('cv_email', email);
+                localStorage.setItem('cv_name', name);
+                localStorage.setItem('cv_url', cvUrl);
+
+                const response = await fetch('/.netlify/functions/send-cv-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, name, cvUrl, resend }),
+                });
+                const payload = await readJsonSafely(response);
+                if (!response.ok || !payload.ok) {
+                    throw new Error(payload.error || 'Unable to send CV email right now.');
+                }
+
+                localStorage.setItem('cv_email_last_sent_at', new Date().toISOString());
+                if (!silent && cvEmailStatus) cvEmailStatus.textContent = 'Email sent. Check your inbox.';
+                if (emailCvButton) emailCvButton.textContent = 'Resend Email';
+                return true;
+            } catch (error) {
+                if (!silent && cvEmailStatus) cvEmailStatus.textContent = error.message || 'Unable to send CV email right now.';
+                return false;
+            } finally {
+                isSendingCvEmail = false;
+                syncCvAccessActions();
+            }
+        }
+
         function isAnyPaidStateActive() {
             return hasPaidCV || hasPaidLinkedIn || hasPaidCoverLetter;
         }
@@ -457,6 +589,7 @@
         }
 
         syncAuditVisibility();
+        syncCvAccessActions();
 
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
         dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('drag-over'); });
@@ -529,6 +662,7 @@
                 extractedCvAnalysis = '';
                 removeStoredValue('cvText');
                 removeStoredValue('cvAnalysis');
+                localStorage.removeItem('cv_url');
                 if (linkedinObjectDownloadUrl) {
                     URL.revokeObjectURL(linkedinObjectDownloadUrl);
                     linkedinObjectDownloadUrl = '';
@@ -545,7 +679,10 @@
                     coverLetterDownloadLink.classList.add('hidden');
                     coverLetterDownloadLink.removeAttribute('href');
                 }
+                if (cvEmailStatus) cvEmailStatus.textContent = '';
             }
+            revisedCvPublicUrl = '';
+            syncCvAccessActions();
         }
 
         function hasPaymentReturnParams() {
@@ -624,6 +761,7 @@
                 resultsSection.classList.remove('hidden');
                 initializePayPalButtons();
                 initializeWhishPayCheckout();
+                warmUpCheckoutExperience();
 
             } catch (error) {
                 if (error.name === 'AbortError') {
@@ -644,13 +782,13 @@
                     try {
                         const typedarray = new Uint8Array(event.target.result);
                         const pdf = await pdfjsLib.getDocument(typedarray).promise;
-                        let text = '';
-                        for (let i = 1; i <= pdf.numPages; i++) {
-                            const page = await pdf.getPage(i);
+                        const pagePromises = Array.from({ length: pdf.numPages }, async (_value, index) => {
+                            const page = await pdf.getPage(index + 1);
                             const content = await page.getTextContent();
-                            text += content.items.map(item => item.str).join(' ');
-                        }
-                        resolve(text);
+                            return content.items.map((item) => item.str).join(' ');
+                        });
+                        const pageTexts = await Promise.all(pagePromises);
+                        resolve(pageTexts.join(' '));
                     } catch (error) { reject(new Error("Could not read the PDF. It may be corrupted.")); }
                 };
                 reader.onerror = () => reject(new Error("Failed to read the file."));
@@ -691,12 +829,27 @@
                 });
                 console.info('[timing] audit response received', { ms: Math.round(performance.now() - auditStart) });
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || `Server error: ${response.status}`);
+                const responseText = await response.text();
+                let parsed = {};
+                if (responseText && responseText.trim()) {
+                    try {
+                        parsed = JSON.parse(responseText);
+                    } catch (parseError) {
+                        if (!response.ok) {
+                            throw new Error(`Audit service returned a non-JSON error response (HTTP ${response.status}).`);
+                        }
+                        throw new Error('Audit service returned an invalid response format. Please try again.');
+                    }
                 }
-                
-                const result = await response.json();
+
+                if (!response.ok) {
+                    const fallbackMessage = responseText && responseText.trim()
+                        ? `Server error: ${response.status}`
+                        : `Server error: ${response.status} (empty response)`;
+                    throw new Error(parsed?.error || fallbackMessage);
+                }
+
+                const result = parsed;
                 return {
                     audit: result.audit || result.auditResult || '',
                     runId: result.runId || '',
@@ -707,9 +860,6 @@
                      throw error;
                  }
                  console.error("Function call error:", error);
-                 if (error instanceof SyntaxError) {
-                     throw new Error("Received an invalid response from the server. This can happen if the backend function has an error.");
-                 }
                  throw new Error(error.message || "Could not connect to the audit service.");
             }
         }
@@ -821,7 +971,7 @@
             if (primaryDownloadLink) {
                 primaryDownloadLink.setAttribute('href', '#');
                 primaryDownloadLink.setAttribute('aria-disabled', 'true');
-                primaryDownloadLink.textContent = 'Download Revised CV (PDF)';
+                primaryDownloadLink.classList.add('hidden');
             }
             if (upsellCards) upsellCards.classList.add('hidden');
             if (linkedinUpsellCard) linkedinUpsellCard.classList.remove('hidden');
@@ -837,25 +987,29 @@
             coverLetterDownloaded = false;
             linkedinDownloadUrl = '';
             coverLetterDownloadUrl = '';
+            syncCvAccessActions();
         }
 
         function setPrimaryDownloadButton(type) {
             if (!revisedDownloadOnly || !primaryDownloadLink) return;
             revisedDownloadOnly.classList.remove('hidden');
             if (type === 'linkedin') {
+                primaryDownloadLink.classList.remove('hidden');
                 primaryDownloadLink.textContent = 'Download LinkedIn Optimization';
                 primaryDownloadLink.href = linkedinDownloadUrl || '#';
                 primaryDownloadLink.setAttribute('download', 'linkedin-optimization.docx');
             } else if (type === 'cover-letter') {
+                primaryDownloadLink.classList.remove('hidden');
                 primaryDownloadLink.textContent = 'Download Cover Letter';
                 primaryDownloadLink.href = coverLetterDownloadUrl || '#';
                 primaryDownloadLink.setAttribute('download', 'cover-letter.docx');
             } else {
-                primaryDownloadLink.textContent = 'Download Revised CV (PDF)';
-                primaryDownloadLink.href = revisedCvBlobUrl || '#';
-                primaryDownloadLink.setAttribute('download', 'revised-cv.pdf');
+                primaryDownloadLink.classList.add('hidden');
+                primaryDownloadLink.href = '#';
+                primaryDownloadLink.removeAttribute('download');
             }
             primaryDownloadLink.setAttribute('aria-disabled', primaryDownloadLink.href === '#' ? 'true' : 'false');
+            syncCvAccessActions();
         }
 
         async function downloadDocxFromUrl(downloadUrl, fallbackFileName) {
@@ -1031,6 +1185,7 @@
                 resultsSection.classList.remove('hidden');
                 initializePayPalButtons();
                 initializeWhishPayCheckout();
+                warmUpCheckoutExperience();
                 if (hasPaidCV && !revisedCvBlobUrl) {
                     applyPaidGatedLayout();
                     regeneratePdfOnRestore();
@@ -1048,6 +1203,7 @@
             resultsSection.classList.remove('hidden');
             initializePayPalButtons();
             initializeWhishPayCheckout();
+            warmUpCheckoutExperience();
             if (isAnyPaidStateActive()) {
                 activeDownloadType = activeDownloadType || "revised";
                 applyPaidGatedLayout();
@@ -1112,7 +1268,7 @@
             downloadNote.textContent = 'Preparing your revised CV PDF...';
             try {
                 const cvAnalysis = extractedCvAnalysis || getStoredValue('cvAnalysis') || '';
-                const response = await fetch('/.netlify/functions/generate-pdf', {
+                let response = await fetch('/.netlify/functions/generate-pdf', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ cvText: resolvedCvText || undefined, cvAnalysis, runId: hasActiveRunId ? currentRunId : undefined }),
@@ -1128,7 +1284,16 @@
                     } catch (parseError) {
                         console.warn('Generate PDF error response could not be parsed.', parseError);
                     }
-                    throw new Error(message);
+                    if (currentRunId) {
+                        const fallbackResponse = await fetch(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(currentRunId)}`);
+                        if (fallbackResponse.ok) {
+                            response = fallbackResponse;
+                        } else {
+                            throw new Error(message);
+                        }
+                    } else {
+                        throw new Error(message);
+                    }
                 }
 
                 const generatedRunId = response.headers.get('x-run-id');
@@ -1136,6 +1301,8 @@
                     currentRunId = generatedRunId;
                     hasActiveRunId = true;
                     sessionStorage.setItem('runId', generatedRunId);
+                    revisedCvPublicUrl = new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(generatedRunId)}`, window.location.origin).toString();
+                    localStorage.setItem('cv_url', revisedCvPublicUrl);
                 }
 
                 const pdfBlob = await response.blob();
@@ -1145,6 +1312,26 @@
                 revisedCvBlobUrl = URL.createObjectURL(pdfBlob);
                 downloadLink.href = revisedCvBlobUrl;
                 downloadLink.setAttribute('download', 'revised-cv.pdf');
+                if (!revisedCvPublicUrl && currentRunId) {
+                    revisedCvPublicUrl = new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(currentRunId)}`, window.location.origin).toString();
+                    localStorage.setItem('cv_url', revisedCvPublicUrl);
+                }
+                syncCvAccessActions();
+
+                const savedEmail = (cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim();
+                if (savedEmail && currentRunId) {
+                    const autoSentKey = 'cv_email_auto_sent_run_id';
+                    const sentRunId = localStorage.getItem(autoSentKey);
+                    if (sentRunId !== currentRunId) {
+                        sendCvEmail({ resend: false, silent: true })
+                            .then((sent) => {
+                                if (sent) {
+                                    localStorage.setItem(autoSentKey, currentRunId);
+                                }
+                            })
+                            .catch(() => {});
+                    }
+                }
             } finally {
                 isGeneratingPdf = false;
             }
@@ -1867,7 +2054,7 @@
             });
             const initData = await readJsonSafely(initResponse);
             if (!initResponse.ok) throw new Error(getApiErrorMessage(initData, 'Unable to start cover letter checkout.'));
-            await fetch('/.netlify/functions/cover-letter-fetch-job', {
+            fetch('/.netlify/functions/cover-letter-fetch-job', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId, jobLink }),
             }).catch(() => {});
         }
