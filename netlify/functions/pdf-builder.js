@@ -163,7 +163,7 @@ function buildPdfBuffer(text) {
     `${boldFontObjectId} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj`,
   );
 
-  let pdf = '%PDF-1.4\n';
+  let pdf = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
   const offsets = [0];
 
   objects.forEach((object) => {
@@ -177,7 +177,7 @@ function buildPdfBuffer(text) {
   for (let i = 1; i <= objects.length; i += 1) {
     pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
   }
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
 
   return Buffer.from(pdf, 'latin1');
 }
