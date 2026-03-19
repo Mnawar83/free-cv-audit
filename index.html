@@ -1502,11 +1502,25 @@
             downloadNote.textContent = 'Preparing your revised CV PDF...';
             try {
                 const cvAnalysis = extractedCvAnalysis || getStoredValue('cvAnalysis') || '';
-                let response = await fetch('/.netlify/functions/generate-pdf', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cvText: resolvedCvText || undefined, cvAnalysis, runId: hasActiveRunId ? currentRunId : undefined }),
-                });
+                const pdfController = new AbortController();
+                const pdfTimeout = setTimeout(() => pdfController.abort(), 80000);
+                let response;
+                try {
+                    response = await fetch('/.netlify/functions/generate-pdf', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cvText: resolvedCvText || undefined, cvAnalysis, runId: hasActiveRunId ? currentRunId : undefined }),
+                        signal: pdfController.signal,
+                    });
+                } catch (fetchError) {
+                    clearTimeout(pdfTimeout);
+                    if (fetchError?.name === 'AbortError') {
+                        throw new Error('CV generation timed out. Please try again.');
+                    }
+                    throw new Error('Unable to connect to the CV generation service. Please try again.');
+                } finally {
+                    clearTimeout(pdfTimeout);
+                }
 
                 if (!response.ok) {
                     let message = 'Unable to generate the revised CV.';
