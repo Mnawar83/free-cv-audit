@@ -35,6 +35,10 @@ function sanitizeDocxText(input) {
   return output;
 }
 
+function sanitizePdfText(input) {
+  return sanitizeDocxText(input || '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ');
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
@@ -163,7 +167,7 @@ exports.handler = async (event) => {
     });
 
     const buffer = await Packer.toBuffer(doc);
-    const linkedinPdfText = `LinkedIn Optimization\n\nLinkedIn Headline:\n${headline}\n\nAbout:\n${about}`;
+    const linkedinPdfText = sanitizePdfText(`LinkedIn Optimization\n\nLinkedIn Headline:\n${headline}\n\nAbout:\n${about}`);
     await updateRun(runId, () => ({
       linkedin_docx_base64: buffer.toString('base64'),
       linkedin_pdf_text: linkedinPdfText,

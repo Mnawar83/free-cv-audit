@@ -613,6 +613,8 @@
         let coverLetterObjectDownloadUrl = '';
         let linkedinPdfUrl = '';
         let coverLetterPdfUrl = '';
+        let linkedinPdfObjectUrl = '';
+        let coverLetterPdfObjectUrl = '';
         let isSendingLinkedinEmail = false;
         let isSendingCoverLetterEmail = false;
         let auditRequestController = null;
@@ -866,8 +868,9 @@
         }
 
         function syncLinkedinPdfActions() {
-            const hasUrl = Boolean(linkedinPdfUrl);
-            const openUrl = hasUrl ? linkedinPdfUrl + '&inline=true' : '#';
+            const effectivePdfUrl = linkedinPdfObjectUrl || linkedinPdfUrl;
+            const hasUrl = Boolean(effectivePdfUrl);
+            const openUrl = hasUrl ? (linkedinPdfObjectUrl ? linkedinPdfObjectUrl : linkedinPdfUrl + '&inline=true') : '#';
             if (linkedinOpenPdf) {
                 linkedinOpenPdf.href = openUrl;
                 linkedinOpenPdf.setAttribute('aria-disabled', hasUrl ? 'false' : 'true');
@@ -875,7 +878,7 @@
                 linkedinOpenPdf.classList.toggle('pointer-events-none', !hasUrl);
             }
             if (linkedinDownloadPdf) {
-                linkedinDownloadPdf.href = hasUrl ? linkedinPdfUrl : '#';
+                linkedinDownloadPdf.href = hasUrl ? effectivePdfUrl : '#';
                 linkedinDownloadPdf.setAttribute('download', 'linkedin-optimization.pdf');
                 linkedinDownloadPdf.setAttribute('aria-disabled', hasUrl ? 'false' : 'true');
                 linkedinDownloadPdf.classList.toggle('opacity-50', !hasUrl);
@@ -888,8 +891,9 @@
         }
 
         function syncCoverLetterPdfActions() {
-            const hasUrl = Boolean(coverLetterPdfUrl);
-            const openUrl = hasUrl ? coverLetterPdfUrl + '&inline=true' : '#';
+            const effectivePdfUrl = coverLetterPdfObjectUrl || coverLetterPdfUrl;
+            const hasUrl = Boolean(effectivePdfUrl);
+            const openUrl = hasUrl ? (coverLetterPdfObjectUrl ? coverLetterPdfObjectUrl : coverLetterPdfUrl + '&inline=true') : '#';
             if (coverLetterOpenPdf) {
                 coverLetterOpenPdf.href = openUrl;
                 coverLetterOpenPdf.setAttribute('aria-disabled', hasUrl ? 'false' : 'true');
@@ -897,7 +901,7 @@
                 coverLetterOpenPdf.classList.toggle('pointer-events-none', !hasUrl);
             }
             if (coverLetterDownloadPdf) {
-                coverLetterDownloadPdf.href = hasUrl ? coverLetterPdfUrl : '#';
+                coverLetterDownloadPdf.href = hasUrl ? effectivePdfUrl : '#';
                 coverLetterDownloadPdf.setAttribute('download', 'cover-letter.pdf');
                 coverLetterDownloadPdf.setAttribute('aria-disabled', hasUrl ? 'false' : 'true');
                 coverLetterDownloadPdf.classList.toggle('opacity-50', !hasUrl);
@@ -1098,6 +1102,14 @@
             revisedCvPublicUrl = '';
             linkedinPdfUrl = '';
             coverLetterPdfUrl = '';
+            if (linkedinPdfObjectUrl) {
+                URL.revokeObjectURL(linkedinPdfObjectUrl);
+                linkedinPdfObjectUrl = '';
+            }
+            if (coverLetterPdfObjectUrl) {
+                URL.revokeObjectURL(coverLetterPdfObjectUrl);
+                coverLetterPdfObjectUrl = '';
+            }
             syncCvAccessActions();
             syncLinkedinPdfActions();
             syncCoverLetterPdfActions();
@@ -1448,12 +1460,12 @@
             if (type === 'linkedin') {
                 primaryDownloadLink.classList.remove('hidden');
                 primaryDownloadLink.textContent = 'Download LinkedIn PDF';
-                primaryDownloadLink.href = linkedinPdfUrl || linkedinDownloadUrl || '#';
+                primaryDownloadLink.href = linkedinPdfObjectUrl || linkedinPdfUrl || linkedinDownloadUrl || '#';
                 primaryDownloadLink.setAttribute('download', 'linkedin-optimization.pdf');
             } else if (type === 'cover-letter') {
                 primaryDownloadLink.classList.remove('hidden');
                 primaryDownloadLink.textContent = 'Download Cover Letter PDF';
-                primaryDownloadLink.href = coverLetterPdfUrl || coverLetterDownloadUrl || '#';
+                primaryDownloadLink.href = coverLetterPdfObjectUrl || coverLetterPdfUrl || coverLetterDownloadUrl || '#';
                 primaryDownloadLink.setAttribute('download', 'cover-letter.pdf');
             } else {
                 primaryDownloadLink.classList.add('hidden');
@@ -1462,6 +1474,39 @@
             }
             primaryDownloadLink.setAttribute('aria-disabled', primaryDownloadLink.href === '#' ? 'true' : 'false');
             syncCvAccessActions();
+        }
+
+        async function prefetchUpsellPdf(type, pdfUrl) {
+            if (!pdfUrl || pdfUrl === '#') return;
+            try {
+                const response = await fetch(pdfUrl, { method: 'GET' });
+                if (!response.ok) return;
+                const blob = await response.blob();
+                if (type === 'linkedin') {
+                    if (linkedinPdfObjectUrl) URL.revokeObjectURL(linkedinPdfObjectUrl);
+                    linkedinPdfObjectUrl = URL.createObjectURL(blob);
+                    syncLinkedinPdfActions();
+                } else if (type === 'cover-letter') {
+                    if (coverLetterPdfObjectUrl) URL.revokeObjectURL(coverLetterPdfObjectUrl);
+                    coverLetterPdfObjectUrl = URL.createObjectURL(blob);
+                    syncCoverLetterPdfActions();
+                }
+            } catch (error) {
+                console.warn('Unable to prefetch upsell PDF.', error);
+            }
+        }
+
+        function sendUpsellEmailInBackground(type) {
+            const knownEmail = (localStorage.getItem('cv_email') || '').trim();
+            if (!knownEmail) return;
+            if (type === 'linkedin' && linkedinEmailInput) {
+                linkedinEmailInput.value = knownEmail;
+                sendLinkedinEmail({ silent: true }).catch(() => {});
+            }
+            if (type === 'cover-letter' && coverLetterEmailInput) {
+                coverLetterEmailInput.value = knownEmail;
+                sendCoverLetterEmail({ silent: true }).catch(() => {});
+            }
         }
 
         async function downloadDocxFromUrl(downloadUrl, fallbackFileName) {
@@ -1566,6 +1611,8 @@
                         coverLetterDownloadLink.removeAttribute('href');
                     }
                 }
+                prefetchUpsellPdf('linkedin', linkedinPdfUrl);
+                sendUpsellEmailInBackground('linkedin');
             }
             if (type === 'cover-letter') {
                 coverLetterUnlocked = true;
@@ -1590,6 +1637,8 @@
                         linkedinDownloadLink.removeAttribute('href');
                     }
                 }
+                prefetchUpsellPdf('cover-letter', coverLetterPdfUrl);
+                sendUpsellEmailInBackground('cover-letter');
             }
             applyPaidGatedLayout();
         }
@@ -1741,6 +1790,9 @@
                 await generateRevisedPdf('');
             }
             setDownloadLocked(false);
+            if ((localStorage.getItem('cv_email') || '').trim()) {
+                sendCvEmail({ silent: true }).catch(() => {});
+            }
             updateRetryVisibility();
         }
 
@@ -2348,11 +2400,7 @@
         }
 
         function startBundleCheckout() {
-            bundleCheckoutQueue = [];
-            if (!hasPaidLinkedIn) bundleCheckoutQueue.push('linkedin');
-            if (!hasPaidCoverLetter) bundleCheckoutQueue.push('cover-letter');
-            if (!bundleCheckoutQueue.length) return;
-            openPaymentModal(bundleCheckoutQueue[0]);
+            openPaymentModal('bundle');
         }
 
         function advanceBundleQueue(completedType) {
@@ -2377,7 +2425,11 @@
             paymentModal.classList.remove('hidden');
             paymentModal.classList.add('flex');
             paymentModalStatus.textContent = '';
-            paymentModalTitle.textContent = type === 'linkedin' ? 'Pay for LinkedIn Optimization' : 'Pay for Cover Letter';
+            paymentModalTitle.textContent = type === 'bundle'
+                ? 'Pay $8.99 for LinkedIn + Cover Letter Bundle'
+                : type === 'linkedin'
+                    ? 'Pay for LinkedIn Optimization'
+                    : 'Pay for Cover Letter';
             paymentModalWhish.onclick = () => startUpsellWhishCheckout(type);
             renderUpsellPaypalButtons(type);
         }
@@ -2395,6 +2447,17 @@
                             if (!response.ok || !data?.orderID) throw new Error(getApiErrorMessage(data, 'Unable to create PayPal order.'));
                             return data.orderID;
                         }
+                        if (type === 'bundle') {
+                            const jobLink = coverLetterJobLinkInput.value.trim();
+                            if (!looksLikeHttpUrl(jobLink)) throw new Error('Please provide a valid job URL for the bundle.');
+                            showCoverLetterValidation('');
+                            await initializeLinkedInCheckout(currentRunId, getLinkedInDummyUrl());
+                            await initializeCoverLetterCheckout(currentRunId, jobLink);
+                            const response = await fetch('/.netlify/functions/paypal-bundle-create-order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId: currentRunId }) });
+                            const data = await readJsonSafely(response);
+                            if (!response.ok || !data?.orderID) throw new Error(getApiErrorMessage(data, 'Unable to create bundle PayPal order.'));
+                            return data.orderID;
+                        }
                         const jobLink = coverLetterJobLinkInput.value.trim();
                         if (!looksLikeHttpUrl(jobLink)) throw new Error('Please provide a valid job URL.');
                         showCoverLetterValidation('');
@@ -2406,13 +2469,26 @@
                     },
                     onApprove: async (payload) => {
                         setUpsellProgress(type, 1);
-                        const captureEndpoint = type === 'linkedin' ? '/.netlify/functions/paypal-linkedin-capture-order' : '/.netlify/functions/paypal-cover-letter-capture-order';
+                        const captureEndpoint = type === 'bundle'
+                            ? '/.netlify/functions/paypal-bundle-capture-order'
+                            : type === 'linkedin'
+                                ? '/.netlify/functions/paypal-linkedin-capture-order'
+                                : '/.netlify/functions/paypal-cover-letter-capture-order';
                         const captureResponse = await fetch(captureEndpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId: currentRunId, orderID: payload.orderID }) });
                         const captureData = await readJsonSafely(captureResponse);
                         if (!captureResponse.ok || !captureData.ok) throw new Error(captureData.error || 'PayPal capture failed.');
-                        if (type === 'linkedin') await generateLinkedInDocxForRun(currentRunId);
-                        else await generateCoverLetterDocxForRun(currentRunId);
-                        advanceBundleQueue(type);
+                        if (type === 'bundle') {
+                            setUpsellProgress('linkedin', 2);
+                            setUpsellProgress('cover-letter', 2);
+                            await Promise.all([generateLinkedInDocxForRun(currentRunId), generateCoverLetterDocxForRun(currentRunId)]);
+                            closePaymentModal();
+                        } else if (type === 'linkedin') {
+                            await generateLinkedInDocxForRun(currentRunId);
+                            advanceBundleQueue(type);
+                        } else {
+                            await generateCoverLetterDocxForRun(currentRunId);
+                            advanceBundleQueue(type);
+                        }
                     },
                     onError: (error) => {
                         showError(error.message || 'PayPal checkout failed.');
@@ -2429,22 +2505,29 @@
                 paymentModalStatus.textContent = 'Opening secure payment...';
                 paymentTarget = openPaymentTarget();
                 const isLinkedin = type === 'linkedin';
-                if (isLinkedin) {
+                const isBundle = type === 'bundle';
+                if (isLinkedin || isBundle) {
                     await initializeLinkedInCheckout(currentRunId, getLinkedInDummyUrl());
-                } else {
+                }
+                if (!isLinkedin || isBundle) {
                     const jobLink = coverLetterJobLinkInput.value.trim();
-                    if (!looksLikeHttpUrl(jobLink)) throw new Error('Please provide a valid job URL.');
+                    if (!looksLikeHttpUrl(jobLink)) throw new Error(isBundle ? 'Please provide a valid job URL for the bundle.' : 'Please provide a valid job URL.');
                     await initializeCoverLetterCheckout(currentRunId, jobLink);
                 }
-                const endpoint = isLinkedin ? '/.netlify/functions/whishpay-linkedin-create-payment' : '/.netlify/functions/whishpay-cover-letter-create-payment';
-                const param = isLinkedin ? 'linkedinPayment' : 'coverLetterPayment';
+                const endpoint = isBundle
+                    ? '/.netlify/functions/whishpay-bundle-create-payment'
+                    : isLinkedin
+                        ? '/.netlify/functions/whishpay-linkedin-create-payment'
+                        : '/.netlify/functions/whishpay-cover-letter-create-payment';
+                const param = isBundle ? 'bundlePayment' : isLinkedin ? 'linkedinPayment' : 'coverLetterPayment';
                 const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId: currentRunId, successRedirectUrl: `${window.location.origin}${window.location.pathname}?${param}=success&runId=${encodeURIComponent(currentRunId)}`, failureRedirectUrl: `${window.location.origin}${window.location.pathname}?${param}=failed&runId=${encodeURIComponent(currentRunId)}` }) });
                 const payload = await readJsonSafely(response);
                 if (!response.ok) throw new Error(getApiErrorMessage(payload, 'Unable to start Whish payment.'));
                 const externalId = payload?.externalId;
                 const collectUrl = payload?.data?.collectUrl || payload?.collectUrl;
                 if (!externalId || !collectUrl) throw new Error('Unable to start Whish payment. Please try again.');
-                sessionStorage.setItem(isLinkedin ? 'linkedinWhishExternalId' : 'coverLetterWhishExternalId', String(externalId));
+                const externalStorageKey = isBundle ? 'bundleWhishExternalId' : isLinkedin ? 'linkedinWhishExternalId' : 'coverLetterWhishExternalId';
+                sessionStorage.setItem(externalStorageKey, String(externalId));
                 paymentTarget.target.location.href = collectUrl;
             } catch (error) {
                 if (paymentTarget?.mode === 'popup' && paymentTarget?.target && !paymentTarget.target.closed) paymentTarget.target.close();
@@ -2609,6 +2692,43 @@
             }
         }
 
+        async function handleBundleWhishReturn() {
+            try {
+                if (handoffReturnToOpener('bundlePayment')) return;
+                const url = new URL(window.location.href);
+                const paymentStatus = url.searchParams.get('bundlePayment');
+                if (paymentStatus !== 'success') return;
+                const restored = restoreAuditResultsFromSession();
+                if (!restored) return;
+
+                const runId = url.searchParams.get('runId') || currentRunId;
+                const externalId = sessionStorage.getItem('bundleWhishExternalId') || url.searchParams.get('externalId');
+                if (!runId || !externalId) return;
+
+                const verifyResponse = await fetch('/.netlify/functions/whishpay-bundle-check-status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ runId, externalId }),
+                });
+                const verifyData = await readJsonSafely(verifyResponse);
+                if (!verifyResponse.ok || (verifyData.collectStatus !== 'PAID' && verifyData.collectStatus !== 'SUCCESS' && verifyData.collectStatus !== 'COLLECTED' && verifyData.isPaidStatus !== true)) {
+                    showError(verifyData.error || 'Bundle payment is not confirmed yet.');
+                    return;
+                }
+                setPaidState('linkedin', true);
+                setPaidState('cover-letter', true);
+                setUpsellProgress('linkedin', 2);
+                setUpsellProgress('cover-letter', 2);
+                await Promise.all([generateLinkedInDocxForRun(runId), generateCoverLetterDocxForRun(runId)]);
+                applyPaidGatedLayout();
+                url.searchParams.delete('bundlePayment');
+                url.searchParams.delete('runId');
+                window.history.replaceState({}, document.title, url.toString());
+            } catch (error) {
+                showError(error.message || 'Bundle Whish payment handling failed.');
+            }
+        }
+
         function initializeWhishPayCheckout() {
             if (whishPayButton && !whishPayListenerAttached) {
                 whishPayButton.addEventListener('click', startWhishPayCheckout);
@@ -2656,13 +2776,15 @@
 
         if (primaryDownloadLink) {
             primaryDownloadLink.addEventListener('click', async (event) => {
-                const targetType = activeDownloadType || (hasPaidCoverLetter ? 'cover-letter' : hasPaidLinkedIn ? 'linkedin' : 'revised');
+                const targetType = activeDownloadType || (hasPaidLinkedIn ? 'linkedin' : hasPaidCoverLetter ? 'cover-letter' : 'revised');
                 if (targetType !== 'cover-letter' && targetType !== 'linkedin') {
                     return;
                 }
                 event.preventDefault();
                 try {
-                    const url = targetType === 'cover-letter' ? (coverLetterPdfUrl || coverLetterDownloadUrl) : (linkedinPdfUrl || linkedinDownloadUrl);
+                    const url = targetType === 'cover-letter'
+                        ? (coverLetterPdfObjectUrl || coverLetterPdfUrl || coverLetterDownloadUrl)
+                        : (linkedinPdfObjectUrl || linkedinPdfUrl || linkedinDownloadUrl);
                     const fileName = targetType === 'cover-letter' ? 'cover-letter.pdf' : 'linkedin-optimization.pdf';
                     if (!url || url === '#') {
                         throw new Error('Download URL is unavailable. Please try again.');
@@ -2695,6 +2817,7 @@
         handleWhishPayReturn();
         handleLinkedinWhishReturn();
         handleCoverLetterWhishReturn();
+        handleBundleWhishReturn();
         restoreAuditResultsFromSession();
         setMobileUpsellSummary();
         syncUpsellCardVisibilityForViewport();
