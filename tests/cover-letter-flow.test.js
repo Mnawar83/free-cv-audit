@@ -2,6 +2,7 @@ const assert = require('assert');
 const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
+const JSZip = require('jszip');
 
 function clearModule(modulePath) {
   const resolved = require.resolve(modulePath);
@@ -49,7 +50,7 @@ async function run() {
     return {
       ok: true,
       json: async () => ({
-        candidates: [{ content: { parts: [{ text: 'Dear Hiring Manager\n\nI am excited to apply for this role.\n\nThank you for your consideration.' }] } }],
+        candidates: [{ content: { parts: [{ text: 'Dear Hiring Manager\u0000\n\nI am excited to apply for this role.\u0001\n\nThank you for your consideration.' }] } }],
       }),
     };
   };
@@ -71,6 +72,11 @@ async function run() {
   assert.ok(updatedRun.cover_letter_docx_base64);
   assert.ok(capturedPrompt.includes("Always use the phrase 'this role'"));
   assert.ok(!capturedPrompt.includes('this position'));
+  const docxBuffer = Buffer.from(updatedRun.cover_letter_docx_base64, 'base64');
+  const zip = await JSZip.loadAsync(docxBuffer);
+  const documentXml = await zip.file('word/document.xml').async('string');
+  assert.ok(!documentXml.includes('\u0000'), 'invalid NUL character should be removed from generated XML');
+  assert.ok(!documentXml.includes('\u0001'), 'invalid control character should be removed from generated XML');
 
   await fs.rm(tempDir, { recursive: true, force: true });
   console.log('Cover letter flow test passed');

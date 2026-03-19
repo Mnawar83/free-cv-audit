@@ -34,7 +34,7 @@ Do not include markdown code fences. Do not include any preamble. Base everythin
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
+    return { statusCode: 405, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Method Not Allowed' }) };
   }
 
   try {
@@ -46,11 +46,16 @@ exports.handler = async (event) => {
     if (!apiKey) {
       return {
         statusCode: 500,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ error: 'Google AI API key is missing.' }),
       };
     }
 
-    const candidateModels = getGoogleAiCandidateModels();
+    const candidateModels = getGoogleAiCandidateModels().sort((a, b) => {
+      if (a.includes('flash') && !b.includes('flash')) return -1;
+      if (!a.includes('flash') && b.includes('flash')) return 1;
+      return 0;
+    });
 
     const payload = {
       systemInstruction: {
@@ -65,11 +70,26 @@ exports.handler = async (event) => {
     let lastErrorMessage = 'AI request failed';
     for (const model of candidateModels) {
       const apiUrl = buildGoogleAiUrl(apiKey, model);
-      const fetchResponse = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      const requestController = new AbortController();
+      const requestTimeout = setTimeout(() => requestController.abort(), 12000);
+      let fetchResponse;
+      try {
+        fetchResponse = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: requestController.signal,
+        });
+      } catch (requestError) {
+        if (requestError?.name === 'AbortError') {
+          lastErrorMessage = 'Audit request timed out. Please try again.';
+          continue;
+        }
+        lastErrorMessage = requestError?.message || lastErrorMessage;
+        continue;
+      } finally {
+        clearTimeout(requestTimeout);
+      }
 
       if (fetchResponse.ok) {
         result = await fetchResponse.json();
@@ -77,7 +97,15 @@ exports.handler = async (event) => {
       }
 
       try {
-        const errorData = await fetchResponse.json();
+        const errorText = await fetchResponse.text();
+        let errorData = {};
+        if (errorText && errorText.trim()) {
+          try {
+            errorData = JSON.parse(errorText);
+          } catch (_ignored) {
+            errorData = { error: { message: errorText.slice(0, 240) } };
+          }
+        }
         console.error('API Error:', errorData);
         if (errorData?.error?.message) {
           lastErrorMessage = errorData.error.message;
@@ -90,6 +118,7 @@ exports.handler = async (event) => {
     if (!result) {
       return {
         statusCode: 500,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ error: lastErrorMessage }),
       };
     }
@@ -105,9 +134,14 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ auditResult, runId }),
     };
   } catch (error) {
-    return { statusCode: 500, body: JSON.stringify({ error: 'Internal Server Error' }) };
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: error.message || 'Internal Server Error' }),
+    };
   }
 };
