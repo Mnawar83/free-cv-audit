@@ -1092,6 +1092,16 @@
 
         function shouldStartFreshVisit() {
             if (hasPaymentReturnParams()) return false;
+            const hasRecoverableSessionState = Boolean(
+                getStoredValue('cvText') ||
+                getStoredValue('cvAnalysis') ||
+                getPersistedRunId() ||
+                sessionStorage.getItem('hasPaidCV') === 'true' ||
+                sessionStorage.getItem('hasPaidLinkedIn') === 'true' ||
+                sessionStorage.getItem('hasPaidCoverLetter') === 'true' ||
+                sessionStorage.getItem('paymentCompleted') === 'true'
+            );
+            if (hasRecoverableSessionState) return false;
             try {
                 const navigationEntry = performance.getEntriesByType('navigation')[0];
                 const navigationType = navigationEntry?.type || '';
