@@ -829,12 +829,27 @@
                 });
                 console.info('[timing] audit response received', { ms: Math.round(performance.now() - auditStart) });
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || `Server error: ${response.status}`);
+                const responseText = await response.text();
+                let parsed = {};
+                if (responseText && responseText.trim()) {
+                    try {
+                        parsed = JSON.parse(responseText);
+                    } catch (parseError) {
+                        if (!response.ok) {
+                            throw new Error(`Audit service returned a non-JSON error response (HTTP ${response.status}).`);
+                        }
+                        throw new Error('Audit service returned an invalid response format. Please try again.');
+                    }
                 }
-                
-                const result = await response.json();
+
+                if (!response.ok) {
+                    const fallbackMessage = responseText && responseText.trim()
+                        ? `Server error: ${response.status}`
+                        : `Server error: ${response.status} (empty response)`;
+                    throw new Error(parsed?.error || fallbackMessage);
+                }
+
+                const result = parsed;
                 return {
                     audit: result.audit || result.auditResult || '',
                     runId: result.runId || '',
@@ -845,9 +860,6 @@
                      throw error;
                  }
                  console.error("Function call error:", error);
-                 if (error instanceof SyntaxError) {
-                     throw new Error("Received an invalid response from the server. This can happen if the backend function has an error.");
-                 }
                  throw new Error(error.message || "Could not connect to the audit service.");
             }
         }

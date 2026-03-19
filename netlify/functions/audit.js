@@ -34,7 +34,7 @@ Do not include markdown code fences. Do not include any preamble. Base everythin
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
+    return { statusCode: 405, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Method Not Allowed' }) };
   }
 
   try {
@@ -46,6 +46,7 @@ exports.handler = async (event) => {
     if (!apiKey) {
       return {
         statusCode: 500,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ error: 'Google AI API key is missing.' }),
       };
     }
@@ -90,6 +91,7 @@ exports.handler = async (event) => {
     if (!result) {
       return {
         statusCode: 500,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ error: lastErrorMessage }),
       };
     }
@@ -105,9 +107,14 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ auditResult, runId }),
     };
   } catch (error) {
-    return { statusCode: 500, body: JSON.stringify({ error: 'Internal Server Error' }) };
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: error.message || 'Internal Server Error' }),
+    };
   }
 };
