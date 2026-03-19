@@ -1,7 +1,8 @@
 function sanitizePdfText(text) {
-  return text
+  return (text || '')
     .replace(/\u00a0/g, ' ')
-    .replace(/\*\*/g, '');
+    .replace(/\*\*/g, '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
 }
 
 function normalizeForDetection(text) {
@@ -95,7 +96,7 @@ function wrapPdfLines(lines, getMaxCharsForLine) {
 }
 
 function buildPdfBuffer(text) {
-  const normalized = text.replace(/\r\n/g, '\n');
+  const normalized = sanitizePdfText(text).replace(/\r\n/g, '\n');
   const fontSize = 12;
   const nameFontSize = 14;
   const lineHeight = 16;
@@ -128,6 +129,13 @@ function buildPdfBuffer(text) {
       return `${position}\n/${fontId} ${lineFontSize} Tf\n(${encodePdfText(line)}) Tj`;
     });
     const stream = `BT\n${contentLines.join('\n')}\nET`;
+    pages.push({
+      stream,
+      streamLength: Buffer.byteLength(stream, 'latin1'),
+    });
+  }
+  if (!pages.length) {
+    const stream = `BT\n1 0 0 1 ${startX} ${startY} Tm\n/F1 ${fontSize} Tf\n(${encodePdfText('Document generated successfully.')}) Tj\nET`;
     pages.push({
       stream,
       streamLength: Buffer.byteLength(stream, 'latin1'),

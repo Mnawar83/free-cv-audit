@@ -80,6 +80,10 @@ function sanitizeDocxText(input) {
   return output;
 }
 
+function sanitizePdfText(input) {
+  return sanitizeDocxText(input || '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ');
+}
+
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
@@ -199,7 +203,7 @@ exports.handler = async (event) => {
 
     const doc = new Document({ sections: [{ children }] });
     const buffer = await Packer.toBuffer(doc);
-    const coverLetterPdfText = `Cover Letter\n\n${bodyParagraphs.join('\n\n')}`;
+    const coverLetterPdfText = sanitizePdfText(`Cover Letter\n\n${bodyParagraphs.join('\n\n')}`);
     await updateRun(runId, () => ({
       cover_letter_docx_base64: buffer.toString('base64'),
       cover_letter_pdf_text: coverLetterPdfText,
