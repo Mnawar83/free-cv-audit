@@ -1,5 +1,5 @@
 const DEFAULT_GOOGLE_AI_MODEL = 'gemini-3.1-pro-preview';
-const FALLBACK_GOOGLE_AI_MODELS = ['gemini-2.5-flash'];
+const FALLBACK_GOOGLE_AI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
 
 function getGoogleAiModel() {
   const configuredModel = (process.env.GOOGLE_AI_MODEL || '').trim();
