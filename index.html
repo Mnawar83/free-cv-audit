@@ -1185,6 +1185,7 @@
                 initializePayPalButtons();
                 initializeWhishPayCheckout();
                 warmUpCheckoutExperience();
+                prewarmRevisedPdfAfterAudit();
 
             } catch (error) {
                 if (error.name === 'AbortError') {
@@ -1693,6 +1694,7 @@
                 initializePayPalButtons();
                 initializeWhishPayCheckout();
                 warmUpCheckoutExperience();
+                prewarmRevisedPdfAfterAudit();
                 if (hasPaidCV && !revisedCvBlobUrl) {
                     applyPaidGatedLayout();
                     regeneratePdfOnRestore();
@@ -1712,6 +1714,7 @@
             initializePayPalButtons();
             initializeWhishPayCheckout();
             warmUpCheckoutExperience();
+            prewarmRevisedPdfAfterAudit();
             if (isAnyPaidStateActive()) {
                 activeDownloadType = activeDownloadType || "revised";
                 applyPaidGatedLayout();
@@ -1725,6 +1728,22 @@
         }
 
         let regeneratePdfTriggered = false;
+        let prewarmPdfTriggered = false;
+
+        function prewarmRevisedPdfAfterAudit() {
+            if (prewarmPdfTriggered || isGeneratingPdf || revisedCvBlobUrl) return;
+            if (!extractedCvText && !hasActiveRunId) return;
+            prewarmPdfTriggered = true;
+            generateRevisedPdf(extractedCvText)
+                .then(() => {})
+                .catch((error) => {
+                    console.warn('Background PDF prewarm failed.', error);
+                })
+                .finally(() => {
+                    prewarmPdfTriggered = false;
+                });
+        }
+
         function regeneratePdfOnRestore() {
             if (regeneratePdfTriggered || isGeneratingPdf) return;
             regeneratePdfTriggered = true;
@@ -1862,7 +1881,7 @@
                 syncCvAccessActions();
 
                 const savedEmail = (cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim();
-                if (savedEmail && currentRunId) {
+                if (hasPaidCV && savedEmail && currentRunId) {
                     const autoSentKey = 'cv_email_auto_sent_run_id';
                     const sentRunId = localStorage.getItem(autoSentKey);
                     if (sentRunId !== currentRunId) {
