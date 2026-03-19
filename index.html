@@ -360,6 +360,7 @@
         let coverLetterObjectDownloadUrl = '';
         let auditRequestController = null;
         let auditRequestToken = 0;
+        let checkoutWarmupStarted = false;
         const auditMountParent = auditSection ? auditSection.parentElement : null;
         const auditMountAnchor = document.createComment('audit-section-anchor');
         if (auditMountParent && auditSection) {
@@ -438,6 +439,24 @@
             }
             syncPaidSessionState();
             syncAuditVisibility();
+        }
+
+        function warmUpCheckoutExperience() {
+            if (checkoutWarmupStarted) return;
+            checkoutWarmupStarted = true;
+
+            fetchPayPalConfig().catch(() => {});
+            fetchWhishPayConfig().catch(() => {});
+
+            const preloadPayPalSdk = () => {
+                loadPayPalSdk().catch(() => {});
+            };
+
+            if (typeof window.requestIdleCallback === 'function') {
+                window.requestIdleCallback(preloadPayPalSdk, { timeout: 2000 });
+            } else {
+                setTimeout(preloadPayPalSdk, 0);
+            }
         }
 
         function isAnyPaidStateActive() {
@@ -624,6 +643,7 @@
                 resultsSection.classList.remove('hidden');
                 initializePayPalButtons();
                 initializeWhishPayCheckout();
+                warmUpCheckoutExperience();
 
             } catch (error) {
                 if (error.name === 'AbortError') {
@@ -644,13 +664,13 @@
                     try {
                         const typedarray = new Uint8Array(event.target.result);
                         const pdf = await pdfjsLib.getDocument(typedarray).promise;
-                        let text = '';
-                        for (let i = 1; i <= pdf.numPages; i++) {
-                            const page = await pdf.getPage(i);
+                        const pagePromises = Array.from({ length: pdf.numPages }, async (_value, index) => {
+                            const page = await pdf.getPage(index + 1);
                             const content = await page.getTextContent();
-                            text += content.items.map(item => item.str).join(' ');
-                        }
-                        resolve(text);
+                            return content.items.map((item) => item.str).join(' ');
+                        });
+                        const pageTexts = await Promise.all(pagePromises);
+                        resolve(pageTexts.join(' '));
                     } catch (error) { reject(new Error("Could not read the PDF. It may be corrupted.")); }
                 };
                 reader.onerror = () => reject(new Error("Failed to read the file."));
@@ -1031,6 +1051,7 @@
                 resultsSection.classList.remove('hidden');
                 initializePayPalButtons();
                 initializeWhishPayCheckout();
+                warmUpCheckoutExperience();
                 if (hasPaidCV && !revisedCvBlobUrl) {
                     applyPaidGatedLayout();
                     regeneratePdfOnRestore();
@@ -1048,6 +1069,7 @@
             resultsSection.classList.remove('hidden');
             initializePayPalButtons();
             initializeWhishPayCheckout();
+            warmUpCheckoutExperience();
             if (isAnyPaidStateActive()) {
                 activeDownloadType = activeDownloadType || "revised";
                 applyPaidGatedLayout();
@@ -1867,7 +1889,7 @@
             });
             const initData = await readJsonSafely(initResponse);
             if (!initResponse.ok) throw new Error(getApiErrorMessage(initData, 'Unable to start cover letter checkout.'));
-            await fetch('/.netlify/functions/cover-letter-fetch-job', {
+            fetch('/.netlify/functions/cover-letter-fetch-job', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId, jobLink }),
             }).catch(() => {});
         }
