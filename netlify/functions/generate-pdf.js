@@ -1,19 +1,19 @@
-const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require(‘./google-ai’);
-const { LINKEDIN_UPSELL_STATUS, createRunId, getRun, upsertRun } = require(‘./run-store’);
-const { buildPdfBuffer } = require(‘./pdf-builder’);
+const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
+const { LINKEDIN_UPSELL_STATUS, createRunId, getRun, upsertRun } = require('./run-store');
+const { buildPdfBuffer } = require('./pdf-builder');
 
-const PDF_FILENAME = ‘revised-cv.pdf’;
+const PDF_FILENAME = 'revised-cv.pdf';
 
 function pdfResponse(pdfBuffer, runId, inline = false) {
-  const disposition = inline ? `inline; filename=”${PDF_FILENAME}”` : `attachment; filename=”${PDF_FILENAME}”`;
+  const disposition = inline ? `inline; filename="${PDF_FILENAME}"` : `attachment; filename="${PDF_FILENAME}"`;
   return {
     statusCode: 200,
     headers: {
-      ‘Content-Type’: ‘application/pdf’,
-      ‘Content-Disposition’: disposition,
-      ...(runId ? { ‘x-run-id’: runId } : {}),
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': disposition,
+      ...(runId ? { 'x-run-id': runId } : {}),
     },
-    body: pdfBuffer.toString(‘base64’),
+    body: pdfBuffer.toString('base64'),
     isBase64Encoded: true,
   };
 }
@@ -53,6 +53,7 @@ exports.handler = async (event) => {
     }
 
     const apiKey = process.env.GOOGLE_AI_API_KEY;
+    const MODEL_TIMEOUT_MS = 25000;
 
     let result;
     let revisedText = '';
@@ -78,11 +79,29 @@ Return only the revised CV content, formatted as plain text with clear section h
 
     for (const model of candidateModels) {
       const apiUrl = buildGoogleAiUrl(apiKey, model);
-      const fetchResponse = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      const requestController = new AbortController();
+      const requestTimeout = setTimeout(() => requestController.abort(), MODEL_TIMEOUT_MS);
+      let fetchResponse;
+      try {
+        fetchResponse = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: requestController.signal,
+        });
+      } catch (requestError) {
+        clearTimeout(requestTimeout);
+        if (requestError?.name === 'AbortError') {
+          lastErrorMessage = `${model}: request timed out`;
+          console.warn(`AI rewrite timed out for model ${model}. Trying next model.`);
+          continue;
+        }
+        lastErrorMessage = requestError?.message || lastErrorMessage;
+        console.warn(`AI rewrite fetch error for model ${model} (${lastErrorMessage}). Trying next model.`);
+        continue;
+      } finally {
+        clearTimeout(requestTimeout);
+      }
 
       if (fetchResponse.ok) {
         result = await fetchResponse.json();
