@@ -407,7 +407,43 @@
         let hasPaidLinkedIn = false;
         let hasPaidCoverLetter = false;
         let isGeneratingPdf = false;
-        let currentRunId = sessionStorage.getItem('runId') || '';
+        function getPersistedRunId() {
+            try {
+                const sessionRunId = sessionStorage.getItem('runId');
+                if (sessionRunId) return sessionRunId;
+            } catch (error) {
+                console.warn('Session storage is unavailable.', error);
+            }
+            try {
+                return localStorage.getItem('runId') || '';
+            } catch (error) {
+                console.warn('Local storage is unavailable.', error);
+                return '';
+            }
+        }
+
+        function persistRunId(runId) {
+            try {
+                if (runId) {
+                    sessionStorage.setItem('runId', runId);
+                } else {
+                    sessionStorage.removeItem('runId');
+                }
+            } catch (error) {
+                console.warn('Unable to update session runId.', error);
+            }
+            try {
+                if (runId) {
+                    localStorage.setItem('runId', runId);
+                } else {
+                    localStorage.removeItem('runId');
+                }
+            } catch (error) {
+                console.warn('Unable to update local runId.', error);
+            }
+        }
+
+        let currentRunId = getPersistedRunId();
         let hasActiveRunId = Boolean(currentRunId);
         let linkedinButtonsRendered = false;
         let coverLetterButtonsRendered = false;
@@ -830,7 +866,7 @@
         function resetRunStateForNewAudit({ clearAuditArtifacts = false } = {}) {
             currentRunId = '';
             hasActiveRunId = false;
-            sessionStorage.removeItem('runId');
+            persistRunId('');
             sessionStorage.removeItem('paymentCompleted');
             sessionStorage.removeItem('hasPaidCV');
             sessionStorage.removeItem('hasPaidLinkedIn');
@@ -957,7 +993,7 @@
                 if (returnedRunId) {
                     currentRunId = returnedRunId;
                     hasActiveRunId = true;
-                    sessionStorage.setItem('runId', returnedRunId);
+                    persistRunId(returnedRunId);
                 }
                 extractedCvAnalysis = auditResult;
                 setStoredValue('cvAnalysis', auditResult);
@@ -1548,7 +1584,7 @@
                 if (generatedRunId) {
                     currentRunId = generatedRunId;
                     hasActiveRunId = true;
-                    sessionStorage.setItem('runId', generatedRunId);
+                    persistRunId(generatedRunId);
                     revisedCvPublicUrl = new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(generatedRunId)}`, window.location.origin).toString();
                     localStorage.setItem('cv_url', revisedCvPublicUrl);
                 }
@@ -1917,7 +1953,7 @@
             if (runIdFromUrl) {
                 currentRunId = runIdFromUrl;
                 hasActiveRunId = true;
-                sessionStorage.setItem('runId', runIdFromUrl);
+                persistRunId(runIdFromUrl);
             }
             const restored = restoreAuditResultsFromSession();
             if (!restored) {
