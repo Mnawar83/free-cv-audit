@@ -1716,6 +1716,24 @@
             }
         }
 
+        async function finalizeCvPaymentAndGenerate() {
+            setPaidState('cv', true);
+            applyPaidGatedLayout();
+            setDownloadLocked(true);
+            if (whishPayStatus) {
+                whishPayStatus.textContent = 'Payment confirmed. Preparing your download...';
+            }
+            try {
+                await generateRevisedPdf(extractedCvText);
+            } catch (firstError) {
+                console.warn('Initial revised CV generation failed, retrying once.', firstError);
+                await new Promise((resolve) => setTimeout(resolve, 900));
+                await generateRevisedPdf('');
+            }
+            setDownloadLocked(false);
+            updateRetryVisibility();
+        }
+
         async function generateRevisedPdf(cvText) {
             const resolvedCvText = cvText || extractedCvText || getStoredValue('cvText');
             if (!resolvedCvText && !hasActiveRunId) {
@@ -1935,16 +1953,9 @@
                         }
                         console.info('[timing] CV PayPal capture response', { ms: Math.round(performance.now() - captureStart) });
                         const captureResult = await readJsonSafely(response);
-                        if (captureResult.status === 'COMPLETED') {
-                            setPaidState('cv', true);
-                            console.info('[timing] CV PayPal capture confirmed');
-                            try {
-                                await generateRevisedPdf(extractedCvText);
-                                setDownloadLocked(false);
-                            } catch (error) {
-                                console.error('PDF generation error:', error);
-                                showError(error.message || 'Unable to generate your revised CV yet.');
-                            }
+                        const captureStatus = (captureResult?.status || '').toString().toUpperCase();
+                        if (captureStatus === 'COMPLETED' || captureStatus === 'SUCCESS' || captureStatus === 'CAPTURED') {
+                            await finalizeCvPaymentAndGenerate();
                         } else {
                             showError('Payment is still processing. Please wait for confirmation.');
                         }
@@ -2207,15 +2218,13 @@
                         if (whishPayStatus) {
                             whishPayStatus.textContent = 'Payment confirmed. Preparing your download...';
                         }
-                        applyPaidGatedLayout();
-                        return generateRevisedPdf(extractedCvText).then(() => {
+                        return finalizeCvPaymentAndGenerate().then(() => {
                             url.searchParams.delete('payment');
                             url.searchParams.delete('externalId');
                             url.searchParams.delete('runId');
                             window.history.replaceState({}, document.title, url.toString());
                         });
                     })
-                    .then(() => setDownloadLocked(false))
                     .catch((error) => {
                         console.error('Whish Pay confirmation error:', error);
                         if (error?.code === 'PAYMENT_NOT_CONFIRMED') {
