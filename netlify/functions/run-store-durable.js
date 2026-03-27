@@ -15,7 +15,12 @@ function jsonResponse(statusCode, payload, headers = {}) {
 
 exports.handler = async function handler(event) {
   // Initialise the Blobs environment for Functions v1
-  connectLambda(event);
+  try {
+    connectLambda(event);
+  } catch (initError) {
+    console.error('connectLambda failed:', initError.message || initError);
+    return jsonResponse(500, { error: 'Blob store initialization failed.', details: initError.message });
+  }
 
   const headers = event.headers || {};
 

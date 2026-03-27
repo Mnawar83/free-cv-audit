@@ -126,16 +126,22 @@ exports.handler = async (event) => {
     const text = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     const auditResult = text || 'No response from AI';
 
-    await upsertRun(runId, {
-      original_cv_text: cvText,
-      audit_result: auditResult,
-      audit_completed_at: new Date().toISOString(),
-    });
+    let storedRunId = runId;
+    try {
+      await upsertRun(runId, {
+        original_cv_text: cvText,
+        audit_result: auditResult,
+        audit_completed_at: new Date().toISOString(),
+      });
+    } catch (storeError) {
+      console.error('Failed to persist audit run:', storeError.message || storeError);
+      storedRunId = '';
+    }
 
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ auditResult, runId }),
+      body: JSON.stringify({ auditResult, runId: storedRunId }),
     };
   } catch (error) {
     return {
