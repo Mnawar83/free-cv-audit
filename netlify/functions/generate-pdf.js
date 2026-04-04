@@ -24,34 +24,49 @@ exports.handler = async (event) => {
   }
 
   try {
+    let isGetRequest = false;
+    let getRunData = null;
     if (event.httpMethod === 'GET') {
       const runId = event.queryStringParameters?.runId;
       if (!runId) {
         return { statusCode: 400, body: JSON.stringify({ error: 'runId is required.' }) };
       }
       const run = await getRun(runId);
-      if (!run?.revised_cv_text) {
+      if (run?.revised_cv_text) {
+        const pdfBuffer = buildPdfBuffer(run.revised_cv_text);
+        return pdfResponse(pdfBuffer, runId, true);
+      }
+      if (!run?.original_cv_text) {
         return { statusCode: 404, body: JSON.stringify({ error: 'Revised CV not found.' }) };
       }
-      const pdfBuffer = buildPdfBuffer(run.revised_cv_text);
-      return pdfResponse(pdfBuffer, runId, true);
+      isGetRequest = true;
+      getRunData = run;
     }
 
-    const { cvText, cvAnalysis, runId: incomingRunId } = JSON.parse(event.body || '{}');
+    let incomingRunId;
     let existingRun = null;
-    if (incomingRunId) {
-      try {
-        existingRun = await getRun(incomingRunId);
-      } catch (lookupError) {
-        console.warn('Run store lookup failed; proceeding with request body data.', lookupError?.message || lookupError);
+    if (isGetRequest) {
+      incomingRunId = event.queryStringParameters?.runId;
+      existingRun = getRunData;
+    } else {
+      const body = JSON.parse(event.body || '{}');
+      incomingRunId = body.runId;
+      if (incomingRunId) {
+        try {
+          existingRun = await getRun(incomingRunId);
+        } catch (lookupError) {
+          console.warn('Run store lookup failed; proceeding with request body data.', lookupError?.message || lookupError);
+        }
       }
+      var cvText = body.cvText;
+      var cvAnalysis = body.cvAnalysis;
     }
     const resolvedCvText = cvText || existingRun?.original_cv_text || '';
     const resolvedCvAnalysis = cvAnalysis || existingRun?.audit_result || '';
 
     if (existingRun?.revised_cv_text) {
       const cachedPdfBuffer = buildPdfBuffer(existingRun.revised_cv_text);
-      return pdfResponse(cachedPdfBuffer, incomingRunId);
+      return pdfResponse(cachedPdfBuffer, incomingRunId, isGetRequest);
     }
     const candidateModels = getGoogleAiCandidateModels();
 
@@ -191,7 +206,7 @@ Return only the revised CV content, formatted as plain text with clear section h
       console.warn('Run store upsert failed; returning PDF without caching.', storeError?.message || storeError);
     }
 
-    return pdfResponse(pdfBuffer, runId);
+    return pdfResponse(pdfBuffer, runId, isGetRequest);
   } catch (error) {
     console.error('Generate PDF failure.', error);
     return {
