@@ -785,6 +785,7 @@
         }
 
         async function sendCvEmail({ resend = false, silent = false } = {}) {
+            if (isSendingCvEmail) return false;
             const email = (cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim();
             const name = (cvNameInput?.value || localStorage.getItem('cv_name') || '').trim();
             const cvUrl = getCvAccessUrl();
@@ -812,7 +813,7 @@
                 const response = await fetch('/.netlify/functions/send-cv-email', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, name, cvUrl, resend }),
+                    body: JSON.stringify({ email, name, cvUrl, resend, runId: currentRunId || undefined }),
                 });
                 const payload = await readJsonSafely(response);
                 if (!response.ok || !payload.ok) {
@@ -1788,13 +1789,15 @@
                 await generateRevisedPdf(extractedCvText);
             } catch (firstError) {
                 console.warn('Initial revised CV generation failed, retrying once.', firstError);
-                await new Promise((resolve) => setTimeout(resolve, 900));
-                await generateRevisedPdf('');
+                try {
+                    await new Promise((resolve) => setTimeout(resolve, 900));
+                    await generateRevisedPdf('');
+                } catch (retryError) {
+                    console.warn('Revised CV generation retry also failed.', retryError);
+                    showError('Unable to generate your revised CV right now. Please use the Retry button to try again.');
+                }
             }
             setDownloadLocked(false);
-            if ((localStorage.getItem('cv_email') || '').trim()) {
-                sendCvEmail({ silent: true }).catch(() => {});
-            }
             updateRetryVisibility();
         }
 
