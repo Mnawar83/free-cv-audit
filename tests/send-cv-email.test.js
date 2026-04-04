@@ -44,6 +44,29 @@ async function run() {
   assert.strictEqual(capturedPayload.attachments[0].content_type, 'application/pdf');
   assert.ok(capturedPayload.attachments[0].content.length > 100, 'PDF attachment should contain base64 data.');
 
+  const providedBase64 = Buffer.from('%PDF-1.4\nfake-pdf\n%%EOF\n', 'utf8').toString('base64');
+  let payloadFromProvidedAttachment = null;
+  global.fetch = async (_url, options = {}) => {
+    payloadFromProvidedAttachment = JSON.parse(options.body || '{}');
+    return {
+      ok: true,
+      json: async () => ({ id: 'email_456' }),
+    };
+  };
+  const directAttachmentResponse = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      email: 'user@example.com',
+      name: 'Jane',
+      cvUrl: '/.netlify/functions/generate-pdf?runId=missing_run',
+      resend: true,
+      attachmentBase64: providedBase64,
+    }),
+  });
+  assert.strictEqual(directAttachmentResponse.statusCode, 200);
+  assert.ok(Array.isArray(payloadFromProvidedAttachment.attachments), 'Provided attachment should be forwarded.');
+  assert.strictEqual(payloadFromProvidedAttachment.attachments[0].content, providedBase64);
+
   console.log('send-cv-email runId fallback test passed');
 }
 
