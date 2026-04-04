@@ -1,3 +1,6 @@
+const { getRun } = require('./run-store');
+const { buildPdfBuffer } = require('./pdf-builder');
+
 function json(statusCode, payload) {
   return {
     statusCode,
@@ -20,13 +23,16 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-function getHtml({ name, cvUrl, isResend }) {
+function getHtml({ name, cvUrl, isResend, hasAttachment }) {
   const greetingName = escapeHtml(toSafeText(name, 'there'));
   const safeCvUrl = escapeHtml(toSafeText(cvUrl));
   const heading = 'Your CV is ready';
   const intro = isResend
     ? 'Here is your CV again. You can open it anytime from any device.'
     : 'Your revised CV is ready. Open it now or save this email to access it later.';
+  const attachmentNote = hasAttachment
+    ? '<p style="margin:20px 0 0;color:#475569;">Your revised CV is also attached to this email as a PDF.</p>'
+    : '';
 
   return `
     <div style="font-family:Arial,sans-serif;background:#f8fafc;padding:24px;">
@@ -35,6 +41,7 @@ function getHtml({ name, cvUrl, isResend }) {
         <p style="margin:0 0 16px;color:#334155;">Hi ${greetingName},</p>
         <p style="margin:0 0 24px;color:#334155;">${intro}</p>
         <a href="${safeCvUrl}" style="display:inline-block;background:#059669;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:700;">Open My CV</a>
+        ${attachmentNote}
         <p style="margin:20px 0 0;color:#475569;">You can access this CV anytime from any device.</p>
         <p style="margin:20px 0 0;color:#94a3b8;font-size:12px;">FreeCVAudit.com</p>
       </div>
@@ -57,25 +64,43 @@ exports.handler = async (event) => {
     const email = toSafeText(payload.email).toLowerCase();
     const cvUrl = toSafeText(payload.cvUrl);
     const name = toSafeText(payload.name);
+    const runId = toSafeText(payload.runId);
     const isResend = Boolean(payload.resend);
 
     if (!email) return json(400, { error: 'email is required.' });
     if (!cvUrl) return json(400, { error: 'cvUrl is required.' });
 
+    let attachments;
+    if (runId) {
+      try {
+        const run = await getRun(runId);
+        if (run?.revised_cv_text) {
+          const pdfBuffer = buildPdfBuffer(run.revised_cv_text);
+          attachments = [{ filename: 'revised-cv.pdf', content: pdfBuffer.toString('base64') }];
+        }
+      } catch (attachError) {
+        console.warn('Unable to attach PDF to email; sending link only.', attachError?.message || attachError);
+      }
+    }
+
     const subject = isResend ? 'Here Is Your CV Again' : 'Your CV is Ready';
     const from = 'FreeCVAudit <noreply@freecvaudit.com>';
+    const emailPayload = {
+      from,
+      to: [email],
+      subject,
+      html: getHtml({ name, cvUrl, isResend, hasAttachment: Boolean(attachments) }),
+    };
+    if (attachments) {
+      emailPayload.attachments = attachments;
+    }
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        from,
-        to: [email],
-        subject,
-        html: getHtml({ name, cvUrl, isResend }),
-      }),
+      body: JSON.stringify(emailPayload),
     });
 
     const payloadResponse = await response.json().catch(() => ({}));

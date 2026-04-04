@@ -4,6 +4,29 @@ const { buildPdfBuffer } = require('./pdf-builder');
 
 const PDF_FILENAME = 'revised-cv.pdf';
 
+function htmlErrorResponse(statusCode, message, options = {}) {
+  const { showRetryHint } = options;
+  const retryHint = showRetryHint
+    ? '<p style="color:#475569;margin:12px 0 0;font-size:14px">If you received this CV by email, check for an attached PDF file — your revised CV may be included as an attachment.</p>'
+    : '';
+  const html = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FreeCVAudit</title>
+<style>body{font-family:Arial,sans-serif;background:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+.card{max-width:480px;background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0;text-align:center}
+h1{font-size:20px;color:#0f172a;margin:0 0 12px}p{color:#475569;margin:0 0 20px}
+a{display:inline-block;background:#059669;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:700}</style>
+</head><body><div class="card"><h1>Unable to Load Your CV</h1>
+<p>${message}</p>
+${retryHint}
+<a href="https://freecvaudit.com">Go to FreeCVAudit</a></div></body></html>`;
+  return {
+    statusCode,
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    body: html,
+  };
+}
+
 function pdfResponse(pdfBuffer, runId, inline = false) {
   const disposition = inline ? `inline; filename="${PDF_FILENAME}"` : `attachment; filename="${PDF_FILENAME}"`;
   return {
@@ -29,7 +52,7 @@ exports.handler = async (event) => {
     if (event.httpMethod === 'GET') {
       const runId = event.queryStringParameters?.runId;
       if (!runId) {
-        return { statusCode: 400, body: JSON.stringify({ error: 'runId is required.' }) };
+        return htmlErrorResponse(400, 'The link is missing a reference ID. Please use the link from your email or request a new one from FreeCVAudit.');
       }
       const run = await getRun(runId);
       if (run?.revised_cv_text) {
@@ -37,7 +60,7 @@ exports.handler = async (event) => {
         return pdfResponse(pdfBuffer, runId, true);
       }
       if (!run?.original_cv_text) {
-        return { statusCode: 404, body: JSON.stringify({ error: 'Revised CV not found.' }) };
+        return htmlErrorResponse(404, 'Your revised CV could not be found. The link may have expired. Please visit FreeCVAudit to generate a new one.', { showRetryHint: true });
       }
       isGetRequest = true;
       getRunData = run;
@@ -203,12 +226,20 @@ Return only the revised CV content, formatted as plain text with clear section h
     try {
       await upsertRun(runId, runUpdates);
     } catch (storeError) {
-      console.warn('Run store upsert failed; returning PDF without caching.', storeError?.message || storeError);
+      console.warn('Run store upsert failed; retrying once.', storeError?.message || storeError);
+      try {
+        await upsertRun(runId, runUpdates);
+      } catch (retryError) {
+        console.warn('Run store upsert retry failed; returning PDF without caching.', retryError?.message || retryError);
+      }
     }
 
     return pdfResponse(pdfBuffer, runId, isGetRequest);
   } catch (error) {
     console.error('Generate PDF failure.', error);
+    if (event.httpMethod === 'GET') {
+      return htmlErrorResponse(500, 'Something went wrong while preparing your CV. Please try again or visit FreeCVAudit to request a new copy.', { showRetryHint: true });
+    }
     return {
       statusCode: 500,
       body: JSON.stringify({ error: error.message || 'Internal Server Error' }),
