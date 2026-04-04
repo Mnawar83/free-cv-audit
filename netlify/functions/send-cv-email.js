@@ -23,6 +23,33 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function resolveRunId(runId, cvUrl) {
+  const directRunId = toSafeText(runId);
+  if (directRunId) return directRunId;
+  try {
+    const parsed = new URL(cvUrl, 'https://freecvaudit.com');
+    return toSafeText(parsed.searchParams.get('runId'));
+  } catch (error) {
+    return '';
+  }
+}
+
+function createPdfAttachment(pdfBuffer) {
+  if (!pdfBuffer) return null;
+  return {
+    filename: 'revised-cv.pdf',
+    content: pdfBuffer.toString('base64'),
+    content_type: 'application/pdf',
+  };
+}
+
+function normalizeBase64Pdf(value) {
+  const raw = toSafeText(value).replace(/^data:application\/pdf;base64,/i, '').replace(/\s+/g, '');
+  if (!raw) return '';
+  if (!/^[A-Za-z0-9+/=]+$/.test(raw)) return '';
+  return raw;
+}
+
 function getHtml({ name, cvUrl, isResend, hasAttachment }) {
   const greetingName = escapeHtml(toSafeText(name, 'there'));
   const safeCvUrl = escapeHtml(toSafeText(cvUrl));
@@ -64,19 +91,27 @@ exports.handler = async (event) => {
     const email = toSafeText(payload.email).toLowerCase();
     const cvUrl = toSafeText(payload.cvUrl);
     const name = toSafeText(payload.name);
-    const runId = toSafeText(payload.runId);
+    const runId = resolveRunId(payload.runId, cvUrl);
+    const attachmentBase64 = normalizeBase64Pdf(payload.attachmentBase64);
     const isResend = Boolean(payload.resend);
 
     if (!email) return json(400, { error: 'email is required.' });
     if (!cvUrl) return json(400, { error: 'cvUrl is required.' });
 
     let attachments;
-    if (runId) {
+    if (attachmentBase64) {
+      attachments = [{
+        filename: 'revised-cv.pdf',
+        content: attachmentBase64,
+        content_type: 'application/pdf',
+      }];
+    } else if (runId) {
       try {
         const run = await getRun(runId);
         if (run?.revised_cv_text) {
           const pdfBuffer = buildPdfBuffer(run.revised_cv_text);
-          attachments = [{ filename: 'revised-cv.pdf', content: pdfBuffer.toString('base64') }];
+          const attachment = createPdfAttachment(pdfBuffer);
+          if (attachment) attachments = [attachment];
         }
       } catch (attachError) {
         console.warn('Unable to attach PDF to email; sending link only.', attachError?.message || attachError);
