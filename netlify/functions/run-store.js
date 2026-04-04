@@ -55,7 +55,7 @@ function isProductionRuntime() {
 }
 
 function getDefaultStore() {
-  return { runs: {} };
+  return { runs: {}, emailDownloads: {} };
 }
 
 function getDurableHeaders() {
@@ -69,7 +69,17 @@ function getDurableHeaders() {
 function normalizeStore(parsed) {
   if (!parsed || typeof parsed !== 'object') return getDefaultStore();
   if (!parsed.runs || typeof parsed.runs !== 'object') {
-    return { ...parsed, runs: {} };
+    return {
+      ...parsed,
+      runs: {},
+      emailDownloads:
+        parsed.emailDownloads && typeof parsed.emailDownloads === 'object'
+          ? parsed.emailDownloads
+          : {},
+    };
+  }
+  if (!parsed.emailDownloads || typeof parsed.emailDownloads !== 'object') {
+    return { ...parsed, emailDownloads: {} };
   }
   return parsed;
 }
@@ -283,12 +293,52 @@ function createRunId() {
   return crypto.randomUUID();
 }
 
+function createEmailDownloadToken() {
+  return crypto.randomUUID();
+}
+
+function pruneExpiredEmailDownloads(store) {
+  if (!store?.emailDownloads || typeof store.emailDownloads !== 'object') return;
+  const now = Date.now();
+  for (const [token, snapshot] of Object.entries(store.emailDownloads)) {
+    const expiresAtMs = snapshot?.expires_at ? new Date(snapshot.expires_at).getTime() : null;
+    if (Number.isFinite(expiresAtMs) && expiresAtMs < now) {
+      delete store.emailDownloads[token];
+    }
+  }
+}
+
+async function upsertEmailDownload(token, payload = {}) {
+  return mutateStore((store) => {
+    pruneExpiredEmailDownloads(store);
+    const existing = store.emailDownloads[token] || { token, created_at: new Date().toISOString() };
+    const next = {
+      ...existing,
+      ...payload,
+      token,
+      updated_at: new Date().toISOString(),
+    };
+    store.emailDownloads[token] = next;
+    return { value: next };
+  });
+}
+
+async function getEmailDownload(token) {
+  return mutateStore((store) => {
+    pruneExpiredEmailDownloads(store);
+    return { value: store.emailDownloads[token] || null };
+  });
+}
+
 module.exports = {
   COVER_LETTER_PRICE_USD,
   COVER_LETTER_STATUS,
   LINKEDIN_UPSELL_STATUS,
   createRunId,
+  createEmailDownloadToken,
+  getEmailDownload,
   getRun,
+  upsertEmailDownload,
   upsertRun,
   updateRun,
 };
