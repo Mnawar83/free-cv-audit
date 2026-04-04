@@ -784,6 +784,31 @@
             }
         }
 
+        function arrayBufferToBase64(buffer) {
+            const bytes = new Uint8Array(buffer);
+            const chunkSize = 0x8000;
+            let binary = '';
+            for (let index = 0; index < bytes.length; index += chunkSize) {
+                const chunk = bytes.subarray(index, Math.min(index + chunkSize, bytes.length));
+                binary += String.fromCharCode(...chunk);
+            }
+            return btoa(binary);
+        }
+
+        async function getCvAttachmentBase64() {
+            if (!revisedCvBlobUrl) return '';
+            try {
+                const blobResponse = await fetch(revisedCvBlobUrl);
+                if (!blobResponse.ok) return '';
+                const buffer = await blobResponse.arrayBuffer();
+                if (!buffer.byteLength) return '';
+                return arrayBufferToBase64(buffer);
+            } catch (error) {
+                console.warn('Unable to prepare CV attachment from browser blob.', error);
+                return '';
+            }
+        }
+
         async function sendCvEmail({ resend = false, silent = false } = {}) {
             if (isSendingCvEmail) return false;
             const email = (cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim();
@@ -809,11 +834,12 @@
                 localStorage.setItem('cv_email', email);
                 localStorage.setItem('cv_name', name);
                 localStorage.setItem('cv_url', cvUrl);
+                const attachmentBase64 = await getCvAttachmentBase64();
 
                 const response = await fetch('/.netlify/functions/send-cv-email', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, name, cvUrl, resend, runId: currentRunId || undefined }),
+                    body: JSON.stringify({ email, name, cvUrl, resend, runId: currentRunId || undefined, attachmentBase64: attachmentBase64 || undefined }),
                 });
                 const payload = await readJsonSafely(response);
                 if (!response.ok || !payload.ok) {
