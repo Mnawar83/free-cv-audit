@@ -23,6 +23,26 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function resolveRunId(runId, cvUrl) {
+  const directRunId = toSafeText(runId);
+  if (directRunId) return directRunId;
+  try {
+    const parsed = new URL(cvUrl, 'https://freecvaudit.com');
+    return toSafeText(parsed.searchParams.get('runId'));
+  } catch (error) {
+    return '';
+  }
+}
+
+function createPdfAttachment(pdfBuffer) {
+  if (!pdfBuffer) return null;
+  return {
+    filename: 'revised-cv.pdf',
+    content: pdfBuffer.toString('base64'),
+    content_type: 'application/pdf',
+  };
+}
+
 function getHtml({ name, cvUrl, isResend, hasAttachment }) {
   const greetingName = escapeHtml(toSafeText(name, 'there'));
   const safeCvUrl = escapeHtml(toSafeText(cvUrl));
@@ -64,7 +84,7 @@ exports.handler = async (event) => {
     const email = toSafeText(payload.email).toLowerCase();
     const cvUrl = toSafeText(payload.cvUrl);
     const name = toSafeText(payload.name);
-    const runId = toSafeText(payload.runId);
+    const runId = resolveRunId(payload.runId, cvUrl);
     const isResend = Boolean(payload.resend);
 
     if (!email) return json(400, { error: 'email is required.' });
@@ -76,7 +96,8 @@ exports.handler = async (event) => {
         const run = await getRun(runId);
         if (run?.revised_cv_text) {
           const pdfBuffer = buildPdfBuffer(run.revised_cv_text);
-          attachments = [{ filename: 'revised-cv.pdf', content: pdfBuffer.toString('base64') }];
+          const attachment = createPdfAttachment(pdfBuffer);
+          if (attachment) attachments = [attachment];
         }
       } catch (attachError) {
         console.warn('Unable to attach PDF to email; sending link only.', attachError?.message || attachError);
