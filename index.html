@@ -40,7 +40,7 @@
         .whishpay-powered-text {
             letter-spacing: 0.08em;
         }
-        .no-cv-banner {
+        .workwaves-banner {
             position: fixed;
             top: 120px;
             right: 16px;
@@ -50,22 +50,22 @@
             justify-content: center;
             text-decoration: none;
         }
-        .no-cv-banner:focus-visible {
+        .workwaves-banner:focus-visible {
             outline: 3px solid #93c5fd;
             outline-offset: 4px;
         }
-        .no-cv-banner img {
+        .workwaves-banner img {
             max-height: 70vh;
             width: auto;
             object-fit: contain;
             display: block;
         }
         @media (max-width: 768px) {
-            .no-cv-banner {
+            .workwaves-banner {
                 position: static;
                 margin: 14px auto 0;
             }
-            .no-cv-banner img {
+            .workwaves-banner img {
                 max-height: 130px;
             }
         }
@@ -379,8 +379,8 @@
         </footer>
     </div>
 
-    <a class="no-cv-banner" href="https://wa.me/9613690148?text=Hello%2C%20can%20you%20please%20help%20me%20write%20my%20CV%3F" target="_blank" rel="noopener noreferrer" aria-label="Don't have a CV? Click here">
-        <img src="assets/no-cv-banner.jpg" alt="DON'T HAVE A CV? CLICK HERE" width="320" height="860" loading="lazy" decoding="async">
+    <a class="workwaves-banner" href="https://www.workwaveslb.com" target="_blank" rel="noopener noreferrer" aria-label="Open Work Waves website">
+        <img src="assets/workwaves-banner.svg" alt="Work Waves — Tell your story expertly. Learn more." width="320" height="569" loading="lazy" decoding="async">
     </a>
 
     <div id="upsell-payment-modal" class="fixed inset-0 z-[70] hidden items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="payment-modal-title">
@@ -784,6 +784,31 @@
             }
         }
 
+        function arrayBufferToBase64(buffer) {
+            const bytes = new Uint8Array(buffer);
+            const chunkSize = 0x8000;
+            let binary = '';
+            for (let index = 0; index < bytes.length; index += chunkSize) {
+                const chunk = bytes.subarray(index, Math.min(index + chunkSize, bytes.length));
+                binary += String.fromCharCode(...chunk);
+            }
+            return btoa(binary);
+        }
+
+        async function getCvAttachmentBase64() {
+            if (!revisedCvBlobUrl) return '';
+            try {
+                const blobResponse = await fetch(revisedCvBlobUrl);
+                if (!blobResponse.ok) return '';
+                const buffer = await blobResponse.arrayBuffer();
+                if (!buffer.byteLength) return '';
+                return arrayBufferToBase64(buffer);
+            } catch (error) {
+                console.warn('Unable to prepare CV attachment from browser blob.', error);
+                return '';
+            }
+        }
+
         async function sendCvEmail({ resend = false, silent = false } = {}) {
             if (isSendingCvEmail) return false;
             const email = (cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim();
@@ -834,6 +859,7 @@
                 localStorage.setItem('cv_email', email);
                 localStorage.setItem('cv_name', name);
                 localStorage.setItem('cv_url', cvUrl);
+                const attachmentBase64 = await getCvAttachmentBase64();
 
                 const response = await fetch('/.netlify/functions/send-cv-email', {
                     method: 'POST',
