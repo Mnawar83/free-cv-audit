@@ -180,6 +180,8 @@ exports.handler = async (event) => {
     const runId = resolveRunId(payload.runId, cvUrl);
     const isResend = Boolean(payload.resend);
     const forceSync = Boolean(payload.forceSync);
+    const clientPdfBase64 = toSafeText(payload.pdfBase64);
+    const clientCvText = toSafeText(payload.cvText);
 
     if (!email) return json(400, { error: 'email is required.' });
     if (!cvUrl) return json(400, { error: 'cvUrl is required.' });
@@ -210,6 +212,16 @@ exports.handler = async (event) => {
       console.warn('Unable to build CV PDF snapshot from revised text.', attachmentError?.message || attachmentError);
     }
     let canonicalCvUrl = '';
+    if (!snapshotPdfBase64 && clientPdfBase64) {
+      snapshotPdfBase64 = clientPdfBase64;
+    }
+    if (!snapshotPdfBase64 && clientCvText) {
+      try {
+        snapshotPdfBase64 = buildPdfBuffer(clientCvText).toString('base64');
+      } catch (buildError) {
+        console.warn('Unable to build CV PDF from client-provided text.', buildError?.message || buildError);
+      }
+    }
     if (!snapshotPdfBase64) {
       const resolvedCvUrl = buildRunCvUrl(runId, cvUrl);
       snapshotPdfBase64 = await fetchPdfBase64FromUrl(resolvedCvUrl);
@@ -217,10 +229,11 @@ exports.handler = async (event) => {
         console.warn('Unable to fetch CV PDF for email snapshot.', { runId });
       }
     }
-    if (!revisedCvText && !snapshotPdfBase64) {
+    const effectiveRevisedText = revisedCvText || clientCvText;
+    if (!effectiveRevisedText && !snapshotPdfBase64) {
       return json(404, { error: 'Your revised CV is no longer available. Please regenerate it and try again.' });
     }
-    if (revisedCvText || snapshotPdfBase64) {
+    if (effectiveRevisedText || snapshotPdfBase64) {
       const token = createEmailDownloadToken();
       const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
       const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
@@ -229,12 +242,15 @@ exports.handler = async (event) => {
         await saveEmailDownloadSnapshot(event, token, {
           runId,
           ...(snapshotPdfBase64 ? { pdf_base64: snapshotPdfBase64 } : {}),
-          ...(revisedCvText ? { revised_cv_text: revisedCvText } : {}),
+          ...(effectiveRevisedText ? { revised_cv_text: effectiveRevisedText } : {}),
           expires_at: expiresAt,
         });
-        canonicalCvUrl = buildCanonicalCvUrl(token, cvUrl);
+        canonicalCvUrl = buildCanonicalCvUrl(token, cvUrl, runId);
       } catch (snapshotError) {
         console.warn('Unable to persist email download snapshot; falling back to runId URL.', snapshotError?.message || snapshotError);
+        if (runId) {
+          canonicalCvUrl = buildRunCvUrl(runId, cvUrl);
+        }
       }
     }
 

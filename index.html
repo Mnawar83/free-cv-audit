@@ -861,11 +861,12 @@
                 localStorage.setItem('cv_name', name);
                 localStorage.setItem('cv_url', cvUrl);
                 const attachmentBase64 = await getCvAttachmentBase64();
+                const cvText = extractedCvText || getStoredValue('cvText') || '';
 
                 const response = await fetch('/.netlify/functions/send-cv-email', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, name, cvUrl, resend, runId: resolvedRunId }),
+                    body: JSON.stringify({ email, name, cvUrl, resend, runId: resolvedRunId, pdfBase64: attachmentBase64, cvText }),
                 });
                 const payload = await readJsonSafely(response);
                 if (!response.ok || !payload.ok) {
