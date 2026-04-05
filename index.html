@@ -601,6 +601,7 @@
         let auditRequestToken = 0;
         let checkoutWarmupStarted = false;
         let isSendingCvEmail = false;
+        let whishPayRetryAvailableAt = 0;
 
         const auditMountParent = auditSection ? auditSection.parentElement : null;
         const auditMountAnchor = document.createComment('audit-section-anchor');
@@ -2206,10 +2207,36 @@
             }
         }
 
+        function trackCheckoutEvent(eventName, detail = {}) {
+            const payload = {
+                event: eventName,
+                provider: 'whishpay',
+                at: new Date().toISOString(),
+                ...detail,
+            };
+            console.info('[checkout]', payload);
+            if (Array.isArray(window.dataLayer)) {
+                window.dataLayer.push(payload);
+            }
+        }
+
         async function startWhishPayCheckout() {
             if (!whishPayButton) return;
+            if (whishPayButton.disabled) return;
+            const now = Date.now();
+            if (now < whishPayRetryAvailableAt) {
+                const waitSeconds = Math.max(1, Math.ceil((whishPayRetryAvailableAt - now) / 1000));
+                const retryMessage = `Please wait ${waitSeconds}s before retrying payment.`;
+                showError(retryMessage);
+                if (whishPayStatus) {
+                    whishPayStatus.textContent = retryMessage;
+                }
+                trackCheckoutEvent('checkout_retry_blocked', { waitSeconds });
+                return;
+            }
             const clickAt = performance.now();
             console.info('[timing] Whish CV click', { at: clickAt });
+            trackCheckoutEvent('checkout_start_clicked');
             let paymentTarget = null;
 
             try {
@@ -2221,10 +2248,20 @@
                 }
 
                 if (!currentRunId) {
-                    await generateRevisedPdf(extractedCvText || getStoredValue('cvText') || '');
+                    const persistedRunId = getPersistedRunId();
+                    if (persistedRunId) {
+                        currentRunId = persistedRunId;
+                        hasActiveRunId = true;
+                    }
                 }
                 if (!currentRunId) {
-                    throw new Error('Unable to start Whish checkout right now. Please regenerate your revised CV and try again.');
+                    const storedCvText = extractedCvText || getStoredValue('cvText') || '';
+                    if (storedCvText) {
+                        await generateRevisedPdf(storedCvText);
+                    }
+                }
+                if (!currentRunId) {
+                    throw new Error('Unable to start WhishPay checkout right now. Please run the audit again to regenerate your revised CV, then retry payment.');
                 }
 
                 const config = await fetchWhishPayConfig();
@@ -2253,6 +2290,7 @@
 
                 if (!response.ok) {
                     const errorData = await readJsonSafely(response);
+                    trackCheckoutEvent('checkout_create_failed', { status: response.status });
                     throw new Error(getApiErrorMessage(errorData, 'Unable to create Whish Pay checkout.'));
                 }
 
@@ -2266,6 +2304,8 @@
                 if (!paymentUrl) {
                     throw new Error('Whish Pay did not return a checkout link.');
                 }
+                whishPayRetryAvailableAt = 0;
+                trackCheckoutEvent('checkout_redirect_opened');
                 paymentTarget.target.location.href = paymentUrl;
                 console.info('[timing] Whish CV popup navigated', { msFromClick: Math.round(performance.now() - clickAt) });
             } catch (error) {
@@ -2274,6 +2314,11 @@
                 }
                 console.error('Whish Pay error:', error);
                 showError(error.message || 'Whish Pay checkout failed. Please try again.');
+                whishPayRetryAvailableAt = Date.now() + 3_000;
+                trackCheckoutEvent('checkout_start_failed', { message: error?.message || 'unknown' });
+                if (whishPayStatus) {
+                    whishPayStatus.textContent = 'Could not open payment. Please try again. If this keeps happening, run the audit again and regenerate your revised CV.';
+                }
                 whishPayButton.disabled = false;
                 whishPayButton.classList.remove('opacity-70');
             }
