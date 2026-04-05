@@ -91,7 +91,11 @@ async function run() {
     httpMethod: 'GET',
     queryStringParameters: { token: expiredToken },
   });
-  assert.strictEqual(expiredResponse.statusCode, 410, 'Expired token should return explicit gone status.');
+  assert.strictEqual(expiredResponse.statusCode, 302, 'Expired token should fall back to runId download URL when available.');
+  assert.ok(
+    String(expiredResponse.headers?.Location || '').includes(`runId=${runId}`),
+    'Expired token fallback should redirect to runId-based generate-pdf URL.',
+  );
 
   const invalidPdfToken = runStore.createEmailDownloadToken();
   await runStore.upsertEmailDownload(invalidPdfToken, {

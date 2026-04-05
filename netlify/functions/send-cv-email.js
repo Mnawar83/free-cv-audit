@@ -53,10 +53,14 @@ function resolveBaseUrl(cvUrl) {
   }
 }
 
-function buildCanonicalCvUrl(token, cvUrl) {
+function buildCanonicalCvUrl(token, cvUrl, runId = '') {
   if (!token) return cvUrl;
   const base = resolveBaseUrl(cvUrl);
-  return new URL(`/.netlify/functions/cv-email-download?token=${encodeURIComponent(token)}`, base).toString();
+  const url = new URL(`/.netlify/functions/cv-email-download?token=${encodeURIComponent(token)}`, base);
+  if (runId) {
+    url.searchParams.set('runId', runId);
+  }
+  return url.toString();
 }
 
 function buildRunCvUrl(runId, cvUrl) {
