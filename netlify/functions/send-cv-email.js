@@ -1,5 +1,7 @@
-const { createEmailDownloadToken, getRun } = require('./run-store');
+const { createEmailDownloadToken, enqueueEmailJob, getRun, upsertEmailDelivery } = require('./run-store');
 const { saveEmailDownloadSnapshot } = require('./email-download-store');
+const { buildPdfBuffer } = require('./pdf-builder');
+const crypto = require('crypto');
 
 function json(statusCode, payload) {
   return {
@@ -57,13 +59,79 @@ function buildCanonicalCvUrl(token, cvUrl) {
   return new URL(`/.netlify/functions/cv-email-download?token=${encodeURIComponent(token)}`, base).toString();
 }
 
-function getHtml({ name, cvUrl, isResend }) {
+function buildRunCvUrl(runId, cvUrl) {
+  const base = resolveBaseUrl(cvUrl);
+  return new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(runId)}`, base).toString();
+}
+
+function createPdfAttachment(pdfBuffer) {
+  return {
+    filename: 'revised-cv.pdf',
+    content: pdfBuffer.toString('base64'),
+    content_type: 'application/pdf',
+  };
+}
+
+function createIdempotencyKey({ email, runId, isResend }) {
+  return crypto
+    .createHash('sha256')
+    .update(`${email}|${runId}|${isResend ? 'resend' : 'first'}`)
+    .digest('hex');
+}
+
+function shouldRetryStatus(statusCode) {
+  return [429, 500, 502, 503, 504].includes(statusCode);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function sendResendEmail(apiKey, emailPayload, idempotencyKey) {
+  const maxAttempts = 3;
+  let lastPayload = {};
+  let lastStatus = 500;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey,
+        },
+        body: JSON.stringify(emailPayload),
+      });
+      lastStatus = response.status;
+      lastPayload = await response.json().catch(() => ({}));
+      if (response.ok) {
+        return { ok: true, statusCode: 200, payload: lastPayload };
+      }
+      if (!shouldRetryStatus(response.status) || attempt === maxAttempts - 1) {
+        return { ok: false, statusCode: response.status, payload: lastPayload };
+      }
+    } catch (error) {
+      if (attempt === maxAttempts - 1) {
+        return { ok: false, statusCode: 502, payload: { error: error.message || 'Email delivery failed.' } };
+      }
+    }
+    await sleep((attempt + 1) * 200);
+  }
+
+  return { ok: false, statusCode: lastStatus, payload: lastPayload };
+}
+
+function getHtml({ name, cvUrl, isResend, hasAttachment }) {
   const greetingName = escapeHtml(toSafeText(name, 'there'));
   const safeCvUrl = escapeHtml(toSafeText(cvUrl));
   const heading = 'Your CV is ready';
   const intro = isResend
     ? 'Here is your CV again. You can open it anytime from any device.'
     : 'Your revised CV is ready. Open it now or save this email to access it later.';
+  const attachmentNote = hasAttachment
+    ? '<p style="margin:16px 0 0;color:#334155;">Your revised CV is also attached as a PDF for backup access.</p>'
+    : '';
 
   return `
     <div style="font-family:Arial,sans-serif;background:#f8fafc;padding:24px;">
@@ -96,14 +164,48 @@ exports.handler = async (event) => {
     const name = toSafeText(payload.name);
     const runId = resolveRunId(payload.runId, cvUrl);
     const isResend = Boolean(payload.resend);
+    const forceSync = Boolean(payload.forceSync);
 
     if (!email) return json(400, { error: 'email is required.' });
     if (!cvUrl) return json(400, { error: 'cvUrl is required.' });
     if (!runId) return json(400, { error: 'runId is required to create a reliable download link.' });
 
+    if (process.env.CV_EMAIL_ASYNC_MODE === 'true' && !forceSync) {
+      const queued = await enqueueEmailJob({
+        email,
+        name,
+        cvUrl,
+        runId,
+        resend: isResend,
+      });
+      return json(202, { ok: true, queued: true, jobId: queued.id });
+    }
+
     const run = await getRun(runId);
     if (!run?.revised_cv_text) {
       return json(404, { error: 'Your revised CV is no longer available. Please generate a new one.' });
+    }
+    let attachment = null;
+    try {
+      attachment = createPdfAttachment(buildPdfBuffer(run.revised_cv_text));
+    } catch (attachmentError) {
+      console.warn('Unable to build CV attachment; sending email with link only.', attachmentError?.message || attachmentError);
+    }
+    const token = createEmailDownloadToken();
+    const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
+    const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
+    const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
+    let canonicalCvUrl = buildRunCvUrl(runId, cvUrl);
+    try {
+      await saveEmailDownloadSnapshot(event, token, {
+        runId,
+        ...(attachment?.content ? { pdf_base64: attachment.content } : {}),
+        revised_cv_text: run.revised_cv_text,
+        expires_at: expiresAt,
+      });
+      canonicalCvUrl = buildCanonicalCvUrl(token, cvUrl);
+    } catch (snapshotError) {
+      console.warn('Unable to persist email download snapshot; falling back to runId URL.', snapshotError?.message || snapshotError);
     }
     const token = createEmailDownloadToken();
     const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
@@ -118,28 +220,32 @@ exports.handler = async (event) => {
 
     const subject = isResend ? 'Here Is Your CV Again' : 'Your CV is Ready';
     const from = 'FreeCVAudit <noreply@freecvaudit.com>';
+    const idempotencyKey = createIdempotencyKey({ email, runId, isResend });
     const emailPayload = {
       from,
       to: [email],
       subject,
-      html: getHtml({ name, cvUrl: canonicalCvUrl, isResend }),
+      html: getHtml({ name, cvUrl: canonicalCvUrl, isResend, hasAttachment: Boolean(attachment) }),
     };
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(emailPayload),
-    });
-
-    const payloadResponse = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const details = payloadResponse?.message || payloadResponse?.error || 'Unable to send CV email.';
-      return json(502, { error: details });
+    if (attachment) {
+      emailPayload.attachments = [attachment];
+    }
+    const sendResult = await sendResendEmail(apiKey, emailPayload, idempotencyKey);
+    if (!sendResult.ok) {
+      const details = sendResult?.payload?.message || sendResult?.payload?.error || 'Unable to send CV email.';
+      return json(sendResult.statusCode || 502, { error: details });
     }
 
-    return json(200, { ok: true, id: payloadResponse?.id || null });
+    await upsertEmailDelivery(`delivery:${idempotencyKey}`, {
+      runId,
+      email,
+      provider: 'resend',
+      provider_email_id: sendResult.payload?.id || null,
+      status: 'SENT',
+      is_resend: isResend,
+      download_url: canonicalCvUrl,
+    });
+    return json(200, { ok: true, id: sendResult.payload?.id || null });
   } catch (error) {
     return json(500, { error: error.message || 'Unable to send CV email.' });
   }

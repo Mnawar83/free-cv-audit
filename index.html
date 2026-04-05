@@ -2183,25 +2183,31 @@
             if (!whishPayButton) return;
             const clickAt = performance.now();
             console.info('[timing] Whish CV click', { at: clickAt });
-            const paymentTarget = openPaymentTarget();
-
-            whishPayButton.disabled = true;
-            whishPayButton.classList.add('opacity-70');
-            if (whishPayStatus) {
-                whishPayStatus.textContent = paymentTarget.mode === 'popup' ? 'Opening payment...' : 'Opening payment in this tab...';
-            }
+            let paymentTarget = null;
 
             try {
+                if (!currentRunId) {
+                    await generateRevisedPdf(extractedCvText || getStoredValue('cvText') || '');
+                }
+                if (!currentRunId) {
+                    throw new Error('Unable to start Whish checkout right now. Please regenerate your revised CV and try again.');
+                }
+
+                paymentTarget = openPaymentTarget();
+                whishPayButton.disabled = true;
+                whishPayButton.classList.add('opacity-70');
+                if (whishPayStatus) {
+                    whishPayStatus.textContent = paymentTarget.mode === 'popup' ? 'Opening payment...' : 'Opening payment in this tab...';
+                }
+
                 const config = await fetchWhishPayConfig();
                 if (config?.currency) {
                     sessionStorage.setItem('whishPayCurrency', config.currency);
                 }
                 const returnParams = new URLSearchParams({ payment: 'success' });
                 const failParams = new URLSearchParams({ payment: 'failed' });
-                if (hasActiveRunId && currentRunId) {
-                    returnParams.set('runId', currentRunId);
-                    failParams.set('runId', currentRunId);
-                }
+                returnParams.set('runId', currentRunId);
+                failParams.set('runId', currentRunId);
                 const functionStart = performance.now();
                 const response = await fetch('/.netlify/functions/whishpay-create-payment', {
                     method: 'POST',
@@ -2236,7 +2242,7 @@
                 paymentTarget.target.location.href = paymentUrl;
                 console.info('[timing] Whish CV popup navigated', { msFromClick: Math.round(performance.now() - clickAt) });
             } catch (error) {
-                if (paymentTarget.mode === 'popup' && paymentTarget.target && !paymentTarget.target.closed) {
+                if (paymentTarget?.mode === 'popup' && paymentTarget?.target && !paymentTarget.target.closed) {
                     paymentTarget.target.close();
                 }
                 console.error('Whish Pay error:', error);

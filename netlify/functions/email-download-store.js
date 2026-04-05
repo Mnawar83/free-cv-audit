@@ -16,8 +16,12 @@ function getBlobStore(event) {
 async function saveEmailDownloadSnapshot(event, token, snapshot) {
   const blobStore = getBlobStore(event);
   if (blobStore) {
-    await blobStore.setJSON(token, snapshot);
-    return;
+    try {
+      await blobStore.setJSON(token, snapshot);
+      return;
+    } catch (error) {
+      console.warn('Blob snapshot write failed; falling back to run-store.', error?.message || error);
+    }
   }
   await upsertEmailDownload(token, snapshot);
 }
@@ -25,8 +29,12 @@ async function saveEmailDownloadSnapshot(event, token, snapshot) {
 async function getEmailDownloadSnapshot(event, token) {
   const blobStore = getBlobStore(event);
   if (blobStore) {
-    const data = await blobStore.get(token, { type: 'json' });
-    if (data) return data;
+    try {
+      const data = await blobStore.get(token, { type: 'json' });
+      if (data) return data;
+    } catch (error) {
+      console.warn('Blob snapshot read failed; falling back to run-store.', error?.message || error);
+    }
   }
   return getEmailDownload(token);
 }

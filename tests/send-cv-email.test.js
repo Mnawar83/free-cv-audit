@@ -1,4 +1,5 @@
 const assert = require('assert');
+const { setupIsolatedRunStoreEnv } = require('./helpers/test-env');
 
 function clearModule(modulePath) {
   const resolved = require.resolve(modulePath);
@@ -6,6 +7,7 @@ function clearModule(modulePath) {
 }
 
 async function run() {
+  setupIsolatedRunStoreEnv('send-cv-email.test');
   process.env.RESEND_API_KEY = 'test-api-key';
   process.env.URL = 'https://app.freecvaudit.com';
   clearModule('../netlify/functions/run-store');
@@ -17,10 +19,13 @@ async function run() {
   });
 
   let capturedPayload = null;
+  let resendHeaders = null;
   global.fetch = async (_url, options = {}) => {
     capturedPayload = JSON.parse(options.body || '{}');
+    resendHeaders = options.headers || {};
     return {
       ok: true,
+      status: 200,
       json: async () => ({ id: 'email_123' }),
     };
   };
@@ -40,7 +45,9 @@ async function run() {
 
   assert.strictEqual(response.statusCode, 200);
   assert.ok(capturedPayload, 'Resend payload should be sent.');
-  assert.ok(!capturedPayload.attachments, 'Email should not include PDF attachments.');
+  assert.ok(Array.isArray(capturedPayload.attachments), 'Email should include a PDF backup attachment.');
+  assert.strictEqual(capturedPayload.attachments[0].filename, 'revised-cv.pdf');
+  assert.strictEqual(capturedPayload.attachments[0].content_type, 'application/pdf');
   const tokenMatch = capturedPayload.html.match(/cv-email-download\?token=([a-z0-9-]+)/i);
   assert.ok(tokenMatch, 'Email should contain a tokenized cv-email-download link.');
   const token = tokenMatch[1];
@@ -48,7 +55,14 @@ async function run() {
     capturedPayload.html.includes('https://app.freecvaudit.com/.netlify/functions/cv-email-download?token='),
     'Email should contain the hosted tokenized download link.',
   );
+  assert.ok(capturedPayload.html.includes('also attached as a PDF'), 'Email HTML should mention backup attachment.');
+  assert.ok(Boolean(resendHeaders['Idempotency-Key']), 'Email send should include an idempotency key header.');
+  const storedSnapshot = await runStore.getEmailDownload(token);
+  assert.ok(storedSnapshot, 'Token snapshot should be stored.');
+  assert.strictEqual(storedSnapshot.pdf_base64, capturedPayload.attachments[0].content, 'Stored snapshot should persist immutable PDF bytes.');
 
+  process.env.CV_DOWNLOAD_RATE_LIMIT_MAX = '3';
+  process.env.CV_DOWNLOAD_RATE_LIMIT_WINDOW_MS = '60000';
   clearModule('../netlify/functions/cv-email-download');
   const downloadHandler = require('../netlify/functions/cv-email-download').handler;
   const downloadResponse = await downloadHandler({
@@ -60,6 +74,16 @@ async function run() {
   assert.ok(downloadResponse.body.length > 100);
   assert.strictEqual(downloadResponse.isBase64Encoded, true);
 
+  let rateLimitedResponse = null;
+  for (let index = 0; index < 4; index += 1) {
+    rateLimitedResponse = await downloadHandler({
+      httpMethod: 'GET',
+      queryStringParameters: { token },
+      headers: { 'x-forwarded-for': '10.0.0.1' },
+    });
+  }
+  assert.strictEqual(rateLimitedResponse.statusCode, 429, 'Repeated token requests should be rate limited.');
+
   const expiredToken = runStore.createEmailDownloadToken();
   await runStore.upsertEmailDownload(expiredToken, {
     runId,
@@ -70,7 +94,22 @@ async function run() {
     httpMethod: 'GET',
     queryStringParameters: { token: expiredToken },
   });
-  assert.strictEqual(expiredResponse.statusCode, 404, 'Expired token should be pruned and treated as not found.');
+  assert.strictEqual(expiredResponse.statusCode, 410, 'Expired token should return explicit gone status.');
+
+  const invalidPdfToken = runStore.createEmailDownloadToken();
+  await runStore.upsertEmailDownload(invalidPdfToken, {
+    runId,
+    pdf_base64: 'not-base64-@@@',
+    revised_cv_text: 'Fallback Candidate\nEXPERIENCE\n- Works as expected',
+    expires_at: new Date(Date.now() + 60_000).toISOString(),
+  });
+  const invalidPdfResponse = await downloadHandler({
+    httpMethod: 'GET',
+    queryStringParameters: { token: invalidPdfToken },
+  });
+  assert.strictEqual(invalidPdfResponse.statusCode, 200, 'Invalid stored base64 should fall back to regenerated PDF.');
+  assert.strictEqual(invalidPdfResponse.headers['Content-Type'], 'application/pdf');
+  assert.ok(invalidPdfResponse.body.length > 100);
 
   let missingRunEmailSent = false;
   global.fetch = async () => {
@@ -102,6 +141,27 @@ async function run() {
     }),
   });
   assert.strictEqual(missingRunIdResponse.statusCode, 400);
+
+  let retryAttempt = 0;
+  global.fetch = async () => {
+    retryAttempt += 1;
+    if (retryAttempt < 2) {
+      return { ok: false, status: 502, json: async () => ({ error: 'temporary outage' }) };
+    }
+    return { ok: true, status: 200, json: async () => ({ id: 'email_retry_ok' }) };
+  };
+  const retryResponse = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      email: 'retry@example.com',
+      name: 'Retry',
+      cvUrl: `/.netlify/functions/generate-pdf?runId=${runId}`,
+      runId,
+      resend: false,
+    }),
+  });
+  assert.strictEqual(retryResponse.statusCode, 200, 'Retryable provider errors should be retried and eventually succeed.');
+  assert.strictEqual(retryAttempt, 2, 'Handler should retry after transient provider failure.');
 
   console.log('send-cv-email canonical link test passed');
 }
