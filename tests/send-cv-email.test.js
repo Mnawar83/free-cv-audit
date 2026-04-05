@@ -55,6 +55,10 @@ async function run() {
     capturedPayload.html.includes('https://app.freecvaudit.com/.netlify/functions/cv-email-download?token='),
     'Email should contain the hosted tokenized download link.',
   );
+  assert.ok(
+    capturedPayload.html.includes(`runId=${runId}`),
+    'Email should include runId fallback in the tokenized download link.',
+  );
   assert.ok(capturedPayload.html.includes('also attached as a PDF'), 'Email HTML should mention backup attachment.');
   assert.ok(Boolean(resendHeaders['Idempotency-Key']), 'Email send should include an idempotency key header.');
   const storedSnapshot = await runStore.getEmailDownload(token);
@@ -94,7 +98,11 @@ async function run() {
     httpMethod: 'GET',
     queryStringParameters: { token: expiredToken },
   });
-  assert.strictEqual(expiredResponse.statusCode, 410, 'Expired token should return explicit gone status.');
+  assert.strictEqual(expiredResponse.statusCode, 302, 'Expired token should fall back to runId download URL when available.');
+  assert.ok(
+    String(expiredResponse.headers?.Location || '').includes(`runId=${runId}`),
+    'Expired token fallback should redirect to runId-based generate-pdf URL.',
+  );
 
   const invalidPdfToken = runStore.createEmailDownloadToken();
   await runStore.upsertEmailDownload(invalidPdfToken, {
@@ -110,6 +118,16 @@ async function run() {
   assert.strictEqual(invalidPdfResponse.statusCode, 200, 'Invalid stored base64 should fall back to regenerated PDF.');
   assert.strictEqual(invalidPdfResponse.headers['Content-Type'], 'application/pdf');
   assert.ok(invalidPdfResponse.body.length > 100);
+
+  const missingSnapshotFallback = await downloadHandler({
+    httpMethod: 'GET',
+    queryStringParameters: { token: 'missing-token', runId },
+  });
+  assert.strictEqual(missingSnapshotFallback.statusCode, 302, 'Missing token snapshot should redirect to runId fallback URL.');
+  assert.ok(
+    String(missingSnapshotFallback.headers?.Location || '').includes(`runId=${runId}`),
+    'Missing snapshot fallback should keep runId in generate-pdf redirect URL.',
+  );
 
   let missingRunEmailSent = false;
   global.fetch = async () => {

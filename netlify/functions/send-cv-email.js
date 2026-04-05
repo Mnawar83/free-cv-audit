@@ -53,10 +53,14 @@ function resolveBaseUrl(cvUrl) {
   }
 }
 
-function buildCanonicalCvUrl(token, cvUrl) {
+function buildCanonicalCvUrl(token, cvUrl, runId = '') {
   if (!token) return cvUrl;
   const base = resolveBaseUrl(cvUrl);
-  return new URL(`/.netlify/functions/cv-email-download?token=${encodeURIComponent(token)}`, base).toString();
+  const url = new URL(`/.netlify/functions/cv-email-download?token=${encodeURIComponent(token)}`, base);
+  if (runId) {
+    url.searchParams.set('runId', runId);
+  }
+  return url.toString();
 }
 
 function buildRunCvUrl(runId, cvUrl) {
@@ -208,7 +212,7 @@ exports.handler = async (event) => {
           revised_cv_text: revisedCvText,
           expires_at: expiresAt,
         });
-        canonicalCvUrl = buildCanonicalCvUrl(token, cvUrl);
+        canonicalCvUrl = buildCanonicalCvUrl(token, cvUrl, runId);
       } catch (snapshotError) {
         console.warn('Unable to persist email download snapshot; falling back to runId URL.', snapshotError?.message || snapshotError);
       }
