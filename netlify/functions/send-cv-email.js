@@ -53,10 +53,14 @@ function resolveBaseUrl(cvUrl) {
   }
 }
 
-function buildCanonicalCvUrl(token, cvUrl) {
+function buildCanonicalCvUrl(token, cvUrl, runId = '') {
   if (!token) return cvUrl;
   const base = resolveBaseUrl(cvUrl);
-  return new URL(`/.netlify/functions/cv-email-download?token=${encodeURIComponent(token)}`, base).toString();
+  const url = new URL(`/.netlify/functions/cv-email-download?token=${encodeURIComponent(token)}`, base);
+  if (runId) {
+    url.searchParams.set('runId', runId);
+  }
+  return url.toString();
 }
 
 function buildRunCvUrl(runId, cvUrl) {
@@ -64,19 +68,25 @@ function buildRunCvUrl(runId, cvUrl) {
   return new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(runId)}`, base).toString();
 }
 
-function createPdfAttachment(pdfBuffer) {
-  return {
-    filename: 'revised-cv.pdf',
-    content: pdfBuffer.toString('base64'),
-    content_type: 'application/pdf',
-  };
-}
-
 function createIdempotencyKey({ email, runId, isResend }) {
   return crypto
     .createHash('sha256')
     .update(`${email}|${runId}|${isResend ? 'resend' : 'first'}`)
     .digest('hex');
+}
+
+async function fetchPdfBase64FromUrl(cvUrl) {
+  try {
+    const response = await fetch(cvUrl, { method: 'GET' });
+    if (!response.ok) return '';
+    const contentType = String(response.headers?.get?.('content-type') || '').toLowerCase();
+    if (!contentType.includes('application/pdf')) return '';
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length) return '';
+    return buffer.toString('base64');
+  } catch (error) {
+    return '';
+  }
 }
 
 function shouldRetryStatus(statusCode) {
@@ -133,14 +143,19 @@ function getHtml({ name, cvUrl, isResend, hasAttachment }) {
     ? '<p style="margin:16px 0 0;color:#334155;">Your revised CV is also attached as a PDF for backup access.</p>'
     : '';
 
+  const primaryAction = safeCvUrl
+    ? `<a href="${safeCvUrl}" style="display:inline-block;background:#059669;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:700;">Open My CV</a>`
+    : '<p style="margin:0 0 12px;color:#334155;font-weight:600;">Your download link is temporarily unavailable. Please use the attached PDF.</p>';
+
   return `
     <div style="font-family:Arial,sans-serif;background:#f8fafc;padding:24px;">
       <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;padding:24px;border:1px solid #e2e8f0;">
         <h1 style="margin:0 0 12px;font-size:24px;color:#0f172a;">${heading}</h1>
         <p style="margin:0 0 16px;color:#334155;">Hi ${greetingName},</p>
         <p style="margin:0 0 24px;color:#334155;">${intro}</p>
-        <a href="${safeCvUrl}" style="display:inline-block;background:#059669;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:700;">Open My CV</a>
+        ${primaryAction}
         <p style="margin:20px 0 0;color:#475569;">You can access this CV anytime from any device.</p>
+        ${attachmentNote}
         <p style="margin:20px 0 0;color:#94a3b8;font-size:12px;">FreeCVAudit.com</p>
       </div>
     </div>
@@ -182,73 +197,46 @@ exports.handler = async (event) => {
     }
 
     const run = await getRun(runId);
-    if (!run?.revised_cv_text) {
-      return json(404, { error: 'Your revised CV is no longer available. Please generate a new one.' });
+    const revisedCvText = String(run?.revised_cv_text || '');
+    if (!revisedCvText) {
+      console.warn('Run is missing revised CV text; sending email with runId download URL only.', { runId });
     }
-    let attachment = null;
+    let snapshotPdfBase64 = '';
     try {
-      attachment = createPdfAttachment(buildPdfBuffer(run.revised_cv_text));
+      if (revisedCvText) {
+        snapshotPdfBase64 = buildPdfBuffer(revisedCvText).toString('base64');
+      }
     } catch (attachmentError) {
-      console.warn('Unable to build CV attachment; sending email with link only.', attachmentError?.message || attachmentError);
+      console.warn('Unable to build CV PDF snapshot from revised text.', attachmentError?.message || attachmentError);
     }
-    const token = createEmailDownloadToken();
-    const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
-    const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
-    const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
-    let canonicalCvUrl = buildRunCvUrl(runId, cvUrl);
-    try {
-      await saveEmailDownloadSnapshot(event, token, {
-        runId,
-        ...(attachment?.content ? { pdf_base64: attachment.content } : {}),
-        revised_cv_text: run.revised_cv_text,
-        expires_at: expiresAt,
-      });
-      canonicalCvUrl = buildCanonicalCvUrl(token, cvUrl);
-    } catch (snapshotError) {
-      console.warn('Unable to persist email download snapshot; falling back to runId URL.', snapshotError?.message || snapshotError);
+    let canonicalCvUrl = '';
+    if (!snapshotPdfBase64) {
+      const resolvedCvUrl = buildRunCvUrl(runId, cvUrl);
+      snapshotPdfBase64 = await fetchPdfBase64FromUrl(resolvedCvUrl);
+      if (!snapshotPdfBase64) {
+        console.warn('Unable to fetch CV PDF for email snapshot.', { runId });
+      }
     }
-    const token = createEmailDownloadToken();
-    const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
-    const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
-    const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
-    let canonicalCvUrl = buildRunCvUrl(runId, cvUrl);
-    try {
-      await saveEmailDownloadSnapshot(event, token, {
-        runId,
-        ...(attachment?.content ? { pdf_base64: attachment.content } : {}),
-        revised_cv_text: run.revised_cv_text,
-        expires_at: expiresAt,
-      });
-      canonicalCvUrl = buildCanonicalCvUrl(token, cvUrl);
-    } catch (snapshotError) {
-      console.warn('Unable to persist email download snapshot; falling back to runId URL.', snapshotError?.message || snapshotError);
+    if (!revisedCvText && !snapshotPdfBase64) {
+      return json(404, { error: 'Your revised CV is no longer available. Please regenerate it and try again.' });
     }
-    const token = createEmailDownloadToken();
-    const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
-    const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
-    const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
-    let canonicalCvUrl = buildRunCvUrl(runId, cvUrl);
-    try {
-      await saveEmailDownloadSnapshot(event, token, {
-        runId,
-        ...(attachment?.content ? { pdf_base64: attachment.content } : {}),
-        revised_cv_text: run.revised_cv_text,
-        expires_at: expiresAt,
-      });
-      canonicalCvUrl = buildCanonicalCvUrl(token, cvUrl);
-    } catch (snapshotError) {
-      console.warn('Unable to persist email download snapshot; falling back to runId URL.', snapshotError?.message || snapshotError);
+    if (revisedCvText || snapshotPdfBase64) {
+      const token = createEmailDownloadToken();
+      const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
+      const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
+      const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
+      try {
+        await saveEmailDownloadSnapshot(event, token, {
+          runId,
+          ...(snapshotPdfBase64 ? { pdf_base64: snapshotPdfBase64 } : {}),
+          ...(revisedCvText ? { revised_cv_text: revisedCvText } : {}),
+          expires_at: expiresAt,
+        });
+        canonicalCvUrl = buildCanonicalCvUrl(token, cvUrl, runId);
+      } catch (snapshotError) {
+        console.warn('Unable to persist email download snapshot; falling back to runId URL.', snapshotError?.message || snapshotError);
+      }
     }
-    const token = createEmailDownloadToken();
-    const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
-    const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
-    const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
-    await saveEmailDownloadSnapshot(event, token, {
-      runId,
-      revised_cv_text: run.revised_cv_text,
-      expires_at: expiresAt,
-    });
-    const canonicalCvUrl = buildCanonicalCvUrl(token, cvUrl);
 
     const subject = isResend ? 'Here Is Your CV Again' : 'Your CV is Ready';
     const from = 'FreeCVAudit <noreply@freecvaudit.com>';
@@ -257,26 +245,30 @@ exports.handler = async (event) => {
       from,
       to: [email],
       subject,
-      html: getHtml({ name, cvUrl: canonicalCvUrl, isResend, hasAttachment: Boolean(attachment) }),
+      html: getHtml({ name, cvUrl: canonicalCvUrl, isResend, hasAttachment: false }),
     };
-    if (attachment) {
-      emailPayload.attachments = [attachment];
-    }
     const sendResult = await sendResendEmail(apiKey, emailPayload, idempotencyKey);
     if (!sendResult.ok) {
       const details = sendResult?.payload?.message || sendResult?.payload?.error || 'Unable to send CV email.';
       return json(sendResult.statusCode || 502, { error: details });
     }
 
-    await upsertEmailDelivery(`delivery:${idempotencyKey}`, {
-      runId,
-      email,
-      provider: 'resend',
-      provider_email_id: sendResult.payload?.id || null,
-      status: 'SENT',
-      is_resend: isResend,
-      download_url: canonicalCvUrl,
-    });
+    try {
+      await upsertEmailDelivery(`delivery:${idempotencyKey}`, {
+        runId,
+        email,
+        provider: 'resend',
+        provider_email_id: sendResult.payload?.id || null,
+        status: 'SENT',
+        is_resend: isResend,
+        download_url: canonicalCvUrl,
+      });
+    } catch (deliveryStoreError) {
+      console.warn('Email sent but delivery record could not be persisted.', {
+        runId,
+        error: deliveryStoreError?.message || deliveryStoreError,
+      });
+    }
     return json(200, { ok: true, id: sendResult.payload?.id || null });
   } catch (error) {
     return json(500, { error: error.message || 'Unable to send CV email.' });

@@ -71,13 +71,14 @@ async function run() {
     }),
   });
   assert.strictEqual(queuedPermanentFailure.statusCode, 202);
+  global.fetch = async () => ({ ok: true, status: 200, json: async () => ({ id: 'email_missing_run_ok' }) });
 
   const permanentFailureProcess = await processHandler({ httpMethod: 'POST' });
   const permanentFailurePayload = JSON.parse(permanentFailureProcess.body || '{}');
   assert.strictEqual(
     permanentFailurePayload.processed[0].status,
     'DEAD_LETTER',
-    'Permanent 4xx failures should dead-letter immediately without retries.',
+    'Missing run text without a snapshot source should dead-letter to avoid sending broken links.',
   );
 
   console.log('email-queue test passed');
