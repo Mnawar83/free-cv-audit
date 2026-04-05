@@ -788,15 +788,40 @@
             if (isSendingCvEmail) return false;
             const email = (cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim();
             const name = (cvNameInput?.value || localStorage.getItem('cv_name') || '').trim();
-            const cvUrl = getCvAccessUrl();
+            let cvUrl = getCvAccessUrl();
 
             if (!email) {
                 if (!silent && cvEmailStatus) cvEmailStatus.textContent = 'Please add your email first.';
                 syncCvAccessActions();
                 return false;
             }
+            if (!currentRunId) {
+                try {
+                    await generateRevisedPdf(extractedCvText || getStoredValue('cvText') || '');
+                    cvUrl = getCvAccessUrl();
+                } catch (error) {
+                    if (!silent && cvEmailStatus) cvEmailStatus.textContent = 'Unable to prepare your CV right now. Please try again.';
+                    syncCvAccessActions();
+                    return false;
+                }
+            }
             if (!cvUrl || cvUrl.startsWith('blob:')) {
                 if (!silent && cvEmailStatus) cvEmailStatus.textContent = 'CV link is not ready yet. Please try again.';
+                syncCvAccessActions();
+                return false;
+            }
+
+            let resolvedRunId = currentRunId || '';
+            if (!resolvedRunId) {
+                try {
+                    const parsedCvUrl = new URL(cvUrl, window.location.origin);
+                    resolvedRunId = parsedCvUrl.searchParams.get('runId') || '';
+                } catch (error) {
+                    resolvedRunId = '';
+                }
+            }
+            if (!resolvedRunId) {
+                if (!silent && cvEmailStatus) cvEmailStatus.textContent = 'Unable to prepare your CV right now. Please regenerate and try again.';
                 syncCvAccessActions();
                 return false;
             }
@@ -813,15 +838,17 @@
                 const response = await fetch('/.netlify/functions/send-cv-email', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, name, cvUrl, resend, runId: currentRunId || undefined }),
+                    body: JSON.stringify({ email, name, cvUrl, resend, runId: resolvedRunId }),
                 });
                 const payload = await readJsonSafely(response);
                 if (!response.ok || !payload.ok) {
-                    throw new Error(payload.error || 'Unable to send CV email right now.');
+                    throw new Error(getApiErrorMessage(payload, 'Unable to send CV email right now.'));
                 }
 
                 localStorage.setItem('cv_email_last_sent_at', new Date().toISOString());
-                if (!silent && cvEmailStatus) cvEmailStatus.textContent = 'Email sent. Check your inbox.';
+                if (!silent && cvEmailStatus) {
+                    cvEmailStatus.textContent = payload.queued ? 'Email queued. It will arrive shortly.' : 'Email sent. Check your inbox.';
+                }
                 if (emailCvButton) emailCvButton.textContent = 'Resend Email';
                 return true;
             } catch (error) {
@@ -2157,25 +2184,31 @@
             if (!whishPayButton) return;
             const clickAt = performance.now();
             console.info('[timing] Whish CV click', { at: clickAt });
-            const paymentTarget = openPaymentTarget();
-
-            whishPayButton.disabled = true;
-            whishPayButton.classList.add('opacity-70');
-            if (whishPayStatus) {
-                whishPayStatus.textContent = paymentTarget.mode === 'popup' ? 'Opening payment...' : 'Opening payment in this tab...';
-            }
+            let paymentTarget = null;
 
             try {
+                paymentTarget = openPaymentTarget();
+                whishPayButton.disabled = true;
+                whishPayButton.classList.add('opacity-70');
+                if (whishPayStatus) {
+                    whishPayStatus.textContent = paymentTarget.mode === 'popup' ? 'Opening payment...' : 'Opening payment in this tab...';
+                }
+
+                if (!currentRunId) {
+                    await generateRevisedPdf(extractedCvText || getStoredValue('cvText') || '');
+                }
+                if (!currentRunId) {
+                    throw new Error('Unable to start Whish checkout right now. Please regenerate your revised CV and try again.');
+                }
+
                 const config = await fetchWhishPayConfig();
                 if (config?.currency) {
                     sessionStorage.setItem('whishPayCurrency', config.currency);
                 }
                 const returnParams = new URLSearchParams({ payment: 'success' });
                 const failParams = new URLSearchParams({ payment: 'failed' });
-                if (hasActiveRunId && currentRunId) {
-                    returnParams.set('runId', currentRunId);
-                    failParams.set('runId', currentRunId);
-                }
+                returnParams.set('runId', currentRunId);
+                failParams.set('runId', currentRunId);
                 const functionStart = performance.now();
                 const response = await fetch('/.netlify/functions/whishpay-create-payment', {
                     method: 'POST',
@@ -2210,7 +2243,7 @@
                 paymentTarget.target.location.href = paymentUrl;
                 console.info('[timing] Whish CV popup navigated', { msFromClick: Math.round(performance.now() - clickAt) });
             } catch (error) {
-                if (paymentTarget.mode === 'popup' && paymentTarget.target && !paymentTarget.target.closed) {
+                if (paymentTarget?.mode === 'popup' && paymentTarget?.target && !paymentTarget.target.closed) {
                     paymentTarget.target.close();
                 }
                 console.error('Whish Pay error:', error);
