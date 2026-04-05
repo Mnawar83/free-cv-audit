@@ -130,8 +130,18 @@ async function run() {
   );
 
   let missingRunEmailSent = false;
-  global.fetch = async () => {
+  let missingRunPayload = null;
+  global.fetch = async (url, options = {}) => {
+    const targetUrl = String(url || '');
+    if (targetUrl.includes('/.netlify/functions/generate-pdf?runId=missing_run')) {
+      return {
+        ok: true,
+        headers: { get: (name) => (String(name).toLowerCase() === 'content-type' ? 'application/pdf' : '') },
+        arrayBuffer: async () => Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF').buffer,
+      };
+    }
     missingRunEmailSent = true;
+    missingRunPayload = JSON.parse(options.body || '{}');
     return {
       ok: true,
       json: async () => ({ id: 'email_should_not_send' }),
@@ -148,6 +158,10 @@ async function run() {
   });
   assert.strictEqual(missingRunResponse.statusCode, 200);
   assert.strictEqual(missingRunEmailSent, true, 'Email should still be sent when run text is missing.');
+  assert.ok(
+    String(missingRunPayload?.html || '').includes('cv-email-download?token='),
+    'Missing run text flow should still issue tokenized download link when PDF snapshot fetch succeeds.',
+  );
 
   const missingRunIdResponse = await handler({
     httpMethod: 'POST',

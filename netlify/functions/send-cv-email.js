@@ -83,6 +83,20 @@ function createIdempotencyKey({ email, runId, isResend }) {
     .digest('hex');
 }
 
+async function fetchPdfBase64FromUrl(cvUrl) {
+  try {
+    const response = await fetch(cvUrl, { method: 'GET' });
+    if (!response.ok) return '';
+    const contentType = String(response.headers?.get?.('content-type') || '').toLowerCase();
+    if (!contentType.includes('application/pdf')) return '';
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length) return '';
+    return buffer.toString('base64');
+  } catch (error) {
+    return '';
+  }
+}
+
 function shouldRetryStatus(statusCode) {
   return [429, 500, 502, 503, 504].includes(statusCode);
 }
@@ -192,15 +206,24 @@ exports.handler = async (event) => {
       console.warn('Run is missing revised CV text; sending email with runId download URL only.', { runId });
     }
     let attachment = null;
+    let snapshotPdfBase64 = '';
     try {
       if (revisedCvText) {
         attachment = createPdfAttachment(buildPdfBuffer(revisedCvText));
+        snapshotPdfBase64 = attachment.content;
       }
     } catch (attachmentError) {
       console.warn('Unable to build CV attachment; sending email with link only.', attachmentError?.message || attachmentError);
     }
     let canonicalCvUrl = buildRunCvUrl(runId, cvUrl);
-    if (revisedCvText) {
+    if (!snapshotPdfBase64) {
+      const resolvedCvUrl = buildRunCvUrl(runId, cvUrl);
+      snapshotPdfBase64 = await fetchPdfBase64FromUrl(resolvedCvUrl);
+      if (!snapshotPdfBase64) {
+        console.warn('Unable to fetch CV PDF for email snapshot; falling back to runId URL only.', { runId });
+      }
+    }
+    if (revisedCvText || snapshotPdfBase64) {
       const token = createEmailDownloadToken();
       const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
       const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
@@ -208,8 +231,8 @@ exports.handler = async (event) => {
       try {
         await saveEmailDownloadSnapshot(event, token, {
           runId,
-          ...(attachment?.content ? { pdf_base64: attachment.content } : {}),
-          revised_cv_text: revisedCvText,
+          ...(snapshotPdfBase64 ? { pdf_base64: snapshotPdfBase64 } : {}),
+          ...(revisedCvText ? { revised_cv_text: revisedCvText } : {}),
           expires_at: expiresAt,
         });
         canonicalCvUrl = buildCanonicalCvUrl(token, cvUrl, runId);
