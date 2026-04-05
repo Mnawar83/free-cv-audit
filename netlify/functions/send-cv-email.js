@@ -207,17 +207,6 @@ exports.handler = async (event) => {
     } catch (snapshotError) {
       console.warn('Unable to persist email download snapshot; falling back to runId URL.', snapshotError?.message || snapshotError);
     }
-
-    const run = await getRun(runId);
-    if (!run?.revised_cv_text) {
-      return json(404, { error: 'Your revised CV is no longer available. Please generate a new one.' });
-    }
-    let attachment = null;
-    try {
-      attachment = createPdfAttachment(buildPdfBuffer(run.revised_cv_text));
-    } catch (attachmentError) {
-      console.warn('Unable to build CV attachment; sending email with link only.', attachmentError?.message || attachmentError);
-    }
     const token = createEmailDownloadToken();
     const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
     const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
