@@ -68,14 +68,6 @@ function buildRunCvUrl(runId, cvUrl) {
   return new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(runId)}`, base).toString();
 }
 
-function createPdfAttachment(pdfBuffer) {
-  return {
-    filename: 'revised-cv.pdf',
-    content: pdfBuffer.toString('base64'),
-    content_type: 'application/pdf',
-  };
-}
-
 function createIdempotencyKey({ email, runId, isResend }) {
   return crypto
     .createHash('sha256')
@@ -151,13 +143,17 @@ function getHtml({ name, cvUrl, isResend, hasAttachment }) {
     ? '<p style="margin:16px 0 0;color:#334155;">Your revised CV is also attached as a PDF for backup access.</p>'
     : '';
 
+  const primaryAction = safeCvUrl
+    ? `<a href="${safeCvUrl}" style="display:inline-block;background:#059669;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:700;">Open My CV</a>`
+    : '<p style="margin:0 0 12px;color:#334155;font-weight:600;">Your download link is temporarily unavailable. Please use the attached PDF.</p>';
+
   return `
     <div style="font-family:Arial,sans-serif;background:#f8fafc;padding:24px;">
       <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;padding:24px;border:1px solid #e2e8f0;">
         <h1 style="margin:0 0 12px;font-size:24px;color:#0f172a;">${heading}</h1>
         <p style="margin:0 0 16px;color:#334155;">Hi ${greetingName},</p>
         <p style="margin:0 0 24px;color:#334155;">${intro}</p>
-        <a href="${safeCvUrl}" style="display:inline-block;background:#059669;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:700;">Open My CV</a>
+        ${primaryAction}
         <p style="margin:20px 0 0;color:#475569;">You can access this CV anytime from any device.</p>
         ${attachmentNote}
         <p style="margin:20px 0 0;color:#94a3b8;font-size:12px;">FreeCVAudit.com</p>
@@ -205,23 +201,24 @@ exports.handler = async (event) => {
     if (!revisedCvText) {
       console.warn('Run is missing revised CV text; sending email with runId download URL only.', { runId });
     }
-    let attachment = null;
     let snapshotPdfBase64 = '';
     try {
       if (revisedCvText) {
-        attachment = createPdfAttachment(buildPdfBuffer(revisedCvText));
-        snapshotPdfBase64 = attachment.content;
+        snapshotPdfBase64 = buildPdfBuffer(revisedCvText).toString('base64');
       }
     } catch (attachmentError) {
-      console.warn('Unable to build CV attachment; sending email with link only.', attachmentError?.message || attachmentError);
+      console.warn('Unable to build CV PDF snapshot from revised text.', attachmentError?.message || attachmentError);
     }
-    let canonicalCvUrl = buildRunCvUrl(runId, cvUrl);
+    let canonicalCvUrl = '';
     if (!snapshotPdfBase64) {
       const resolvedCvUrl = buildRunCvUrl(runId, cvUrl);
       snapshotPdfBase64 = await fetchPdfBase64FromUrl(resolvedCvUrl);
       if (!snapshotPdfBase64) {
-        console.warn('Unable to fetch CV PDF for email snapshot; falling back to runId URL only.', { runId });
+        console.warn('Unable to fetch CV PDF for email snapshot.', { runId });
       }
+    }
+    if (!revisedCvText && !snapshotPdfBase64) {
+      return json(404, { error: 'Your revised CV is no longer available. Please regenerate it and try again.' });
     }
     if (revisedCvText || snapshotPdfBase64) {
       const token = createEmailDownloadToken();
@@ -248,11 +245,8 @@ exports.handler = async (event) => {
       from,
       to: [email],
       subject,
-      html: getHtml({ name, cvUrl: canonicalCvUrl, isResend, hasAttachment: Boolean(attachment) }),
+      html: getHtml({ name, cvUrl: canonicalCvUrl, isResend, hasAttachment: false }),
     };
-    if (attachment) {
-      emailPayload.attachments = [attachment];
-    }
     const sendResult = await sendResendEmail(apiKey, emailPayload, idempotencyKey);
     if (!sendResult.ok) {
       const details = sendResult?.payload?.message || sendResult?.payload?.error || 'Unable to send CV email.';

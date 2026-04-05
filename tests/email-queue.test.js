@@ -77,8 +77,8 @@ async function run() {
   const permanentFailurePayload = JSON.parse(permanentFailureProcess.body || '{}');
   assert.strictEqual(
     permanentFailurePayload.processed[0].status,
-    'COMPLETED',
-    'Missing run text should still send the recovery email with runId URL.',
+    'DEAD_LETTER',
+    'Missing run text without a snapshot source should dead-letter to avoid sending broken links.',
   );
 
   console.log('email-queue test passed');

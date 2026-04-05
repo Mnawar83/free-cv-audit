@@ -45,9 +45,7 @@ async function run() {
 
   assert.strictEqual(response.statusCode, 200);
   assert.ok(capturedPayload, 'Resend payload should be sent.');
-  assert.ok(Array.isArray(capturedPayload.attachments), 'Email should include a PDF backup attachment.');
-  assert.strictEqual(capturedPayload.attachments[0].filename, 'revised-cv.pdf');
-  assert.strictEqual(capturedPayload.attachments[0].content_type, 'application/pdf');
+  assert.ok(!capturedPayload.attachments, 'Email should not include file attachments; download should be link-based.');
   const tokenMatch = capturedPayload.html.match(/cv-email-download\?token=([a-z0-9-]+)/i);
   assert.ok(tokenMatch, 'Email should contain a tokenized cv-email-download link.');
   const token = tokenMatch[1];
@@ -59,11 +57,10 @@ async function run() {
     capturedPayload.html.includes(`runId=${runId}`),
     'Email should include runId fallback in the tokenized download link.',
   );
-  assert.ok(capturedPayload.html.includes('also attached as a PDF'), 'Email HTML should mention backup attachment.');
   assert.ok(Boolean(resendHeaders['Idempotency-Key']), 'Email send should include an idempotency key header.');
   const storedSnapshot = await runStore.getEmailDownload(token);
   assert.ok(storedSnapshot, 'Token snapshot should be stored.');
-  assert.strictEqual(storedSnapshot.pdf_base64, capturedPayload.attachments[0].content, 'Stored snapshot should persist immutable PDF bytes.');
+  assert.ok(storedSnapshot.pdf_base64, 'Stored snapshot should persist immutable PDF bytes.');
 
   process.env.CV_DOWNLOAD_RATE_LIMIT_MAX = '3';
   process.env.CV_DOWNLOAD_RATE_LIMIT_WINDOW_MS = '60000';
