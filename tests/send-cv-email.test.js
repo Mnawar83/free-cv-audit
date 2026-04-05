@@ -128,8 +128,8 @@ async function run() {
       resend: true,
     }),
   });
-  assert.strictEqual(missingRunResponse.statusCode, 404);
-  assert.strictEqual(missingRunEmailSent, false, 'Email should not be sent when run data is missing.');
+  assert.strictEqual(missingRunResponse.statusCode, 200);
+  assert.strictEqual(missingRunEmailSent, true, 'Email should still be sent when run text is missing.');
 
   const missingRunIdResponse = await handler({
     httpMethod: 'POST',
