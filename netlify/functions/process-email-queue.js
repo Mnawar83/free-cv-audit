@@ -1,5 +1,20 @@
 const { claimEmailJob, completeEmailJob } = require('./run-store');
 
+function isTransientStatus(statusCode) {
+  const code = Number(statusCode);
+  return code === 429 || (code >= 500 && code <= 599);
+}
+
+function shouldRetryJob(job, maxAttempts, statusCode, defaultTransient = false) {
+  const attempts = job?.attempts || 1;
+  const transient = Number.isFinite(Number(statusCode)) ? isTransientStatus(statusCode) : defaultTransient;
+  return attempts < maxAttempts && transient;
+}
+
+function getRetryDelayMs(attempts) {
+  return Math.min(60_000, Math.max(1_000, 1_000 * Math.pow(2, Math.max(0, (attempts || 1) - 1))));
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
@@ -35,8 +50,8 @@ exports.handler = async (event) => {
         processed.push({ jobId: job.id, status: 'COMPLETED' });
         completedCount += 1;
       } else {
-        const shouldRetry = (job.attempts || 1) < maxAttempts;
-        const retryDelayMs = Math.min(60_000, Math.max(1_000, 1_000 * Math.pow(2, Math.max(0, (job.attempts || 1) - 1))));
+        const shouldRetry = shouldRetryJob(job, maxAttempts, response.statusCode);
+        const retryDelayMs = getRetryDelayMs(job.attempts || 1);
         await completeEmailJob(job.id, {
           status: shouldRetry ? 'RETRY' : 'DEAD_LETTER',
           next_attempt_at: shouldRetry ? new Date(Date.now() + retryDelayMs).toISOString() : null,
@@ -48,12 +63,13 @@ exports.handler = async (event) => {
         else deadLetterCount += 1;
       }
     } catch (error) {
-      const shouldRetry = (job.attempts || 1) < maxAttempts;
-      const retryDelayMs = Math.min(60_000, Math.max(1_000, 1_000 * Math.pow(2, Math.max(0, (job.attempts || 1) - 1))));
+      const statusCode = Number(error?.statusCode) || 500;
+      const shouldRetry = shouldRetryJob(job, maxAttempts, statusCode, true);
+      const retryDelayMs = getRetryDelayMs(job.attempts || 1);
       await completeEmailJob(job.id, {
         status: shouldRetry ? 'RETRY' : 'DEAD_LETTER',
         next_attempt_at: shouldRetry ? new Date(Date.now() + retryDelayMs).toISOString() : null,
-        last_status_code: 500,
+        last_status_code: statusCode,
         last_response_body: JSON.stringify({ error: error.message || 'Queue processing failed.' }),
       });
       processed.push({ jobId: job.id, status: shouldRetry ? 'RETRY' : 'DEAD_LETTER' });

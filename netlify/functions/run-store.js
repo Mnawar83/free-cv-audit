@@ -441,14 +441,45 @@ async function enqueueEmailJob(payload) {
   });
 }
 
+function getProcessingLeaseMs() {
+  return Math.max(30_000, Number(process.env.CV_EMAIL_QUEUE_PROCESSING_LEASE_MS || 5 * 60 * 1000));
+}
+
+function requeueStaleProcessingJobs(store, now) {
+  const leaseMs = getProcessingLeaseMs();
+  let requeued = 0;
+
+  store.emailQueue = (store.emailQueue || []).map((job) => {
+    if (job?.status !== 'PROCESSING') return job;
+    const updatedAtMs = job?.updated_at ? new Date(job.updated_at).getTime() : null;
+    const createdAtMs = job?.created_at ? new Date(job.created_at).getTime() : now;
+    const lastSeenMs = Number.isFinite(updatedAtMs) ? updatedAtMs : createdAtMs;
+    if (now - lastSeenMs <= leaseMs) return job;
+    requeued += 1;
+    return {
+      ...job,
+      status: 'RETRY',
+      next_attempt_at: new Date(now).toISOString(),
+      updated_at: new Date(now).toISOString(),
+      last_error: 'Recovered stale PROCESSING job after lease timeout.',
+    };
+  });
+
+  return requeued;
+}
+
 async function claimEmailJob() {
   return mutateStore((store) => {
     const now = Date.now();
+    const requeued = requeueStaleProcessingJobs(store, now);
+
     const index = store.emailQueue.findIndex((job) =>
       job?.status === 'PENDING' ||
       (job?.status === 'RETRY' && (!job?.next_attempt_at || new Date(job.next_attempt_at).getTime() <= now)),
     );
-    if (index < 0) return { value: null, skipWrite: true };
+    if (index < 0) {
+      return requeued > 0 ? { value: null } : { value: null, skipWrite: true };
+    }
     const current = store.emailQueue[index];
     const next = {
       ...current,

@@ -211,6 +211,22 @@ exports.handler = async (event) => {
     const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
     const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
     const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
+    let canonicalCvUrl = buildRunCvUrl(runId, cvUrl);
+    try {
+      await saveEmailDownloadSnapshot(event, token, {
+        runId,
+        ...(attachment?.content ? { pdf_base64: attachment.content } : {}),
+        revised_cv_text: run.revised_cv_text,
+        expires_at: expiresAt,
+      });
+      canonicalCvUrl = buildCanonicalCvUrl(token, cvUrl);
+    } catch (snapshotError) {
+      console.warn('Unable to persist email download snapshot; falling back to runId URL.', snapshotError?.message || snapshotError);
+    }
+    const token = createEmailDownloadToken();
+    const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
+    const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
+    const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
     await saveEmailDownloadSnapshot(event, token, {
       runId,
       revised_cv_text: run.revised_cv_text,

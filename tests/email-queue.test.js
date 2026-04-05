@@ -60,6 +60,26 @@ async function run() {
   const failedPayload = JSON.parse(failedProcess.body || '{}');
   assert.strictEqual(failedPayload.processed[0].status, 'DEAD_LETTER');
 
+  process.env.CV_EMAIL_QUEUE_MAX_ATTEMPTS = '3';
+  const queuedPermanentFailure = await sendHandler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      email: 'queue-missing@example.com',
+      name: 'Queue Missing',
+      cvUrl: '/.netlify/functions/generate-pdf?runId=missing_run',
+      runId: 'missing_run',
+    }),
+  });
+  assert.strictEqual(queuedPermanentFailure.statusCode, 202);
+
+  const permanentFailureProcess = await processHandler({ httpMethod: 'POST' });
+  const permanentFailurePayload = JSON.parse(permanentFailureProcess.body || '{}');
+  assert.strictEqual(
+    permanentFailurePayload.processed[0].status,
+    'DEAD_LETTER',
+    'Permanent 4xx failures should dead-letter immediately without retries.',
+  );
+
   console.log('email-queue test passed');
 }
 
