@@ -1,4 +1,4 @@
-const { findEmailDeliveryByProviderId, markWebhookEventProcessed, upsertEmailDelivery } = require('./run-store');
+const { findEmailDeliveryByProviderId, isWebhookEventProcessed, markWebhookEventProcessed, upsertEmailDelivery } = require('./run-store');
 const crypto = require('crypto');
 
 function json(statusCode, payload) {
@@ -82,9 +82,8 @@ exports.handler = async (event) => {
       return json(400, { error: 'provider email id is required.' });
     }
     if (webhookEventId) {
-      const dedupeWindowMs = Math.max(60_000, Number(process.env.RESEND_WEBHOOK_DEDUPE_WINDOW_MS || 86_400_000));
-      const dedupe = await markWebhookEventProcessed(String(webhookEventId), dedupeWindowMs);
-      if (dedupe?.duplicate) {
+      const alreadyProcessed = await isWebhookEventProcessed(String(webhookEventId));
+      if (alreadyProcessed) {
         return json(200, { ok: true, duplicate: true });
       }
     }
@@ -98,6 +97,11 @@ exports.handler = async (event) => {
       webhook_event_type: eventType,
       webhook_received_at: new Date().toISOString(),
     });
+
+    if (webhookEventId) {
+      const dedupeWindowMs = Math.max(60_000, Number(process.env.RESEND_WEBHOOK_DEDUPE_WINDOW_MS || 86_400_000));
+      await markWebhookEventProcessed(String(webhookEventId), dedupeWindowMs);
+    }
 
     return json(200, { ok: true, deliveryKey: next.deliveryKey, status: next.status });
   } catch (error) {

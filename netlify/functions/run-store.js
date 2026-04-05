@@ -507,6 +507,16 @@ async function completeEmailJob(jobId, updates = {}) {
   });
 }
 
+
+async function isWebhookEventProcessed(eventId) {
+  const key = String(eventId || '').trim();
+  if (!key) return false;
+  const { store } = await readStoreWithMeta();
+  const existing = store.webhookEvents?.[key];
+  if (!existing?.expires_at_ms) return false;
+  return existing.expires_at_ms >= Date.now();
+}
+
 async function markWebhookEventProcessed(eventId, ttlMs = 86_400_000) {
   return mutateStore((store) => {
     const now = Date.now();
@@ -626,6 +636,7 @@ module.exports = {
   findEmailDeliveryByProviderId,
   getEmailDownload,
   getRun,
+  isWebhookEventProcessed,
   markWebhookEventProcessed,
   getOperationalStats,
   pruneOperationalData,

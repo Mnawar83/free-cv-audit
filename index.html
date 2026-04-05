@@ -2186,18 +2186,18 @@
             let paymentTarget = null;
 
             try {
-                if (!currentRunId) {
-                    await generateRevisedPdf(extractedCvText || getStoredValue('cvText') || '');
-                }
-                if (!currentRunId) {
-                    throw new Error('Unable to start Whish checkout right now. Please regenerate your revised CV and try again.');
-                }
-
                 paymentTarget = openPaymentTarget();
                 whishPayButton.disabled = true;
                 whishPayButton.classList.add('opacity-70');
                 if (whishPayStatus) {
                     whishPayStatus.textContent = paymentTarget.mode === 'popup' ? 'Opening payment...' : 'Opening payment in this tab...';
+                }
+
+                if (!currentRunId) {
+                    await generateRevisedPdf(extractedCvText || getStoredValue('cvText') || '');
+                }
+                if (!currentRunId) {
+                    throw new Error('Unable to start Whish checkout right now. Please regenerate your revised CV and try again.');
                 }
 
                 const config = await fetchWhishPayConfig();
