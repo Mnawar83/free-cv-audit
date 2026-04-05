@@ -259,15 +259,22 @@ exports.handler = async (event) => {
       return json(sendResult.statusCode || 502, { error: details });
     }
 
-    await upsertEmailDelivery(`delivery:${idempotencyKey}`, {
-      runId,
-      email,
-      provider: 'resend',
-      provider_email_id: sendResult.payload?.id || null,
-      status: 'SENT',
-      is_resend: isResend,
-      download_url: canonicalCvUrl,
-    });
+    try {
+      await upsertEmailDelivery(`delivery:${idempotencyKey}`, {
+        runId,
+        email,
+        provider: 'resend',
+        provider_email_id: sendResult.payload?.id || null,
+        status: 'SENT',
+        is_resend: isResend,
+        download_url: canonicalCvUrl,
+      });
+    } catch (deliveryStoreError) {
+      console.warn('Email sent but delivery record could not be persisted.', {
+        runId,
+        error: deliveryStoreError?.message || deliveryStoreError,
+      });
+    }
     return json(200, { ok: true, id: sendResult.payload?.id || null });
   } catch (error) {
     return json(500, { error: error.message || 'Unable to send CV email.' });
