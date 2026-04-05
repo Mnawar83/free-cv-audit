@@ -232,7 +232,7 @@ exports.handler = async (event) => {
           ...(revisedCvText ? { revised_cv_text: revisedCvText } : {}),
           expires_at: expiresAt,
         });
-        canonicalCvUrl = buildCanonicalCvUrl(token, cvUrl, runId);
+        canonicalCvUrl = buildCanonicalCvUrl(token, cvUrl);
       } catch (snapshotError) {
         console.warn('Unable to persist email download snapshot; falling back to runId URL.', snapshotError?.message || snapshotError);
       }

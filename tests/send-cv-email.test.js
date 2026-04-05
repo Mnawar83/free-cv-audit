@@ -53,10 +53,6 @@ async function run() {
     capturedPayload.html.includes('https://app.freecvaudit.com/.netlify/functions/cv-email-download?token='),
     'Email should contain the hosted tokenized download link.',
   );
-  assert.ok(
-    capturedPayload.html.includes(`runId=${runId}`),
-    'Email should include runId fallback in the tokenized download link.',
-  );
   assert.ok(Boolean(resendHeaders['Idempotency-Key']), 'Email send should include an idempotency key header.');
   const storedSnapshot = await runStore.getEmailDownload(token);
   assert.ok(storedSnapshot, 'Token snapshot should be stored.');
@@ -120,11 +116,7 @@ async function run() {
     httpMethod: 'GET',
     queryStringParameters: { token: 'missing-token', runId },
   });
-  assert.strictEqual(missingSnapshotFallback.statusCode, 302, 'Missing token snapshot should redirect to runId fallback URL.');
-  assert.ok(
-    String(missingSnapshotFallback.headers?.Location || '').includes(`runId=${runId}`),
-    'Missing snapshot fallback should keep runId in generate-pdf redirect URL.',
-  );
+  assert.strictEqual(missingSnapshotFallback.statusCode, 404, 'Missing token snapshot should return not found.');
 
   let missingRunEmailSent = false;
   let missingRunPayload = null;
