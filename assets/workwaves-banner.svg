@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920" role="img" aria-labelledby="title desc">
+  <title id="title">Work Waves banner</title>
+  <desc id="desc">Work Waves by CopyArabia banner with the message Tell your story expertly and a Learn More button.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#080d16"/>
+      <stop offset="100%" stop-color="#03070e"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="75%" r="60%">
+      <stop offset="0%" stop-color="#1f6cff" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#1f6cff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+    <filter id="btnGlow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="10" result="blurred"/>
+      <feMerge>
+        <feMergeNode in="blurred"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1080" height="1920" fill="url(#bg)"/>
+  <rect width="1080" height="1920" fill="url(#glow)"/>
+
+  <!-- subtle background pattern -->
+  <g opacity="0.12" stroke="#335" stroke-width="1">
+    <path d="M0 0L1080 680"/>
+    <path d="M-120 80L960 760"/>
+    <path d="M-240 160L840 840"/>
+    <path d="M0 240L1080 920"/>
+    <path d="M120 320L1200 1000"/>
+    <path d="M-120 560L960 1240"/>
+    <path d="M-240 640L840 1320"/>
+    <path d="M0 720L1080 1400"/>
+  </g>
+
+  <!-- blue rays -->
+  <g stroke="#2b84ff" stroke-width="4" opacity="0.7" filter="url(#soft)">
+    <path d="M540 1500L40 760"/>
+    <path d="M540 1500L120 700"/>
+    <path d="M540 1500L220 640"/>
+    <path d="M540 1500L1040 760"/>
+    <path d="M540 1500L960 700"/>
+    <path d="M540 1500L860 640"/>
+  </g>
+
+  <!-- logo -->
+  <g fill="none" stroke="#ecf0f6" stroke-width="6" transform="translate(540 170)">
+    <path d="M0 -90L90 0L0 90L-90 0Z"/>
+    <path d="M-42 -18Q-10 -56 35 -48"/>
+    <path d="M-52 8Q0 -22 50 -4"/>
+    <path d="M-30 36Q15 12 58 22"/>
+  </g>
+
+  <text x="540" y="340" text-anchor="middle" fill="#f4f7fb" font-family="Inter, Arial, sans-serif" font-size="72" letter-spacing="2">WORK WAVES</text>
+  <text x="540" y="390" text-anchor="middle" fill="#b6bdc7" font-family="Inter, Arial, sans-serif" font-size="38">BY COPYARABIA</text>
+
+  <!-- headline -->
+  <g fill="#f8fbff" font-family="Inter, Arial, sans-serif" font-weight="800" text-anchor="middle">
+    <text x="540" y="760" font-size="178">Tell your</text>
+    <text x="540" y="990" font-size="178">story,</text>
+    <text x="540" y="1220" font-size="178">expertly.</text>
+  </g>
+
+  <!-- button -->
+  <g filter="url(#btnGlow)">
+    <rect x="270" y="1450" width="540" height="170" rx="26" fill="#1478ff" stroke="#5cb2ff" stroke-width="4"/>
+  </g>
+  <text x="540" y="1560" text-anchor="middle" fill="#ebf6ff" font-family="Inter, Arial, sans-serif" font-size="92" font-weight="700">Learn More</text>
+</svg>
