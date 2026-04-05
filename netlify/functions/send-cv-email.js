@@ -183,30 +183,35 @@ exports.handler = async (event) => {
     }
 
     const run = await getRun(runId);
-    if (!run?.revised_cv_text) {
-      return json(404, { error: 'Your revised CV is no longer available. Please generate a new one.' });
+    const revisedCvText = String(run?.revised_cv_text || '');
+    if (!revisedCvText) {
+      console.warn('Run is missing revised CV text; sending email with runId download URL only.', { runId });
     }
     let attachment = null;
     try {
-      attachment = createPdfAttachment(buildPdfBuffer(run.revised_cv_text));
+      if (revisedCvText) {
+        attachment = createPdfAttachment(buildPdfBuffer(revisedCvText));
+      }
     } catch (attachmentError) {
       console.warn('Unable to build CV attachment; sending email with link only.', attachmentError?.message || attachmentError);
     }
-    const token = createEmailDownloadToken();
-    const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
-    const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
-    const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
     let canonicalCvUrl = buildRunCvUrl(runId, cvUrl);
-    try {
-      await saveEmailDownloadSnapshot(event, token, {
-        runId,
-        ...(attachment?.content ? { pdf_base64: attachment.content } : {}),
-        revised_cv_text: run.revised_cv_text,
-        expires_at: expiresAt,
-      });
-      canonicalCvUrl = buildCanonicalCvUrl(token, cvUrl);
-    } catch (snapshotError) {
-      console.warn('Unable to persist email download snapshot; falling back to runId URL.', snapshotError?.message || snapshotError);
+    if (revisedCvText) {
+      const token = createEmailDownloadToken();
+      const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
+      const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
+      const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
+      try {
+        await saveEmailDownloadSnapshot(event, token, {
+          runId,
+          ...(attachment?.content ? { pdf_base64: attachment.content } : {}),
+          revised_cv_text: revisedCvText,
+          expires_at: expiresAt,
+        });
+        canonicalCvUrl = buildCanonicalCvUrl(token, cvUrl);
+      } catch (snapshotError) {
+        console.warn('Unable to persist email download snapshot; falling back to runId URL.', snapshotError?.message || snapshotError);
+      }
     }
 
     const subject = isResend ? 'Here Is Your CV Again' : 'Your CV is Ready';
