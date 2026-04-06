@@ -132,6 +132,7 @@ exports.handler = async (event) => {
       audit_completed_at: new Date().toISOString(),
     };
     let stored = false;
+    let lastStoreErrorMessage = '';
     for (let attempt = 0; attempt < 3 && !stored; attempt++) {
       try {
         if (attempt > 0) {
@@ -140,11 +141,21 @@ exports.handler = async (event) => {
         await upsertRun(runId, runPayload);
         stored = true;
       } catch (storeError) {
-        console.error(`Failed to persist audit run (attempt ${attempt + 1}):`, storeError.message || storeError);
+        lastStoreErrorMessage = storeError?.message || String(storeError || '');
+        console.error(`Failed to persist audit run (attempt ${attempt + 1}):`, lastStoreErrorMessage);
       }
     }
 
     if (!stored) {
+      if (lastStoreErrorMessage.includes('Durable run storage is required in production')) {
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            error: 'Audit completed, but saving is unavailable due to a server configuration issue. Please contact support.',
+          }),
+        };
+      }
       return {
         statusCode: 502,
         headers: { 'Content-Type': 'application/json' },
