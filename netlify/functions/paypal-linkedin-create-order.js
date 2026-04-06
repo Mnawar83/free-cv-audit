@@ -14,9 +14,15 @@ exports.handler = async (event) => {
       return { statusCode: 400, body: JSON.stringify({ error: 'runId is required.' }) };
     }
 
-    const run = await getRun(runId);
+    let run = await getRun(runId);
     if (!run) {
-      return { statusCode: 404, body: JSON.stringify({ error: 'Run not found.' }) };
+      for (let attempt = 1; attempt <= 3 && !run; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+        run = await getRun(runId);
+      }
+      if (!run) {
+        return { statusCode: 404, body: JSON.stringify({ error: 'Run not found. Please run the audit again.' }) };
+      }
     }
 
     if ([LINKEDIN_UPSELL_STATUS.PAID, LINKEDIN_UPSELL_STATUS.GENERATED].includes(run.linkedin_upsell_status)) {

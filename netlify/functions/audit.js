@@ -126,32 +126,36 @@ exports.handler = async (event) => {
     const text = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     const auditResult = text || 'No response from AI';
 
-    let storedRunId = runId;
-    try {
-      await upsertRun(runId, {
-        original_cv_text: cvText,
-        audit_result: auditResult,
-        audit_completed_at: new Date().toISOString(),
-      });
-    } catch (storeError) {
-      console.error('Failed to persist audit run:', storeError.message || storeError);
-      // Retry once before giving up
+    const runPayload = {
+      original_cv_text: cvText,
+      audit_result: auditResult,
+      audit_completed_at: new Date().toISOString(),
+    };
+    let stored = false;
+    for (let attempt = 0; attempt < 3 && !stored; attempt++) {
       try {
-        await upsertRun(runId, {
-          original_cv_text: cvText,
-          audit_result: auditResult,
-          audit_completed_at: new Date().toISOString(),
-        });
-      } catch (retryError) {
-        console.error('Failed to persist audit run (retry):', retryError.message || retryError);
-        storedRunId = '';
+        if (attempt > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+        }
+        await upsertRun(runId, runPayload);
+        stored = true;
+      } catch (storeError) {
+        console.error(`Failed to persist audit run (attempt ${attempt + 1}):`, storeError.message || storeError);
       }
+    }
+
+    if (!stored) {
+      return {
+        statusCode: 502,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Audit completed but could not be saved. Please try again.' }),
+      };
     }
 
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ auditResult, runId: storedRunId }),
+      body: JSON.stringify({ auditResult, runId }),
     };
   } catch (error) {
     return {

@@ -44,12 +44,14 @@ exports.handler = async (event) => {
     if (!email) {
       return { statusCode: 400, body: JSON.stringify({ error: 'email is required.' }) };
     }
-    const run = await getRun(runId);
+    let run = await getRun(runId);
     if (!run) {
-      // Retry once after a short delay to handle eventual consistency
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      const retryRun = await getRun(runId);
-      if (!retryRun) {
+      // Retry with increasing delays to handle eventual consistency
+      for (let attempt = 1; attempt <= 3 && !run; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+        run = await getRun(runId);
+      }
+      if (!run) {
         return { statusCode: 404, body: JSON.stringify({ error: 'runId was not found. Please run the audit again.' }) };
       }
     }

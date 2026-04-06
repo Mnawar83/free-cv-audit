@@ -35,8 +35,16 @@ exports.handler = async (event) => {
     const runId = payload.runId;
     if (!runId) return { statusCode: 400, body: JSON.stringify({ error: 'runId is required.' }) };
 
-    const run = await getRun(runId);
-    if (!run) return { statusCode: 404, body: JSON.stringify({ error: 'Run not found.' }) };
+    let run = await getRun(runId);
+    if (!run) {
+      for (let attempt = 1; attempt <= 3 && !run; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+        run = await getRun(runId);
+      }
+      if (!run) {
+        return { statusCode: 404, body: JSON.stringify({ error: 'Run not found. Please run the audit again.' }) };
+      }
+    }
     if ([COVER_LETTER_STATUS.PAID, COVER_LETTER_STATUS.GENERATED].includes(run.cover_letter_status)) {
       return { statusCode: 409, body: JSON.stringify({ error: 'Cover letter already paid.' }) };
     }
