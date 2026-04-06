@@ -145,10 +145,11 @@ exports.handler = async (event) => {
     }
 
     if (!stored) {
+      console.error('All store attempts failed – returning audit result without persistence.');
       return {
-        statusCode: 502,
+        statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Audit completed but could not be saved. Please try again.' }),
+        body: JSON.stringify({ auditResult, runId, saveWarning: 'Audit result could not be saved. Some features may be unavailable.' }),
       };
     }
 

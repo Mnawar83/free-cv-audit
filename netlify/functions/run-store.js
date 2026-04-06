@@ -316,7 +316,12 @@ async function writeStoreToFile(store) {
 
 async function readStoreWithMeta() {
   if (shouldUseDurableStore()) {
-    return readStoreFromDurable();
+    try {
+      return await readStoreFromDurable();
+    } catch (durableError) {
+      console.warn('Durable store read failed, falling back to local file store:', durableError.message || durableError);
+      return readStoreFromFile();
+    }
   }
 
   return readStoreFromFile();
@@ -324,8 +329,17 @@ async function readStoreWithMeta() {
 
 async function writeStoreWithMeta(store, etag) {
   if (shouldUseDurableStore()) {
-    await writeStoreToDurable(store, etag);
-    return;
+    try {
+      await writeStoreToDurable(store, etag);
+      return;
+    } catch (durableError) {
+      if (isConflictError(durableError)) {
+        throw durableError;
+      }
+      console.warn('Durable store write failed, falling back to local file store:', durableError.message || durableError);
+      await writeStoreToFile(store);
+      return;
+    }
   }
 
   await writeStoreToFile(store);
