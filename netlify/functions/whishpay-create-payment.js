@@ -8,7 +8,7 @@ const {
   getWhishPayHeaders,
   getWhishPayCreateUrl,
 } = require('./whishpay-utils');
-const { createFulfillment, createFulfillmentAccessToken, getRun } = require('./run-store');
+const { createFulfillment, createFulfillmentAccessToken, getRun, upsertRun } = require('./run-store');
 const { hasSessionSecretConfigured, createFulfillmentSessionCookie } = require('./fulfillment-auth');
 
 function generateExternalId() {
@@ -54,7 +54,14 @@ exports.handler = async (event) => {
         run = await getRun(runId);
       }
       if (!run) {
-        return { statusCode: 404, body: JSON.stringify({ error: 'runId was not found. Please run the audit again.' }) };
+        await upsertRun(runId, {
+          checkout_initialized_at: new Date().toISOString(),
+          checkout_provider_hint: 'whishpay',
+        });
+        run = await getRun(runId);
+        if (!run) {
+          console.warn('Run bootstrap write completed, but immediate read is still unavailable. Continuing checkout.', { runId });
+        }
       }
     }
     const amount = WHISHPAY_AMOUNT;
