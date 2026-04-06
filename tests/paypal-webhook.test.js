@@ -49,6 +49,8 @@ async function run() {
   const updated = await runStore.getFulfillment(fulfillment.fulfillment_id);
   assert.strictEqual(updated.payment_status, 'PAID');
 
+  process.env.QUEUE_PROCESSOR_SECRET = 'paypal-queue-secret';
+
   clearModule('../netlify/functions/process-fulfillment-queue');
   let sendCount = 0;
   global.fetch = async () => {
@@ -56,7 +58,10 @@ async function run() {
     return { ok: true, status: 200, json: async () => ({ id: `email_${sendCount}` }) };
   };
   const queueHandler = require('../netlify/functions/process-fulfillment-queue').handler;
-  const queueResponse = await queueHandler({ httpMethod: 'POST' });
+  const queueResponse = await queueHandler({
+    httpMethod: 'POST',
+    headers: { Authorization: `Bearer ${process.env.QUEUE_PROCESSOR_SECRET}` },
+  });
   const queuePayload = JSON.parse(queueResponse.body || '{}');
   assert.strictEqual(queuePayload.processed[0].status, 'COMPLETED');
 
@@ -105,6 +110,19 @@ async function run() {
     body: hmacBody,
   });
   assert.strictEqual(staleResponse.statusCode, 401);
+
+  // Verify webhooks are rejected when shared secret is not configured
+  const savedSecret = process.env.PAYPAL_WEBHOOK_SHARED_SECRET;
+  delete process.env.PAYPAL_WEBHOOK_SHARED_SECRET;
+  clearModule('../netlify/functions/paypal-webhook');
+  const noSecretHandler = require('../netlify/functions/paypal-webhook').handler;
+  const noSecretResponse = await noSecretHandler({
+    httpMethod: 'POST',
+    headers: {},
+    body: JSON.stringify({ id: 'evt_no_secret', event_type: 'PAYMENT.CAPTURE.COMPLETED' }),
+  });
+  assert.strictEqual(noSecretResponse.statusCode, 401, 'Webhooks must be rejected when PAYPAL_WEBHOOK_SHARED_SECRET is not set');
+  process.env.PAYPAL_WEBHOOK_SHARED_SECRET = savedSecret;
 
   console.log('paypal webhook test passed');
 }

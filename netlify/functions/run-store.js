@@ -571,8 +571,11 @@ function doesFulfillmentAccessTokenMatch(fulfillment, accessToken) {
   }
 
   const legacyToken = String(fulfillment.access_token || '').trim();
-  if (!legacyToken) return false;
-  return safeToken === legacyToken;
+  if (!legacyToken || !safeToken) return false;
+  const legacyBuf = Buffer.from(legacyToken);
+  const candidateBuf = Buffer.from(safeToken);
+  if (legacyBuf.length !== candidateBuf.length) return false;
+  return crypto.timingSafeEqual(legacyBuf, candidateBuf);
 }
 
 function pruneExpiredEmailDownloads(store) {

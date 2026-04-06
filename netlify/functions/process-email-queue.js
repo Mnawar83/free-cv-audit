@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { claimEmailJob, completeEmailJob } = require('./run-store');
 
 function isTransientStatus(statusCode) {
@@ -24,7 +25,11 @@ function hasQueueAccess(headers = {}) {
   const bearerPrefix = 'Bearer ';
   if (!authHeader.startsWith(bearerPrefix)) return false;
   const providedSecret = authHeader.slice(bearerPrefix.length).trim();
-  return providedSecret.length > 0 && providedSecret === expectedSecret;
+  if (!providedSecret) return false;
+  const expectedBuf = Buffer.from(expectedSecret);
+  const providedBuf = Buffer.from(providedSecret);
+  if (expectedBuf.length !== providedBuf.length) return false;
+  return crypto.timingSafeEqual(expectedBuf, providedBuf);
 }
 
 exports.handler = async (event) => {
