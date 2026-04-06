@@ -1032,7 +1032,9 @@
 
         async function sendCvEmail({ resend = false, silent = false } = {}) {
             if (isSendingCvEmail) return false;
-            const email = (cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim();
+            const storedCheckoutEmail = (localStorage.getItem('cv_email') || '').trim();
+            const paidFlowEmail = hasPaidCV ? storedCheckoutEmail : '';
+            const email = (paidFlowEmail || cvEmailInput?.value || storedCheckoutEmail).trim();
             const name = (cvNameInput?.value || localStorage.getItem('cv_name') || '').trim();
             let cvUrl = getCvAccessUrl();
 
@@ -1078,21 +1080,20 @@
 
             try {
                 localStorage.setItem('cv_email', email);
+                if (cvEmailInput && email) {
+                    cvEmailInput.value = email;
+                }
                 localStorage.setItem('cv_name', name);
                 localStorage.setItem('cv_url', cvUrl);
                 const attachmentBase64 = await getCvAttachmentBase64();
                 const cvText = extractedCvText || getStoredValue('cvText') || '';
-                const endpoint = currentCvFulfillmentId
-                    ? '/.netlify/functions/fulfillment-resend-email'
-                    : '/.netlify/functions/send-cv-email';
-                const requestBody = currentCvFulfillmentId
-                    ? {
+                const fulfillmentRequestBody = {
                         fulfillmentId: currentCvFulfillmentId,
                         email,
                         name,
                         forceSync: true,
-                    }
-                    : {
+                    };
+                const runRequestBody = {
                         email,
                         name,
                         cvUrl,
@@ -1101,6 +1102,10 @@
                         pdfBase64: attachmentBase64,
                         cvText,
                     };
+                let endpoint = currentCvFulfillmentId
+                    ? '/.netlify/functions/fulfillment-resend-email'
+                    : '/.netlify/functions/send-cv-email';
+                let requestBody = currentCvFulfillmentId ? fulfillmentRequestBody : runRequestBody;
                 let response = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1121,8 +1126,26 @@
                         }
                     }
                 }
+                if (response.status === 404 && currentCvFulfillmentId) {
+                    const missingError = String(payload?.error || '').toLowerCase();
+                    if (missingError.includes('fulfillment')) {
+                        persistCvFulfillmentId('');
+                        persistCvFulfillmentAccessToken('');
+                        endpoint = '/.netlify/functions/send-cv-email';
+                        requestBody = runRequestBody;
+                        response = await fetch(endpoint, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(requestBody),
+                        });
+                        payload = await readJsonSafely(response);
+                    }
+                }
                 if (!response.ok || !payload.ok) {
                     throw new Error(getApiErrorMessage(payload, 'Unable to send CV email right now.'));
+                }
+                if (payload.fulfillmentId) {
+                    persistCvFulfillmentId(payload.fulfillmentId);
                 }
                 if (payload.accessToken) {
                     persistCvFulfillmentAccessToken(payload.accessToken);
