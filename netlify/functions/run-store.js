@@ -54,6 +54,23 @@ function isProductionRuntime() {
   return process.env.CONTEXT === 'production';
 }
 
+let hasLoggedProductionFallbackWarning = false;
+
+function shouldUseDurableStore() {
+  if (RESOLVED_RUN_STORE_DURABLE_URL) {
+    return true;
+  }
+
+  if (isProductionRuntime() && !hasLoggedProductionFallbackWarning) {
+    hasLoggedProductionFallbackWarning = true;
+    console.warn(
+      'RUN_STORE_DURABLE_URL is not configured in production. Falling back to local file store; run persistence may be temporary.',
+    );
+  }
+
+  return false;
+}
+
 function getDefaultStore() {
   return {
     runs: {},
@@ -298,29 +315,31 @@ async function writeStoreToFile(store) {
 }
 
 async function readStoreWithMeta() {
-  if (RESOLVED_RUN_STORE_DURABLE_URL) {
-    return readStoreFromDurable();
-  }
-
-  if (isProductionRuntime()) {
-    throw new Error(
-      'Durable run storage is required in production. Configure RUN_STORE_DURABLE_URL (and RUN_STORE_DURABLE_TOKEN if needed).',
-    );
+  if (shouldUseDurableStore()) {
+    try {
+      return await readStoreFromDurable();
+    } catch (durableError) {
+      console.warn('Durable store read failed, falling back to local file store:', durableError.message || durableError);
+      return readStoreFromFile();
+    }
   }
 
   return readStoreFromFile();
 }
 
 async function writeStoreWithMeta(store, etag) {
-  if (RESOLVED_RUN_STORE_DURABLE_URL) {
-    await writeStoreToDurable(store, etag);
-    return;
-  }
-
-  if (isProductionRuntime()) {
-    throw new Error(
-      'Durable run storage is required in production. Configure RUN_STORE_DURABLE_URL (and RUN_STORE_DURABLE_TOKEN if needed).',
-    );
+  if (shouldUseDurableStore()) {
+    try {
+      await writeStoreToDurable(store, etag);
+      return;
+    } catch (durableError) {
+      if (isConflictError(durableError)) {
+        throw durableError;
+      }
+      console.warn('Durable store write failed, falling back to local file store:', durableError.message || durableError);
+      await writeStoreToFile(store);
+      return;
+    }
   }
 
   await writeStoreToFile(store);
