@@ -1470,11 +1470,16 @@
                 }
                 const returnedRunId = auditPayload?.runId;
                 if (!returnedRunId) {
-                    throw new Error('Audit completed but could not be saved. Please try again.');
+                    console.warn('Audit completed without a run ID – persistence may have failed.');
                 }
-                currentRunId = returnedRunId;
-                hasActiveRunId = true;
-                persistRunId(returnedRunId);
+                if (returnedRunId) {
+                    currentRunId = returnedRunId;
+                    hasActiveRunId = true;
+                    persistRunId(returnedRunId);
+                }
+                if (auditPayload?.saveWarning) {
+                    console.warn('Save warning:', auditPayload.saveWarning);
+                }
                 extractedCvAnalysis = auditResult;
                 setStoredValue('cvAnalysis', auditResult);
                 auditOutput.innerHTML = formatAuditHtml(auditResult);
@@ -1598,6 +1603,7 @@
                 return {
                     audit: result.audit || result.auditResult || '',
                     runId: result.runId || '',
+                    saveWarning: result.saveWarning || '',
                 };
 
             } catch (error) {
