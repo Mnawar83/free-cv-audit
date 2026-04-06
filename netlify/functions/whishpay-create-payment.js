@@ -46,7 +46,12 @@ exports.handler = async (event) => {
     }
     const run = await getRun(runId);
     if (!run) {
-      return { statusCode: 404, body: JSON.stringify({ error: 'runId was not found. Please run the audit again.' }) };
+      // Retry once after a short delay to handle eventual consistency
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const retryRun = await getRun(runId);
+      if (!retryRun) {
+        return { statusCode: 404, body: JSON.stringify({ error: 'runId was not found. Please run the audit again.' }) };
+      }
     }
     const amount = WHISHPAY_AMOUNT;
     const currency = WHISHPAY_CURRENCY;
