@@ -1469,11 +1469,12 @@
                     throw new Error('Audit completed but returned no content. Please try again.');
                 }
                 const returnedRunId = auditPayload?.runId;
-                if (returnedRunId) {
-                    currentRunId = returnedRunId;
-                    hasActiveRunId = true;
-                    persistRunId(returnedRunId);
+                if (!returnedRunId) {
+                    throw new Error('Audit completed but could not be saved. Please try again.');
                 }
+                currentRunId = returnedRunId;
+                hasActiveRunId = true;
+                persistRunId(returnedRunId);
                 extractedCvAnalysis = auditResult;
                 setStoredValue('cvAnalysis', auditResult);
                 auditOutput.innerHTML = formatAuditHtml(auditResult);
