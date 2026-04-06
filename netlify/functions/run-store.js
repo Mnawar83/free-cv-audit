@@ -56,6 +56,45 @@ function isProductionRuntime() {
 
 let hasLoggedProductionFallbackWarning = false;
 
+
+const { getStore } = require('@netlify/blobs');
+
+async function readStoreFromNativeBlobs() {
+  const storeBlob = getStore({ name: 'run-store', consistency: 'strong' });
+  const result = await storeBlob.getWithMetadata('state', { type: 'json' });
+  if (!result || !result.data) {
+    return { store: getDefaultStore(), etag: null };
+  }
+  return { store: normalizeStore(result.data), etag: result.metadata?.etag || null };
+}
+
+async function writeStoreToNativeBlobs(storeData, etag) {
+  const storeBlob = getStore({ name: 'run-store', consistency: 'strong' });
+  const meta = await storeBlob.getMetadata('state');
+  const currentEtag = meta?.metadata?.etag || null;
+
+  if (etag && currentEtag && etag !== currentEtag) {
+    const conflictError = new Error('Durable run store write conflict.');
+    conflictError.code = 'STORE_WRITE_CONFLICT';
+    conflictError.statusCode = 409;
+    throw conflictError;
+  }
+
+  const newEtag = crypto.randomUUID();
+  await storeBlob.setJSON('state', storeData, {
+    metadata: { etag: newEtag }
+  });
+}
+
+function hasNativeBlobs() {
+  try {
+    getStore('run-store');
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
 function shouldUseDurableStore() {
   if (RESOLVED_RUN_STORE_DURABLE_URL) {
     return true;
@@ -315,6 +354,14 @@ async function writeStoreToFile(store) {
 }
 
 async function readStoreWithMeta() {
+  if (hasNativeBlobs()) {
+    try {
+      return await readStoreFromNativeBlobs();
+    } catch (error) {
+      console.warn('Native blobs read failed:', error.message);
+    }
+  }
+
   if (shouldUseDurableStore()) {
     try {
       return await readStoreFromDurable();
@@ -328,6 +375,18 @@ async function readStoreWithMeta() {
 }
 
 async function writeStoreWithMeta(store, etag) {
+  if (hasNativeBlobs()) {
+    try {
+      await writeStoreToNativeBlobs(store, etag);
+      return;
+    } catch (error) {
+      if (isConflictError(error)) throw error;
+      console.warn('Native blobs write failed:', error.message);
+      await writeStoreToFile(store);
+      return;
+    }
+  }
+
   if (shouldUseDurableStore()) {
     try {
       await writeStoreToDurable(store, etag);

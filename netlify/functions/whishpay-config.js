@@ -5,7 +5,9 @@ const {
   assertWhishPayConfigured,
 } = require('./whishpay-utils');
 
-exports.handler = async () => {
+exports.handler = async (event) => {
+  try { require('@netlify/blobs').connectLambda(event); } catch(e){}
+
   try {
     assertWhishPayConfigured();
     return {

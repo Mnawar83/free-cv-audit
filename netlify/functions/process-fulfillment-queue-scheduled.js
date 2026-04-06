@@ -1,12 +1,9 @@
-const { handler: processFulfillmentQueueHandler } = require('./process-fulfillment-queue');
-
-exports.config = {
-  schedule: '*/2 * * * *',
-};
-
-exports.handler = async () =>
-  processFulfillmentQueueHandler({
+const { handler: processQueueHandler } = require('./process-fulfillment-queue');
+exports.config = { schedule: '*/5 * * * *' };
+exports.handler = async (event) =>
+  processQueueHandler({
+    ...event,
     httpMethod: 'POST',
-    headers: { Authorization: `Bearer ${String(process.env.QUEUE_PROCESSOR_SECRET || '').trim()}` },
+    headers: { ...(event || {}).headers, Authorization: `Bearer ${String(process.env.QUEUE_PROCESSOR_SECRET || '').trim()}` },
     body: '',
   });

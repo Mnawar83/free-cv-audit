@@ -2,6 +2,8 @@ const { COVER_LETTER_STATUS, getRun, updateRun } = require('./run-store');
 const { COVER_LETTER_PRICE_USD } = require('./cover-letter-constants');
 
 exports.handler = async (event) => {
+  try { require('@netlify/blobs').connectLambda(event); } catch(e){}
+
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
   }

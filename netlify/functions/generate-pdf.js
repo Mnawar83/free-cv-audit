@@ -42,6 +42,8 @@ function pdfResponse(pdfBuffer, runId, inline = false) {
 }
 
 exports.handler = async (event) => {
+  try { require('@netlify/blobs').connectLambda(event); } catch(e){}
+
   if (!['POST', 'GET'].includes(event.httpMethod)) {
     return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
   }

@@ -33,6 +33,8 @@ Do not include a rewritten professional summary section.
 Do not include markdown code fences. Do not include any preamble. Base everything strictly on the provided CV text and do not invent facts.`;
 
 exports.handler = async (event) => {
+  try { require('@netlify/blobs').connectLambda(event); } catch(e){}
+
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Method Not Allowed' }) };
   }

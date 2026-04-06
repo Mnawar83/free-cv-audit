@@ -86,6 +86,8 @@ function sanitizePdfText(input) {
 
 
 exports.handler = async (event) => {
+  try { require('@netlify/blobs').connectLambda(event); } catch(e){}
+
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
 
   try {
