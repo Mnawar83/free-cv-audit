@@ -17,6 +17,13 @@ async function run() {
   await runStore.upsertRun(runId, {
     revised_cv_text: 'Jane Doe\nEXPERIENCE\n- Built stable systems',
   });
+  const paidFulfillment = await runStore.createFulfillment({
+    run_id: runId,
+    email: 'user@example.com',
+    provider: 'paypal',
+    provider_order_id: 'order_123',
+    payment_status: 'PAID',
+  });
 
   let capturedPayload = null;
   let resendHeaders = null;
@@ -39,13 +46,14 @@ async function run() {
       email: 'user@example.com',
       name: 'Jane',
       cvUrl: `/.netlify/functions/generate-pdf?runId=${runId}`,
+      fulfillmentId: paidFulfillment.fulfillment_id,
       resend: false,
     }),
   });
 
   assert.strictEqual(response.statusCode, 200);
   assert.ok(capturedPayload, 'Resend payload should be sent.');
-  assert.ok(!capturedPayload.attachments, 'Email should not include file attachments; download should be link-based.');
+  assert.ok(Array.isArray(capturedPayload.attachments) && capturedPayload.attachments.length === 1, 'Email should include a PDF attachment fallback.');
   const tokenMatch = capturedPayload.html.match(/cv-email-download\?token=([a-z0-9-]+)/i);
   assert.ok(tokenMatch, 'Email should contain a tokenized cv-email-download link.');
   const token = tokenMatch[1];
@@ -57,6 +65,8 @@ async function run() {
   const storedSnapshot = await runStore.getEmailDownload(token);
   assert.ok(storedSnapshot, 'Token snapshot should be stored.');
   assert.ok(storedSnapshot.pdf_base64, 'Stored snapshot should persist immutable PDF bytes.');
+  const updatedFulfillment = await runStore.getFulfillment(paidFulfillment.fulfillment_id);
+  assert.strictEqual(updatedFulfillment.email_status, 'SENT', 'Paid fulfillment email status should be updated after send.');
 
   process.env.CV_DOWNLOAD_RATE_LIMIT_MAX = '3';
   process.env.CV_DOWNLOAD_RATE_LIMIT_WINDOW_MS = '60000';
@@ -91,11 +101,7 @@ async function run() {
     httpMethod: 'GET',
     queryStringParameters: { token: expiredToken },
   });
-  assert.strictEqual(expiredResponse.statusCode, 302, 'Expired token should fall back to runId download URL when available.');
-  assert.ok(
-    String(expiredResponse.headers?.Location || '').includes(`runId=${runId}`),
-    'Expired token fallback should redirect to runId-based generate-pdf URL.',
-  );
+  assert.strictEqual(expiredResponse.statusCode, 410, 'Expired token should return a clear expiration response.');
 
   const invalidPdfToken = runStore.createEmailDownloadToken();
   await runStore.upsertEmailDownload(invalidPdfToken, {
@@ -111,6 +117,21 @@ async function run() {
   assert.strictEqual(invalidPdfResponse.statusCode, 200, 'Invalid stored base64 should fall back to regenerated PDF.');
   assert.strictEqual(invalidPdfResponse.headers['Content-Type'], 'application/pdf');
   assert.ok(invalidPdfResponse.body.length > 100);
+
+  const maxDownloadToken = runStore.createEmailDownloadToken();
+  await runStore.createArtifactToken({
+    token: maxDownloadToken,
+    runId,
+    pdf_base64: storedSnapshot.pdf_base64,
+    max_downloads: 1,
+    download_count: 1,
+    expires_at: new Date(Date.now() + 60_000).toISOString(),
+  });
+  const maxDownloadResponse = await downloadHandler({
+    httpMethod: 'GET',
+    queryStringParameters: { token: maxDownloadToken },
+  });
+  assert.strictEqual(maxDownloadResponse.statusCode, 410, 'Token should expire when max download count is reached.');
 
   const missingSnapshotFallback = await downloadHandler({
     httpMethod: 'GET',
@@ -162,6 +183,26 @@ async function run() {
     }),
   });
   assert.strictEqual(missingRunIdResponse.statusCode, 400);
+
+  const pendingFulfillment = await runStore.createFulfillment({
+    run_id: runId,
+    email: 'pending@example.com',
+    provider: 'paypal',
+    provider_order_id: 'order_pending',
+    payment_status: 'PENDING',
+  });
+  const pendingFulfillmentResponse = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      email: 'pending@example.com',
+      name: 'Pending',
+      cvUrl: `/.netlify/functions/generate-pdf?runId=${runId}`,
+      runId,
+      fulfillmentId: pendingFulfillment.fulfillment_id,
+      resend: false,
+    }),
+  });
+  assert.strictEqual(pendingFulfillmentResponse.statusCode, 409, 'Pending fulfillment should not be emailed.');
 
   let retryAttempt = 0;
   global.fetch = async () => {

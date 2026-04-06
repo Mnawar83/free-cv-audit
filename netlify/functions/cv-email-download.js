@@ -1,6 +1,6 @@
 const { getEmailDownloadSnapshot } = require('./email-download-store');
 const { buildPdfBuffer, pdfResponse } = require('./pdf-builder');
-const { takeRateLimitSlot } = require('./run-store');
+const { getArtifactToken, incrementArtifactTokenDownload, takeRateLimitSlot } = require('./run-store');
 
 function normalizeBase64Pdf(value) {
   const raw = String(value || '').trim().replace(/\s+/g, '');
@@ -47,7 +47,6 @@ exports.handler = async (event) => {
 
   try {
     const token = String(event.queryStringParameters?.token || '').trim();
-    const runId = String(event.queryStringParameters?.runId || '').trim();
     if (!token) {
       return htmlErrorResponse(400, 'The link is missing a download token. Please request a new email.');
     }
@@ -55,31 +54,23 @@ exports.handler = async (event) => {
       return htmlErrorResponse(429, 'Too many download attempts. Please wait a minute and try again.');
     }
 
-    const snapshot = await getEmailDownloadSnapshot(event, token);
+    const artifactToken = await getArtifactToken(token);
+    const snapshot = artifactToken || (await getEmailDownloadSnapshot(event, token));
     const pdfBase64 = normalizeBase64Pdf(snapshot?.pdf_base64);
-    const fallbackRunId = String(snapshot?.runId || runId).trim();
-    const fallbackToRunUrl = () => ({
-      statusCode: 302,
-      headers: {
-        Location: `/.netlify/functions/generate-pdf?runId=${encodeURIComponent(fallbackRunId)}`,
-        'Cache-Control': 'no-store',
-      },
-      body: '',
-    });
     if (!snapshot?.revised_cv_text && !pdfBase64) {
-      if (fallbackRunId) {
-        return fallbackToRunUrl();
-      }
       return htmlErrorResponse(404, 'Your revised CV could not be found. Please request a new download link.');
     }
     if (snapshot.expires_at && new Date(snapshot.expires_at).getTime() < Date.now()) {
-      if (fallbackRunId) {
-        return fallbackToRunUrl();
-      }
       return htmlErrorResponse(410, 'This download link has expired. Please request a new one.');
+    }
+    const maxDownloads = Math.max(0, Number(snapshot.max_downloads || 0));
+    const downloadCount = Math.max(0, Number(snapshot.download_count || 0));
+    if (maxDownloads > 0 && downloadCount >= maxDownloads) {
+      return htmlErrorResponse(410, 'This download link has reached its maximum number of downloads. Please request a new one.');
     }
 
     if (pdfBase64) {
+      await incrementArtifactTokenDownload(token).catch(() => null);
       return {
         statusCode: 200,
         headers: {
@@ -93,6 +84,7 @@ exports.handler = async (event) => {
     }
 
     const pdfBuffer = buildPdfBuffer(snapshot.revised_cv_text);
+    await incrementArtifactTokenDownload(token).catch(() => null);
     const generated = pdfResponse(pdfBuffer, 'revised-cv.pdf', true);
     generated.headers = {
       ...generated.headers,
