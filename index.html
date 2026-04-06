@@ -227,6 +227,10 @@
                         <p class="mt-2 text-slate-400 text-sm">
                             Pay securely through PayPal, debit/credit card, or Whish to unlock instant email delivery.
                         </p>
+                        <div class="mx-auto mt-4 w-full max-w-md">
+                            <input id="payment-email-input" type="email" class="w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-400 focus:border-blue-400 focus:outline-none" placeholder="Enter your email address" />
+                            <p id="payment-email-hint" class="mt-1 text-xs text-slate-500">Your revised CV will be sent to this email after payment.</p>
+                        </div>
                         <div class="mt-6 flex flex-col items-center gap-4">
                             <div class="paypal-gateway-panel w-full max-w-md rounded-lg p-3">
                                 <div id="paypal-button-paypal" class="min-h-[44px]"></div>
@@ -464,6 +468,7 @@
         const revisedPaymentSection = document.getElementById('revised-payment-section');
         const revisedDownloadOnly = document.getElementById('revised-download-only');
         const cvEmailInput = document.getElementById('cv-email-input');
+        const paymentEmailInput = document.getElementById('payment-email-input');
         const cvNameInput = document.getElementById('cv-name-input');
         const emailCvButton = document.getElementById('email-cv-button');
         const cvEmailStatus = document.getElementById('cv-email-status');
@@ -715,6 +720,15 @@
             cvEmailInput.value = localStorage.getItem('cv_email') || '';
             cvEmailInput.addEventListener('input', () => {
                 if (cvEmailStatus) cvEmailStatus.textContent = '';
+                syncCvAccessActions();
+            });
+        }
+        if (paymentEmailInput) {
+            paymentEmailInput.value = localStorage.getItem('cv_email') || '';
+            paymentEmailInput.addEventListener('input', () => {
+                const val = paymentEmailInput.value.trim();
+                if (cvEmailInput) cvEmailInput.value = val;
+                if (val) localStorage.setItem('cv_email', val);
                 syncCvAccessActions();
             });
         }
@@ -1816,6 +1830,12 @@
             syncAuditVisibility();
             if (!hasPaidCV) return;
 
+            if (paymentEmailInput && paymentEmailInput.value.trim()) {
+                const emailVal = paymentEmailInput.value.trim();
+                localStorage.setItem('cv_email', emailVal);
+                if (cvEmailInput) cvEmailInput.value = emailVal;
+            }
+
             if (revisedPaymentSection) revisedPaymentSection.classList.add('hidden');
             if (upsellCards) upsellCards.classList.add('hidden');
             if (linkedinUpsellCard) linkedinUpsellCard.classList.remove('hidden');
@@ -2297,6 +2317,16 @@
                 const createOrder = async () => {
                     const start = performance.now();
                     console.info('[timing] CV PayPal create-order click', { at: start });
+                    const paymentEmail = (paymentEmailInput?.value || cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim();
+                    if (!paymentEmail) {
+                        if (paymentEmailInput) {
+                            paymentEmailInput.focus();
+                            paymentEmailInput.classList.add('border-red-500');
+                            setTimeout(() => paymentEmailInput.classList.remove('border-red-500'), 3000);
+                        }
+                        throw new Error('Please enter your email address above before proceeding with payment.');
+                    }
+                    localStorage.setItem('cv_email', paymentEmail);
                     if (!currentRunId) {
                         await generateRevisedPdf(extractedCvText || getStoredValue('cvText') || '');
                     }
@@ -2308,7 +2338,7 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             runId: currentRunId || undefined,
-                            email: (cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim() || undefined,
+                            email: (paymentEmailInput?.value || cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim() || undefined,
                         }),
                     });
                     console.info('[timing] CV PayPal create-order response', { ms: Math.round(performance.now() - start) });
@@ -2487,6 +2517,18 @@
         async function startWhishPayCheckout() {
             if (!whishPayButton) return;
             if (whishPayButton.disabled) return;
+            const paymentEmail = (paymentEmailInput?.value || cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim();
+            if (!paymentEmail) {
+                if (paymentEmailInput) {
+                    paymentEmailInput.focus();
+                    paymentEmailInput.classList.add('border-red-500');
+                    setTimeout(() => paymentEmailInput.classList.remove('border-red-500'), 3000);
+                }
+                showError('Please enter your email address before proceeding with payment.');
+                if (whishPayStatus) whishPayStatus.textContent = 'Please enter your email address above.';
+                return;
+            }
+            localStorage.setItem('cv_email', paymentEmail);
             const now = Date.now();
             if (now < whishPayRetryAvailableAt) {
                 const waitSeconds = Math.max(1, Math.ceil((whishPayRetryAvailableAt - now) / 1000));
@@ -2542,7 +2584,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         runId: currentRunId || undefined,
-                        email: (cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim() || undefined,
+                        email: (paymentEmailInput?.value || cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim() || undefined,
                         amount: config.amount,
                         currency: config.currency,
                         invoice: 'Revised CV download',
