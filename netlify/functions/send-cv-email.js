@@ -1,4 +1,12 @@
-const { createEmailDownloadToken, enqueueEmailJob, getRun, upsertEmailDelivery } = require('./run-store');
+const {
+  createEmailDownloadToken,
+  createArtifactToken,
+  enqueueEmailJob,
+  getFulfillment,
+  getRun,
+  updateFulfillment,
+  upsertEmailDelivery,
+} = require('./run-store');
 const { saveEmailDownloadSnapshot } = require('./email-download-store');
 const { buildPdfBuffer } = require('./pdf-builder');
 const crypto = require('crypto');
@@ -180,12 +188,20 @@ exports.handler = async (event) => {
     const runId = resolveRunId(payload.runId, cvUrl);
     const isResend = Boolean(payload.resend);
     const forceSync = Boolean(payload.forceSync);
+    const fulfillmentId = toSafeText(payload.fulfillmentId);
     const clientPdfBase64 = toSafeText(payload.pdfBase64);
     const clientCvText = toSafeText(payload.cvText);
 
     if (!email) return json(400, { error: 'email is required.' });
     if (!cvUrl) return json(400, { error: 'cvUrl is required.' });
     if (!runId) return json(400, { error: 'runId is required to create a reliable download link.' });
+    if (fulfillmentId) {
+      const fulfillment = await getFulfillment(fulfillmentId);
+      if (!fulfillment) return json(404, { error: 'fulfillmentId was not found.' });
+      if (fulfillment.payment_status !== 'PAID') {
+        return json(409, { error: 'Payment is not confirmed yet. Please try again shortly.' });
+      }
+    }
 
     if (process.env.CV_EMAIL_ASYNC_MODE === 'true' && !forceSync) {
       const queued = await enqueueEmailJob({
@@ -194,6 +210,7 @@ exports.handler = async (event) => {
         cvUrl,
         runId,
         resend: isResend,
+        ...(fulfillmentId ? { fulfillmentId } : {}),
       });
       return json(202, { ok: true, queued: true, jobId: queued.id });
     }
@@ -239,6 +256,14 @@ exports.handler = async (event) => {
       const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
       const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
       try {
+        await createArtifactToken({
+          token,
+          runId,
+          fulfillmentId: fulfillmentId || null,
+          ...(snapshotPdfBase64 ? { pdf_base64: snapshotPdfBase64 } : {}),
+          ...(effectiveRevisedText ? { revised_cv_text: effectiveRevisedText } : {}),
+          expires_at: expiresAt,
+        });
         await saveEmailDownloadSnapshot(event, token, {
           runId,
           ...(snapshotPdfBase64 ? { pdf_base64: snapshotPdfBase64 } : {}),
@@ -261,7 +286,17 @@ exports.handler = async (event) => {
       from,
       to: [email],
       subject,
-      html: getHtml({ name, cvUrl: canonicalCvUrl, isResend, hasAttachment: false }),
+      html: getHtml({ name, cvUrl: canonicalCvUrl, isResend, hasAttachment: Boolean(snapshotPdfBase64) }),
+      ...(snapshotPdfBase64
+        ? {
+            attachments: [
+              {
+                filename: 'revised-cv.pdf',
+                content: snapshotPdfBase64,
+              },
+            ],
+          }
+        : {}),
     };
     const sendResult = await sendResendEmail(apiKey, emailPayload, idempotencyKey);
     if (!sendResult.ok) {
@@ -284,6 +319,20 @@ exports.handler = async (event) => {
         runId,
         error: deliveryStoreError?.message || deliveryStoreError,
       });
+    }
+    if (fulfillmentId) {
+      try {
+        await updateFulfillment(fulfillmentId, (existing) => ({
+          email: email || existing.email || null,
+          email_status: 'SENT',
+          email_sent_at: new Date().toISOString(),
+        }));
+      } catch (fulfillmentUpdateError) {
+        console.warn('Email sent but fulfillment record could not be updated.', {
+          fulfillmentId,
+          error: fulfillmentUpdateError?.message || fulfillmentUpdateError,
+        });
+      }
     }
     return json(200, { ok: true, id: sendResult.payload?.id || null });
   } catch (error) {

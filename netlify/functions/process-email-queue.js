@@ -15,9 +15,25 @@ function getRetryDelayMs(attempts) {
   return Math.min(60_000, Math.max(1_000, 1_000 * Math.pow(2, Math.max(0, (attempts || 1) - 1))));
 }
 
+
+function hasQueueAccess(headers = {}) {
+  const expectedSecret = String(process.env.QUEUE_PROCESSOR_SECRET || '').trim();
+  if (!expectedSecret) return false;
+
+  const authHeader = String(headers.authorization || headers.Authorization || '').trim();
+  const bearerPrefix = 'Bearer ';
+  if (!authHeader.startsWith(bearerPrefix)) return false;
+  const providedSecret = authHeader.slice(bearerPrefix.length).trim();
+  return providedSecret.length > 0 && providedSecret === expectedSecret;
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
+  }
+
+  if (!hasQueueAccess(event.headers || {})) {
+    return { statusCode: 403, body: JSON.stringify({ error: 'Forbidden' }) };
   }
 
   const maxJobs = Math.max(1, Number(process.env.CV_EMAIL_QUEUE_BATCH_SIZE || 10));
@@ -41,13 +57,14 @@ exports.handler = async (event) => {
         }),
       });
       const success = response.statusCode >= 200 && response.statusCode < 300;
+      const fulfillmentId = job?.payload?.fulfillmentId || null;
       if (success) {
         await completeEmailJob(job.id, {
           status: 'COMPLETED',
           last_status_code: response.statusCode,
           last_response_body: response.body || '',
         });
-        processed.push({ jobId: job.id, status: 'COMPLETED' });
+        processed.push({ jobId: job.id, status: 'COMPLETED', fulfillmentId });
         completedCount += 1;
       } else {
         const shouldRetry = shouldRetryJob(job, maxAttempts, response.statusCode);
@@ -58,7 +75,7 @@ exports.handler = async (event) => {
           last_status_code: response.statusCode,
           last_response_body: response.body || '',
         });
-        processed.push({ jobId: job.id, status: shouldRetry ? 'RETRY' : 'DEAD_LETTER' });
+        processed.push({ jobId: job.id, status: shouldRetry ? 'RETRY' : 'DEAD_LETTER', fulfillmentId });
         if (shouldRetry) retryCount += 1;
         else deadLetterCount += 1;
       }
@@ -72,7 +89,8 @@ exports.handler = async (event) => {
         last_status_code: statusCode,
         last_response_body: JSON.stringify({ error: error.message || 'Queue processing failed.' }),
       });
-      processed.push({ jobId: job.id, status: shouldRetry ? 'RETRY' : 'DEAD_LETTER' });
+      const fulfillmentId = job?.payload?.fulfillmentId || null;
+      processed.push({ jobId: job.id, status: shouldRetry ? 'RETRY' : 'DEAD_LETTER', fulfillmentId });
       if (shouldRetry) retryCount += 1;
       else deadLetterCount += 1;
     }

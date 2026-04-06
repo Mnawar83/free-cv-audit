@@ -4,6 +4,12 @@ const {
   getWhishPayHeaders,
   getWhishPayStatusUrl,
 } = require('./whishpay-utils');
+const {
+  enqueueFulfillmentJob,
+  getFulfillmentByProviderOrderId,
+  markPaymentEventProcessed,
+  updateFulfillment,
+} = require('./run-store');
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -54,6 +60,29 @@ exports.handler = async (event) => {
     const collectStatus = data?.data?.collectStatus;
     const normalizedCollectStatus = String(collectStatus || '').toLowerCase();
     const isPaidStatus = ['paid', 'success', 'collected'].includes(normalizedCollectStatus);
+
+    if (isPaidStatus) {
+      const fulfillment = await getFulfillmentByProviderOrderId('whishpay', String(externalId));
+      if (fulfillment) {
+        const eventKey = `whishpay-status:${externalId}:${normalizedCollectStatus}`;
+        const eventState = await markPaymentEventProcessed('whishpay', eventKey, JSON.stringify({ externalId, collectStatus }));
+        if (!eventState?.duplicate) {
+          await updateFulfillment(fulfillment.fulfillment_id, {
+            payment_status: 'PAID',
+            paid_at: fulfillment.paid_at || new Date().toISOString(),
+          });
+          if (fulfillment.email) {
+            await enqueueFulfillmentJob({
+              fulfillmentId: fulfillment.fulfillment_id,
+              email: fulfillment.email,
+              name: '',
+              forceSync: true,
+            });
+          }
+        }
+      }
+    }
+
     return {
       statusCode: 200,
       body: JSON.stringify({

@@ -1,0 +1,160 @@
+const {
+  claimFulfillmentJob,
+  completeFulfillmentJob,
+  getFulfillment,
+  updateFulfillment,
+} = require('./run-store');
+
+function isTransientStatus(statusCode) {
+  const code = Number(statusCode);
+  return code === 429 || (code >= 500 && code <= 599);
+}
+
+function shouldRetry(job, maxAttempts, statusCode, defaultTransient = false) {
+  const attempts = job?.attempts || 1;
+  const transient = Number.isFinite(Number(statusCode))
+    ? isTransientStatus(statusCode) || defaultTransient
+    : defaultTransient;
+  return attempts < maxAttempts && transient;
+}
+
+function getRetryDelayMs(attempts) {
+  return Math.min(60_000, Math.max(1_000, 1_000 * Math.pow(2, Math.max(0, (attempts || 1) - 1))));
+}
+
+
+function hasQueueAccess(headers = {}) {
+  const expectedSecret = String(process.env.QUEUE_PROCESSOR_SECRET || '').trim();
+  if (!expectedSecret) return false;
+
+  const authHeader = String(headers.authorization || headers.Authorization || '').trim();
+  const bearerPrefix = 'Bearer ';
+  if (!authHeader.startsWith(bearerPrefix)) return false;
+  const providedSecret = authHeader.slice(bearerPrefix.length).trim();
+  return providedSecret.length > 0 && providedSecret === expectedSecret;
+}
+
+exports.handler = async (event) => {
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
+  }
+
+  if (!hasQueueAccess(event.headers || {})) {
+    return { statusCode: 403, body: JSON.stringify({ error: 'Forbidden' }) };
+  }
+
+  const maxJobs = Math.max(1, Number(process.env.FULFILLMENT_QUEUE_BATCH_SIZE || 10));
+  const maxAttempts = Math.max(1, Number(process.env.FULFILLMENT_QUEUE_MAX_ATTEMPTS || 3));
+  const processed = [];
+
+  for (let index = 0; index < maxJobs; index += 1) {
+    const job = await claimFulfillmentJob();
+    if (!job) break;
+
+    try {
+      const payload = job.payload || {};
+      const fulfillmentId = String(payload.fulfillmentId || '').trim();
+      const email = String(payload.email || '').trim();
+      const name = String(payload.name || '').trim();
+      const forceSync = payload.forceSync !== false;
+      if (!fulfillmentId) {
+        await completeFulfillmentJob(job.id, {
+          status: 'DEAD_LETTER',
+          last_status_code: 400,
+          last_response_body: JSON.stringify({ error: 'fulfillmentId is required.' }),
+        });
+        processed.push({ jobId: job.id, status: 'DEAD_LETTER', reason: 'MISSING_FULFILLMENT_ID' });
+        continue;
+      }
+
+      const fulfillment = await getFulfillment(fulfillmentId);
+      if (!fulfillment) {
+        await completeFulfillmentJob(job.id, {
+          status: 'DEAD_LETTER',
+          last_status_code: 404,
+          last_response_body: JSON.stringify({ error: 'fulfillment was not found.' }),
+        });
+        processed.push({ jobId: job.id, status: 'DEAD_LETTER', fulfillmentId, reason: 'FULFILLMENT_NOT_FOUND' });
+        continue;
+      }
+      if (String(fulfillment.payment_status || '').toUpperCase() !== 'PAID') {
+        const retryable = shouldRetry(job, maxAttempts, 409, true);
+        const retryDelayMs = getRetryDelayMs(job.attempts || 1);
+        await completeFulfillmentJob(job.id, {
+          status: retryable ? 'RETRY' : 'DEAD_LETTER',
+          next_attempt_at: retryable ? new Date(Date.now() + retryDelayMs).toISOString() : null,
+          last_status_code: 409,
+          last_response_body: JSON.stringify({ error: 'Payment not confirmed yet.' }),
+        });
+        processed.push({ jobId: job.id, status: retryable ? 'RETRY' : 'DEAD_LETTER', fulfillmentId });
+        continue;
+      }
+      if (!email) {
+        await completeFulfillmentJob(job.id, {
+          status: 'DEAD_LETTER',
+          last_status_code: 400,
+          last_response_body: JSON.stringify({ error: 'Email is required for fulfillment send.' }),
+        });
+        processed.push({ jobId: job.id, status: 'DEAD_LETTER', fulfillmentId, reason: 'MISSING_EMAIL' });
+        continue;
+      }
+
+      const baseUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || 'https://freecvaudit.com';
+      const normalizedBaseUrl = /^https?:\/\//i.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
+      const cvUrl = new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(fulfillment.run_id)}`, normalizedBaseUrl).toString();
+
+      const sendHandler = require('./send-cv-email').handler;
+      const response = await sendHandler({
+        httpMethod: 'POST',
+        body: JSON.stringify({
+          email,
+          name,
+          cvUrl,
+          runId: fulfillment.run_id,
+          fulfillmentId,
+          resend: true,
+          forceSync,
+        }),
+      });
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        await updateFulfillment(fulfillmentId, {
+          email_status: 'SENT',
+          email_sent_at: new Date().toISOString(),
+        });
+        await completeFulfillmentJob(job.id, {
+          status: 'COMPLETED',
+          last_status_code: response.statusCode,
+          last_response_body: response.body || '',
+        });
+        processed.push({ jobId: job.id, status: 'COMPLETED', fulfillmentId });
+      } else {
+        const retryable = shouldRetry(job, maxAttempts, response.statusCode);
+        const retryDelayMs = getRetryDelayMs(job.attempts || 1);
+        await completeFulfillmentJob(job.id, {
+          status: retryable ? 'RETRY' : 'DEAD_LETTER',
+          next_attempt_at: retryable ? new Date(Date.now() + retryDelayMs).toISOString() : null,
+          last_status_code: response.statusCode,
+          last_response_body: response.body || '',
+        });
+        processed.push({ jobId: job.id, status: retryable ? 'RETRY' : 'DEAD_LETTER', fulfillmentId });
+      }
+    } catch (error) {
+      const statusCode = Number(error?.statusCode) || 500;
+      const retryable = shouldRetry(job, maxAttempts, statusCode, true);
+      const retryDelayMs = getRetryDelayMs(job.attempts || 1);
+      await completeFulfillmentJob(job.id, {
+        status: retryable ? 'RETRY' : 'DEAD_LETTER',
+        next_attempt_at: retryable ? new Date(Date.now() + retryDelayMs).toISOString() : null,
+        last_status_code: statusCode,
+        last_response_body: JSON.stringify({ error: error.message || 'Fulfillment queue processing failed.' }),
+      });
+      processed.push({ jobId: job.id, status: retryable ? 'RETRY' : 'DEAD_LETTER' });
+    }
+  }
+
+  return {
+    statusCode: 200,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ok: true, processed }),
+  };
+};
