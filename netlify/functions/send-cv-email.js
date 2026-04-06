@@ -214,7 +214,7 @@ exports.handler = async (event) => {
         resend: isResend,
         ...(fulfillmentId ? { fulfillmentId } : {}),
       });
-      return json(202, { ok: true, queued: true, jobId: queued.id });
+      return json(202, { ok: true, queued: true, jobId: queued.id, ...(fulfillmentId ? { fulfillmentId } : {}) });
     }
 
     const run = await getRun(runId);
@@ -336,7 +336,7 @@ exports.handler = async (event) => {
         });
       }
     }
-    return json(200, { ok: true, id: sendResult.payload?.id || null });
+    return json(200, { ok: true, id: sendResult.payload?.id || null, ...(fulfillmentId ? { fulfillmentId } : {}) });
   } catch (error) {
     return json(500, { error: error.message || 'Unable to send CV email.' });
   }
