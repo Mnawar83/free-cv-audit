@@ -11,14 +11,12 @@ async function run() {
   setupIsolatedRunStoreEnv('run-store-malformed-state.test');
 
   // Simulate a malformed/legacy store that is missing several object collections.
-  await fs.writeFile(
-    process.env.RUN_STORE_PATH,
-    JSON.stringify({ runs: {}, emailDownloads: {}, emailDeliveries: {}, rateLimits: {}, emailQueue: [], fulfillmentQueue: [], webhookEvents: {} }),
-    'utf8',
-  );
+  await fs.writeFile(process.env.RUN_STORE_PATH, JSON.stringify({}), 'utf8');
 
   clearModule('../netlify/functions/run-store');
   const runStore = require('../netlify/functions/run-store');
+  const missingRun = await runStore.getRun('does_not_exist');
+  assert.strictEqual(missingRun, null, 'getRun should not throw when persisted store state is malformed.');
 
   const fulfillment = await runStore.createFulfillment({
     run_id: 'malformed_state_run',
