@@ -16,7 +16,7 @@ function json(statusCode, payload) {
 
 function verifySharedSecret(event) {
   const expected = String(process.env.WHISHPAY_WEBHOOK_SHARED_SECRET || '').trim();
-  if (!expected) return true;
+  if (!expected) return false;
   const providedSecret = String(event.headers?.['x-webhook-secret'] || event.headers?.['X-Webhook-Secret'] || '').trim();
   if (providedSecret) {
     const expectedBuf = Buffer.from(expected);

@@ -46,6 +46,8 @@ async function run() {
   const updated = await runStore.getFulfillment(fulfillment.fulfillment_id);
   assert.strictEqual(updated.payment_status, 'PAID');
 
+  process.env.QUEUE_PROCESSOR_SECRET = 'whish-queue-secret';
+
   clearModule('../netlify/functions/process-fulfillment-queue');
   let sendCount = 0;
   global.fetch = async () => {
@@ -53,7 +55,10 @@ async function run() {
     return { ok: true, status: 200, json: async () => ({ id: `email_${sendCount}` }) };
   };
   const queueHandler = require('../netlify/functions/process-fulfillment-queue').handler;
-  const queueResponse = await queueHandler({ httpMethod: 'POST' });
+  const queueResponse = await queueHandler({
+    httpMethod: 'POST',
+    headers: { Authorization: `Bearer ${process.env.QUEUE_PROCESSOR_SECRET}` },
+  });
   const queuePayload = JSON.parse(queueResponse.body || '{}');
   assert.strictEqual(queuePayload.processed[0].status, 'COMPLETED');
 
@@ -99,6 +104,19 @@ async function run() {
     body: hmacBody,
   });
   assert.strictEqual(staleResponse.statusCode, 401);
+
+  // Verify webhooks are rejected when shared secret is not configured
+  const savedSecret = process.env.WHISHPAY_WEBHOOK_SHARED_SECRET;
+  delete process.env.WHISHPAY_WEBHOOK_SHARED_SECRET;
+  clearModule('../netlify/functions/whishpay-webhook');
+  const noSecretHandler = require('../netlify/functions/whishpay-webhook').handler;
+  const noSecretResponse = await noSecretHandler({
+    httpMethod: 'POST',
+    headers: {},
+    body: JSON.stringify({ eventId: 'wh_evt_no_secret', collectStatus: 'PAID' }),
+  });
+  assert.strictEqual(noSecretResponse.statusCode, 401, 'Webhooks must be rejected when WHISHPAY_WEBHOOK_SHARED_SECRET is not set');
+  process.env.WHISHPAY_WEBHOOK_SHARED_SECRET = savedSecret;
 
   console.log('whishpay webhook test passed');
 }
