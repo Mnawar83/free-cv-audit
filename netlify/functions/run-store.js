@@ -416,7 +416,8 @@ function enqueueMutation(work) {
 async function mutateStore(mutator) {
   return enqueueMutation(async () => {
     for (let attempt = 0; attempt < MAX_CONFLICT_RETRIES; attempt += 1) {
-      const { store, etag } = await readStoreWithMeta();
+      const { store: rawStore, etag } = await readStoreWithMeta();
+      const store = normalizeStore(rawStore);
       const result = mutator(store);
       if (result && result.skipWrite) {
         return result.value;
