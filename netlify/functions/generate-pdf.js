@@ -223,18 +223,21 @@ Return only the revised CV content, formatted as plain text with clear section h
       runUpdates.revised_cv_fallback_generated_at = null;
     }
 
+    let runStored = false;
     try {
       await upsertRun(runId, runUpdates);
+      runStored = true;
     } catch (storeError) {
       console.warn('Run store upsert failed; retrying once.', storeError?.message || storeError);
       try {
         await upsertRun(runId, runUpdates);
+        runStored = true;
       } catch (retryError) {
         console.warn('Run store upsert retry failed; returning PDF without caching.', retryError?.message || retryError);
       }
     }
 
-    return pdfResponse(pdfBuffer, runId, isGetRequest);
+    return pdfResponse(pdfBuffer, runStored ? runId : '', isGetRequest);
   } catch (error) {
     console.error('Generate PDF failure.', error);
     if (event.httpMethod === 'GET') {

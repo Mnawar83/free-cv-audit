@@ -135,7 +135,17 @@ exports.handler = async (event) => {
       });
     } catch (storeError) {
       console.error('Failed to persist audit run:', storeError.message || storeError);
-      storedRunId = '';
+      // Retry once before giving up
+      try {
+        await upsertRun(runId, {
+          original_cv_text: cvText,
+          audit_result: auditResult,
+          audit_completed_at: new Date().toISOString(),
+        });
+      } catch (retryError) {
+        console.error('Failed to persist audit run (retry):', retryError.message || retryError);
+        storedRunId = '';
+      }
     }
 
     return {
