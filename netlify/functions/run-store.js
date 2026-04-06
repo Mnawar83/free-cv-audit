@@ -54,6 +54,23 @@ function isProductionRuntime() {
   return process.env.CONTEXT === 'production';
 }
 
+let hasLoggedProductionFallbackWarning = false;
+
+function shouldUseDurableStore() {
+  if (RESOLVED_RUN_STORE_DURABLE_URL) {
+    return true;
+  }
+
+  if (isProductionRuntime() && !hasLoggedProductionFallbackWarning) {
+    hasLoggedProductionFallbackWarning = true;
+    console.warn(
+      'RUN_STORE_DURABLE_URL is not configured in production. Falling back to local file store; run persistence may be temporary.',
+    );
+  }
+
+  return false;
+}
+
 function getDefaultStore() {
   return {
     runs: {},
@@ -298,29 +315,17 @@ async function writeStoreToFile(store) {
 }
 
 async function readStoreWithMeta() {
-  if (RESOLVED_RUN_STORE_DURABLE_URL) {
+  if (shouldUseDurableStore()) {
     return readStoreFromDurable();
-  }
-
-  if (isProductionRuntime()) {
-    throw new Error(
-      'Durable run storage is required in production. Configure RUN_STORE_DURABLE_URL (and RUN_STORE_DURABLE_TOKEN if needed).',
-    );
   }
 
   return readStoreFromFile();
 }
 
 async function writeStoreWithMeta(store, etag) {
-  if (RESOLVED_RUN_STORE_DURABLE_URL) {
+  if (shouldUseDurableStore()) {
     await writeStoreToDurable(store, etag);
     return;
-  }
-
-  if (isProductionRuntime()) {
-    throw new Error(
-      'Durable run storage is required in production. Configure RUN_STORE_DURABLE_URL (and RUN_STORE_DURABLE_TOKEN if needed).',
-    );
   }
 
   await writeStoreToFile(store);
