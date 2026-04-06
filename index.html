@@ -254,12 +254,12 @@
 
                     <div id="revised-download-only" class="hidden mt-8 rounded-lg border border-emerald-500/50 bg-emerald-950/30 p-8 text-center">
                         <h3 class="text-2xl font-semibold text-white">Your CV is ready</h3>
-                        <p class="mt-2 text-sm text-slate-300">Your revised CV is ready to be sent to your email.</p>
+                        <p class="mt-2 text-sm text-slate-300">Your revised CV will be delivered to your checkout email.</p>
+                        <p id="cv-email-display" class="mt-1 text-xs text-slate-400"></p>
                         <div class="mx-auto mt-5 grid w-full max-w-md grid-cols-1 gap-3">
-                            <input id="cv-email-input" type="email" class="w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white" placeholder="Email address (for later access)" />
                             <input id="cv-name-input" type="text" class="w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white" placeholder="Name (optional)" />
                             <button id="email-cv-button" class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60" disabled>
-                                Email Me My CV
+                                Resend Email
                             </button>
                         </div>
                         <p id="cv-email-status" class="mt-3 min-h-[20px] text-xs text-slate-300"></p>
@@ -468,6 +468,7 @@
         const revisedPaymentSection = document.getElementById('revised-payment-section');
         const revisedDownloadOnly = document.getElementById('revised-download-only');
         const cvEmailInput = document.getElementById('cv-email-input');
+        const cvEmailDisplay = document.getElementById('cv-email-display');
         const paymentEmailInput = document.getElementById('payment-email-input');
         const cvNameInput = document.getElementById('cv-name-input');
         const emailCvButton = document.getElementById('email-cv-button');
@@ -721,6 +722,7 @@
             cvEmailInput.addEventListener('input', () => {
                 if (cvEmailStatus) cvEmailStatus.textContent = '';
                 syncCvAccessActions();
+                syncCvEmailDisplay();
             });
         }
         if (paymentEmailInput) {
@@ -730,6 +732,7 @@
                 if (cvEmailInput) cvEmailInput.value = val;
                 if (val) localStorage.setItem('cv_email', val);
                 syncCvAccessActions();
+                syncCvEmailDisplay();
             });
         }
         if (cvNameInput) {
@@ -741,8 +744,9 @@
             });
         }
         if (emailCvButton) {
-            emailCvButton.textContent = localStorage.getItem('cv_email_last_sent_at') ? 'Resend Email' : 'Email Me My CV';
+            emailCvButton.textContent = 'Resend Email';
         }
+        syncCvEmailDisplay();
 
         if (linkedinEmailInput) {
             linkedinEmailInput.addEventListener('input', () => {
@@ -845,10 +849,16 @@
             const hasUrl = Boolean(cvUrl);
 
             if (emailCvButton) {
-                const hasEmail = Boolean((cvEmailInput?.value || '').trim());
+                const hasEmail = Boolean((cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim());
                 const hasEmailableUrl = hasUrl && !cvUrl.startsWith('blob:');
                 emailCvButton.disabled = !hasEmailableUrl || !hasEmail || isSendingCvEmail;
             }
+        }
+
+        function syncCvEmailDisplay() {
+            if (!cvEmailDisplay) return;
+            const email = (localStorage.getItem('cv_email') || '').trim();
+            cvEmailDisplay.textContent = email ? `Delivery email: ${email}` : '';
         }
 
         function arrayBufferToBase64(buffer) {
@@ -1032,7 +1042,9 @@
 
         async function sendCvEmail({ resend = false, silent = false } = {}) {
             if (isSendingCvEmail) return false;
-            const email = (cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim();
+            const storedCheckoutEmail = (localStorage.getItem('cv_email') || '').trim();
+            const paidFlowEmail = hasPaidCV ? storedCheckoutEmail : '';
+            const email = (paidFlowEmail || cvEmailInput?.value || storedCheckoutEmail).trim();
             const name = (cvNameInput?.value || localStorage.getItem('cv_name') || '').trim();
             let cvUrl = getCvAccessUrl();
 
@@ -1078,21 +1090,21 @@
 
             try {
                 localStorage.setItem('cv_email', email);
+                if (cvEmailInput && email) {
+                    cvEmailInput.value = email;
+                }
+                syncCvEmailDisplay();
                 localStorage.setItem('cv_name', name);
                 localStorage.setItem('cv_url', cvUrl);
                 const attachmentBase64 = await getCvAttachmentBase64();
                 const cvText = extractedCvText || getStoredValue('cvText') || '';
-                const endpoint = currentCvFulfillmentId
-                    ? '/.netlify/functions/fulfillment-resend-email'
-                    : '/.netlify/functions/send-cv-email';
-                const requestBody = currentCvFulfillmentId
-                    ? {
+                const fulfillmentRequestBody = {
                         fulfillmentId: currentCvFulfillmentId,
                         email,
                         name,
                         forceSync: true,
-                    }
-                    : {
+                    };
+                const runRequestBody = {
                         email,
                         name,
                         cvUrl,
@@ -1101,6 +1113,10 @@
                         pdfBase64: attachmentBase64,
                         cvText,
                     };
+                let endpoint = currentCvFulfillmentId
+                    ? '/.netlify/functions/fulfillment-resend-email'
+                    : '/.netlify/functions/send-cv-email';
+                let requestBody = currentCvFulfillmentId ? fulfillmentRequestBody : runRequestBody;
                 let response = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1121,8 +1137,26 @@
                         }
                     }
                 }
+                if (response.status === 404 && currentCvFulfillmentId) {
+                    const missingError = String(payload?.error || '').toLowerCase();
+                    if (missingError.includes('fulfillment')) {
+                        persistCvFulfillmentId('');
+                        persistCvFulfillmentAccessToken('');
+                        endpoint = '/.netlify/functions/send-cv-email';
+                        requestBody = runRequestBody;
+                        response = await fetch(endpoint, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(requestBody),
+                        });
+                        payload = await readJsonSafely(response);
+                    }
+                }
                 if (!response.ok || !payload.ok) {
                     throw new Error(getApiErrorMessage(payload, 'Unable to send CV email right now.'));
+                }
+                if (payload.fulfillmentId) {
+                    persistCvFulfillmentId(payload.fulfillmentId);
                 }
                 if (payload.accessToken) {
                     persistCvFulfillmentAccessToken(payload.accessToken);
@@ -1842,6 +1876,7 @@
                 localStorage.setItem('cv_email', emailVal);
                 if (cvEmailInput) cvEmailInput.value = emailVal;
             }
+            syncCvEmailDisplay();
 
             if (revisedPaymentSection) revisedPaymentSection.classList.add('hidden');
             if (upsellCards) upsellCards.classList.add('hidden');
@@ -1978,7 +2013,7 @@
                     downloadLink.href = revisedCvBlobUrl;
                 }
                 downloadLink.setAttribute('download', 'revised-cv.pdf');
-                downloadNote.textContent = 'Your revised CV is ready. Enter your email to receive it.';
+                downloadNote.textContent = 'Your revised CV is ready. We will send it to your checkout email.';
                 activeDownloadType = 'revised';
                 applyPaidGatedLayout();
                 initializeLinkedInUpsell();

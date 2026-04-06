@@ -354,9 +354,14 @@ async function writeStoreToFile(store) {
 }
 
 async function readStoreWithMeta() {
+  const normalizeReadResult = (result = {}) => ({
+    ...result,
+    store: normalizeStore(result.store),
+  });
+
   if (hasNativeBlobs()) {
     try {
-      return await readStoreFromNativeBlobs();
+      return normalizeReadResult(await readStoreFromNativeBlobs());
     } catch (error) {
       console.warn('Native blobs read failed:', error.message);
     }
@@ -364,14 +369,14 @@ async function readStoreWithMeta() {
 
   if (shouldUseDurableStore()) {
     try {
-      return await readStoreFromDurable();
+      return normalizeReadResult(await readStoreFromDurable());
     } catch (durableError) {
       console.warn('Durable store read failed, falling back to local file store:', durableError.message || durableError);
-      return readStoreFromFile();
+      return normalizeReadResult(await readStoreFromFile());
     }
   }
 
-  return readStoreFromFile();
+  return normalizeReadResult(await readStoreFromFile());
 }
 
 async function writeStoreWithMeta(store, etag) {
@@ -416,7 +421,8 @@ function enqueueMutation(work) {
 async function mutateStore(mutator) {
   return enqueueMutation(async () => {
     for (let attempt = 0; attempt < MAX_CONFLICT_RETRIES; attempt += 1) {
-      const { store, etag } = await readStoreWithMeta();
+      const { store: rawStore, etag } = await readStoreWithMeta();
+      const store = normalizeStore(rawStore);
       const result = mutator(store);
       if (result && result.skipWrite) {
         return result.value;
