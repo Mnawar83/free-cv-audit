@@ -10,6 +10,7 @@ async function run() {
   setupIsolatedRunStoreEnv('process-email-queue-scheduled.test');
   process.env.RESEND_API_KEY = 'schedule-test-key';
   process.env.CV_EMAIL_ASYNC_MODE = 'true';
+  process.env.QUEUE_PROCESSOR_SECRET = 'scheduled-secret';
   clearModule('../netlify/functions/run-store');
   const runStore = require('../netlify/functions/run-store');
   const runId = 'scheduled-run-id';
