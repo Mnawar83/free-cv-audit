@@ -60,7 +60,7 @@ exports.handler = async (event) => {
         });
         run = await getRun(runId);
         if (!run) {
-          return { statusCode: 500, body: JSON.stringify({ error: 'Unable to prepare checkout for this run. Please try again.' }) };
+          console.warn('Run bootstrap write completed, but immediate read is still unavailable. Continuing checkout.', { runId });
         }
       }
     }
