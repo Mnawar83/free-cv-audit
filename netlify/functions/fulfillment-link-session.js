@@ -60,6 +60,8 @@ async function sendLinkCodeEmail({ email, code }) {
 }
 
 exports.handler = async (event) => {
+  try { require('@netlify/blobs').connectLambda(event); } catch(e){}
+
   if (event.httpMethod !== 'POST') {
     return json(405, { error: 'Method Not Allowed' });
   }

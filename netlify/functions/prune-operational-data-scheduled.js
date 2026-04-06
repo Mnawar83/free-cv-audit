@@ -4,7 +4,9 @@ exports.config = {
   schedule: '0 * * * *',
 };
 
-exports.handler = async () => {
+exports.handler = async (event) => {
+  try { require('@netlify/blobs').connectLambda(event); } catch(e){}
+
   try {
     const result = await pruneOperationalData({
       deadLetterRetentionMs: Number(process.env.CV_EMAIL_DEAD_LETTER_RETENTION_MS || 7 * 24 * 60 * 60 * 1000),
