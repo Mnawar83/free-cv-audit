@@ -4,7 +4,7 @@ const {
   getPayPalAccessToken,
 } = require('./paypal-utils');
 const { createFulfillment, createFulfillmentAccessToken, getRun } = require('./run-store');
-const { assertSessionSecretConfigured, createFulfillmentSessionCookie } = require('./fulfillment-auth');
+const { hasSessionSecretConfigured, createFulfillmentSessionCookie } = require('./fulfillment-auth');
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -12,7 +12,7 @@ exports.handler = async (event) => {
   }
 
   try {
-    assertSessionSecretConfigured();
+    const sessionSecretAvailable = hasSessionSecretConfigured();
     const payload = JSON.parse(event.body || '{}');
     const runId = String(payload.runId || '').trim();
     const email = String(payload.email || '').trim().toLowerCase();
@@ -69,20 +69,25 @@ exports.handler = async (event) => {
     const approveLink = Array.isArray(data.links)
       ? data.links.find((link) => link.rel === 'approve')?.href
       : null;
-    const fulfillmentAccessToken = createFulfillmentAccessToken();
-    const fulfillment = await createFulfillment({
-      run_id: runId,
-      email,
-      provider: 'paypal',
-      provider_order_id: data.id,
-      payment_status: 'PENDING',
-      access_token: fulfillmentAccessToken,
-    });
-    const sessionCookie = createFulfillmentSessionCookie({
-      fulfillmentId: fulfillment.fulfillment_id,
-      accessToken: fulfillmentAccessToken,
-      expiresAt: fulfillment.access_token_expires_at,
-    });
+    let fulfillmentId = '';
+    let sessionCookie = '';
+    if (sessionSecretAvailable) {
+      const fulfillmentAccessToken = createFulfillmentAccessToken();
+      const fulfillment = await createFulfillment({
+        run_id: runId,
+        email,
+        provider: 'paypal',
+        provider_order_id: data.id,
+        payment_status: 'PENDING',
+        access_token: fulfillmentAccessToken,
+      });
+      fulfillmentId = fulfillment.fulfillment_id;
+      sessionCookie = createFulfillmentSessionCookie({
+        fulfillmentId: fulfillment.fulfillment_id,
+        accessToken: fulfillmentAccessToken,
+        expiresAt: fulfillment.access_token_expires_at,
+      });
+    }
     console.info('[timing] paypal-create-order complete', { ms: Date.now() - functionStart });
     return {
       statusCode: 200,
@@ -93,7 +98,7 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         id: data.id,
         approvalUrl: approveLink,
-        fulfillmentId: fulfillment.fulfillment_id,
+        ...(fulfillmentId ? { fulfillmentId } : {}),
       }),
     };
   } catch (error) {

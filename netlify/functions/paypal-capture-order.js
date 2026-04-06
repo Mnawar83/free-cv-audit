@@ -17,19 +17,19 @@ exports.handler = async (event) => {
     if (!orderID) {
       return { statusCode: 400, body: JSON.stringify({ error: 'orderID is required.' }) };
     }
-    if (!fulfillmentId) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'fulfillmentId is required.' }) };
-    }
 
-    const fulfillment = await getFulfillment(fulfillmentId);
-    if (!fulfillment) {
-      return { statusCode: 404, body: JSON.stringify({ error: 'fulfillment was not found.' }) };
-    }
-    if (fulfillment.provider !== 'paypal') {
-      return { statusCode: 400, body: JSON.stringify({ error: 'fulfillment provider mismatch.' }) };
-    }
-    if (fulfillment.provider_order_id !== orderID) {
-      return { statusCode: 409, body: JSON.stringify({ error: 'orderID does not match fulfillment record.' }) };
+    let fulfillment = null;
+    if (fulfillmentId) {
+      fulfillment = await getFulfillment(fulfillmentId);
+      if (!fulfillment) {
+        return { statusCode: 404, body: JSON.stringify({ error: 'fulfillment was not found.' }) };
+      }
+      if (fulfillment.provider !== 'paypal') {
+        return { statusCode: 400, body: JSON.stringify({ error: 'fulfillment provider mismatch.' }) };
+      }
+      if (fulfillment.provider_order_id !== orderID) {
+        return { statusCode: 409, body: JSON.stringify({ error: 'orderID does not match fulfillment record.' }) };
+      }
     }
 
     const { accessToken, baseUrl } = await getPayPalAccessToken();
@@ -52,26 +52,28 @@ exports.handler = async (event) => {
     const data = await response.json();
     const captureStatus = String(data?.status || '').toUpperCase();
     if (captureStatus === 'COMPLETED' || captureStatus === 'SUCCESS' || captureStatus === 'CAPTURED') {
-      const eventKey = data?.id || `${orderID}:${captureStatus}`;
-      const eventState = await markPaymentEventProcessed('paypal', eventKey, JSON.stringify({ orderID, status: captureStatus }));
-      if (!eventState?.duplicate) {
-        await updateFulfillment(fulfillmentId, {
-          payment_status: 'PAID',
-          provider_capture_id: data?.purchase_units?.[0]?.payments?.captures?.[0]?.id || data?.id || null,
-          paid_at: new Date().toISOString(),
-        });
-        if (fulfillment.email) {
-          await enqueueFulfillmentJob({
-            fulfillmentId,
-            email: fulfillment.email,
-            name: '',
-            forceSync: true,
+      if (fulfillmentId) {
+        const eventKey = data?.id || `${orderID}:${captureStatus}`;
+        const eventState = await markPaymentEventProcessed('paypal', eventKey, JSON.stringify({ orderID, status: captureStatus }));
+        if (!eventState?.duplicate) {
+          await updateFulfillment(fulfillmentId, {
+            payment_status: 'PAID',
+            provider_capture_id: data?.purchase_units?.[0]?.payments?.captures?.[0]?.id || data?.id || null,
+            paid_at: new Date().toISOString(),
           });
+          if (fulfillment && fulfillment.email) {
+            await enqueueFulfillmentJob({
+              fulfillmentId,
+              email: fulfillment.email,
+              name: '',
+              forceSync: true,
+            });
+          }
         }
       }
     }
 
-    const updated = await getFulfillmentByProviderOrderId('paypal', orderID);
+    const updated = fulfillmentId ? await getFulfillmentByProviderOrderId('paypal', orderID) : null;
     return {
       statusCode: 200,
       body: JSON.stringify({
