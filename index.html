@@ -1623,12 +1623,23 @@
                 return parseAuditResponse(response);
             };
 
+            const isRetryableAuditError = (error) => {
+                const message = String(error?.message || '').toLowerCase();
+                return message.includes('504')
+                    || message.includes('timed out')
+                    || message.includes('timeout')
+                    || message.includes('high traffic')
+                    || message.includes('high demand')
+                    || message.includes('rate limit')
+                    || message.includes('temporarily unavailable');
+            };
+
             try {
                 let result;
                 try {
                     result = await requestAudit();
                 } catch (firstError) {
-                    if (!firstError.message.includes('504') && !firstError.message.toLowerCase().includes('timed out')) {
+                    if (!isRetryableAuditError(firstError)) {
                         throw firstError;
                     }
                     await new Promise((resolve) => setTimeout(resolve, 500));

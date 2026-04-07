@@ -32,6 +32,41 @@ Suggested Improvements (Prioritized):
 Do not include a rewritten professional summary section.
 Do not include markdown code fences. Do not include any preamble. Base everything strictly on the provided CV text and do not invent facts.`;
 
+const RETRYABLE_STATUS_CODES = new Set([429, 503, 504]);
+const RETRYABLE_ERROR_PATTERNS = [
+  /high demand/i,
+  /resource exhausted/i,
+  /temporarily unavailable/i,
+  /rate limit/i,
+  /timed out/i,
+  /timeout/i,
+];
+
+function isRetryableProviderError(statusCode, message) {
+  if (RETRYABLE_STATUS_CODES.has(Number(statusCode))) return true;
+  const text = String(message || '');
+  return RETRYABLE_ERROR_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function getBackoffDelayMs(attemptIndex) {
+  const baseDelays = [250, 700, 1500];
+  const base = baseDelays[Math.min(attemptIndex, baseDelays.length - 1)];
+  const jitter = Math.floor(Math.random() * 201);
+  return base + jitter;
+}
+
+function normalizeAuditFailureMessage(rawMessage) {
+  const message = String(rawMessage || '').trim();
+  if (!message) return 'The audit service is temporarily unavailable. Please try again shortly.';
+  if (isRetryableProviderError(0, message)) {
+    return 'Our audit service is experiencing high traffic. Please try again in a moment.';
+  }
+  if (/api key|unauthorized|permission|forbidden/i.test(message)) {
+    return 'Audit service configuration is currently unavailable. Please contact support.';
+  }
+  return message;
+}
+
 exports.handler = async (event) => {
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
@@ -70,11 +105,13 @@ exports.handler = async (event) => {
 
     let result;
     let lastErrorMessage = 'AI request failed';
-    for (const model of candidateModels) {
+    for (let index = 0; index < candidateModels.length; index++) {
+      const model = candidateModels[index];
       const apiUrl = buildGoogleAiUrl(apiKey, model);
       const requestController = new AbortController();
       const requestTimeout = setTimeout(() => requestController.abort(), 12000);
       let fetchResponse;
+      let shouldRetryNextModel = false;
       try {
         fetchResponse = await fetch(apiUrl, {
           method: 'POST',
@@ -85,12 +122,20 @@ exports.handler = async (event) => {
       } catch (requestError) {
         if (requestError?.name === 'AbortError') {
           lastErrorMessage = 'Audit request timed out. Please try again.';
-          continue;
+          shouldRetryNextModel = true;
+        } else {
+          lastErrorMessage = requestError?.message || lastErrorMessage;
+          shouldRetryNextModel = isRetryableProviderError(0, lastErrorMessage);
         }
-        lastErrorMessage = requestError?.message || lastErrorMessage;
-        continue;
       } finally {
         clearTimeout(requestTimeout);
+      }
+
+      if (!fetchResponse) {
+        if (shouldRetryNextModel && index < candidateModels.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, getBackoffDelayMs(index)));
+        }
+        continue;
       }
 
       if (fetchResponse.ok) {
@@ -98,6 +143,7 @@ exports.handler = async (event) => {
         break;
       }
 
+      const statusCode = fetchResponse.status;
       try {
         const errorText = await fetchResponse.text();
         let errorData = {};
@@ -111,9 +157,17 @@ exports.handler = async (event) => {
         console.error('API Error:', errorData);
         if (errorData?.error?.message) {
           lastErrorMessage = errorData.error.message;
+        } else if (errorText && errorText.trim()) {
+          lastErrorMessage = errorText.slice(0, 240);
         }
+        shouldRetryNextModel = isRetryableProviderError(statusCode, lastErrorMessage);
       } catch (parseError) {
         console.error('Unable to parse AI error response.', parseError);
+        shouldRetryNextModel = isRetryableProviderError(statusCode, lastErrorMessage);
+      }
+
+      if (shouldRetryNextModel && index < candidateModels.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, getBackoffDelayMs(index)));
       }
     }
 
@@ -121,7 +175,7 @@ exports.handler = async (event) => {
       return {
         statusCode: 500,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: lastErrorMessage }),
+        body: JSON.stringify({ error: normalizeAuditFailureMessage(lastErrorMessage), code: 'AUDIT_TEMP_UNAVAILABLE' }),
       };
     }
 
