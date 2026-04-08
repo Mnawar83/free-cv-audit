@@ -382,7 +382,22 @@ function buildPdfFromPages(pages) {
   if (!pages.length) {
     pages = [{ stream: 'BT\n1 0 0 1 50 780 Tm\n/F1 10 Tf\n(CV generation unavailable.) Tj\nET' }];
   }
+  return cleaned;
+}
 
+function estimateBlockHeight(block) {
+  if (block.type === 'spacer') return block.height;
+  const lineHeight = Math.ceil((block.size || 10) * 1.45);
+  const indent = block.type === 'bullet' ? 14 : 0;
+  const wrapped = wrapLine(block.text || '', block.size || 10, CONTENT_WIDTH - indent);
+  return (block.spacingBefore || 0) + wrapped.length * lineHeight + (block.spacingAfter || 0);
+}
+
+function renderPageContent(renderLines) {
+  return `BT\n${renderLines.join('\n')}\nET`;
+}
+
+function buildPdfFromPages(pages) {
   const objects = [
     '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj',
     `2 0 obj\n<< /Type /Pages /Kids [${pages.map((_, i) => `${3 + i * 2} 0 R`).join(' ')}] /Count ${pages.length} >>\nendobj`,
