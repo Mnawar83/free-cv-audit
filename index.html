@@ -119,6 +119,44 @@
             background: linear-gradient(90deg, #2563eb, #22c55e);
             transition: width 0.25s ease;
         }
+        .audit-step-list {
+            margin-top: 1.5rem;
+            text-align: left;
+            max-width: 28rem;
+            margin-left: auto;
+            margin-right: auto;
+            display: grid;
+            gap: 0.55rem;
+        }
+        .audit-step-item {
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            border-radius: 0.65rem;
+            padding: 0.6rem 0.75rem;
+            background: rgba(15, 23, 42, 0.45);
+            color: #94a3b8;
+            font-size: 0.9rem;
+            transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+        }
+        .audit-step-item-active {
+            border-color: rgba(59, 130, 246, 0.95);
+            background: rgba(30, 64, 175, 0.25);
+            color: #dbeafe;
+        }
+        .audit-step-item-complete {
+            border-color: rgba(34, 197, 94, 0.9);
+            background: rgba(21, 128, 61, 0.25);
+            color: #bbf7d0;
+        }
+        .analysis-pill {
+            display: inline-flex;
+            margin: 0.25rem 0.4rem 0.25rem 0;
+            padding: 0.35rem 0.6rem;
+            border-radius: 999px;
+            background: rgba(148, 163, 184, 0.2);
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            color: #cbd5e1;
+            font-size: 0.8rem;
+        }
         .upsell-mobile-summary {
             position: fixed;
             left: 0;
@@ -205,6 +243,11 @@
                     <div class="spinner w-12 h-12 rounded-full border-4 border-gray-700 mx-auto"></div>
                     <p id="loading-text" class="mt-6 text-lg font-medium text-slate-300">Auditing your CV...</p>
                     <p id="loading-subtext" class="text-slate-400">Our AI is analyzing your document for ATS compatibility. This may take a moment.</p>
+                    <div id="audit-step-list" class="audit-step-list">
+                        <div id="audit-step-1" class="audit-step-item">Step 1 · AI scanning</div>
+                        <div id="audit-step-2" class="audit-step-item">Step 2 · Checking sections</div>
+                        <div id="audit-step-3" class="audit-step-item">Step 3 · Initial review</div>
+                    </div>
                 </div>
 
                 <!-- Results Section -->
@@ -525,6 +568,13 @@
 
         const uploadSection = document.getElementById('upload-section');
         const loadingSection = document.getElementById('loading-section');
+        const loadingText = document.getElementById('loading-text');
+        const loadingSubtext = document.getElementById('loading-subtext');
+        const auditStepItems = [
+            document.getElementById('audit-step-1'),
+            document.getElementById('audit-step-2'),
+            document.getElementById('audit-step-3'),
+        ];
         const resultsSection = document.getElementById('results-section');
         const auditOutput = document.getElementById('audit-output');
         const errorBox = document.getElementById('error-box');
@@ -1464,6 +1514,69 @@
         if (shouldStartFreshVisit()) {
             resetRunStateForNewAudit({ clearAuditArtifacts: true });
         }
+
+        function setAuditStepState(activeIndex) {
+            auditStepItems.forEach((item, index) => {
+                if (!item) return;
+                item.classList.remove('audit-step-item-active', 'audit-step-item-complete');
+                if (activeIndex > index) {
+                    item.classList.add('audit-step-item-complete');
+                } else if (activeIndex === index) {
+                    item.classList.add('audit-step-item-active');
+                }
+            });
+        }
+
+        async function runAuditProgressSimulation() {
+            setAuditStepState(0);
+            if (loadingText) loadingText.textContent = 'AI scanning your CV…';
+            if (loadingSubtext) loadingSubtext.textContent = 'Parsing structure and running an initial machine scan.';
+            await new Promise((resolve) => setTimeout(resolve, 750));
+
+            setAuditStepState(1);
+            if (loadingText) loadingText.textContent = 'Checking sections…';
+            if (loadingSubtext) loadingSubtext.textContent = 'Looking for contact details, summary, experience, education, and skills.';
+            await new Promise((resolve) => setTimeout(resolve, 850));
+
+            setAuditStepState(2);
+            if (loadingText) loadingText.textContent = 'Initial review ready…';
+            if (loadingSubtext) loadingSubtext.textContent = 'Preparing broad feedback now. Full AI personalization unlocks after payment.';
+            await new Promise((resolve) => setTimeout(resolve, 700));
+        }
+
+        function buildSectionPills(cvText) {
+            const source = String(cvText || '').toLowerCase();
+            const sectionMatchers = [
+                { label: 'Contact details found', pattern: /(email|phone|linkedin|contact)/ },
+                { label: 'Professional summary', pattern: /(summary|profile|objective)/ },
+                { label: 'Work experience', pattern: /(experience|employment|work history)/ },
+                { label: 'Education', pattern: /(education|degree|university|college)/ },
+                { label: 'Skills', pattern: /(skills|competencies|technical skills|tools)/ },
+            ];
+            return sectionMatchers.map((section) => {
+                const status = section.pattern.test(source) ? 'Detected' : 'Needs attention';
+                return `<span class="analysis-pill">${section.label}: ${status}</span>`;
+            }).join('');
+        }
+
+        function buildInitialReviewHtml(cvText) {
+            const sectionPills = buildSectionPills(cvText);
+            return `
+                <div class="audit-report">
+                    <h3>AI Initial Review</h3>
+                    <p>Your CV completed a quick automated pass. This preview confirms section coverage before deep AI analysis.</p>
+                    <h3>Checking sections</h3>
+                    <div>${sectionPills}</div>
+                    <h3>Initial review labels</h3>
+                    <ul>
+                        <li>Layout needs refinement</li>
+                        <li>Keyword targeting can improve</li>
+                        <li>Impact statements need stronger metrics</li>
+                    </ul>
+                    <p>Complete payment to unlock full AI-powered personalized analysis and revised CV generation.</p>
+                </div>
+            `;
+        }
         
         auditButton.addEventListener('click', async () => {
             if (!cvFile) return;
@@ -1491,38 +1604,26 @@
 
                 extractedCvText = text;
                 setStoredValue('cvText', text);
-                const requestToken = ++auditRequestToken;
-                auditRequestController = new AbortController();
-                const auditPayload = await getAuditFeedback(text, auditRequestController.signal);
-                if (requestToken !== auditRequestToken || isAnyPaidStateActive()) {
-                    console.info('[timing] Ignoring stale audit response', { requestToken, latest: auditRequestToken });
-                    return;
-                }
-                const auditResult = auditPayload?.audit || '';
-                if (!auditResult) {
-                    throw new Error('Audit completed but returned no content. Please try again.');
-                }
-                const returnedRunId = auditPayload?.runId;
+                await runAuditProgressSimulation();
+                const runPayload = await initializeAuditRun(text);
+                const returnedRunId = runPayload?.runId;
                 if (!returnedRunId) {
-                    console.warn('Audit completed without a run ID – persistence may have failed.');
+                    throw new Error('Unable to initialize your audit session. Please try again.');
                 }
                 if (returnedRunId) {
                     currentRunId = returnedRunId;
                     hasActiveRunId = true;
                     persistRunId(returnedRunId);
                 }
-                if (auditPayload?.saveWarning) {
-                    console.warn('Save warning:', auditPayload.saveWarning);
-                }
-                extractedCvAnalysis = auditResult;
-                setStoredValue('cvAnalysis', auditResult);
-                auditOutput.innerHTML = formatAuditHtml(auditResult);
+                const initialReview = buildInitialReviewHtml(text);
+                extractedCvAnalysis = '';
+                setStoredValue('cvAnalysis', '');
+                auditOutput.innerHTML = initialReview;
                 loadingSection.classList.add('hidden');
                 resultsSection.classList.remove('hidden');
                 initializePayPalButtons();
                 initializeWhishPayCheckout();
                 warmUpCheckoutExperience();
-                prewarmRevisedPdfAfterAudit();
 
             } catch (error) {
                 if (error.name === 'AbortError') {
@@ -1573,91 +1674,17 @@
             });
         }
 
-        // --- SECURE API CALL to our Netlify Function ---
-        async function getAuditFeedback(cvText, signal) {
-            // FIX: The backend function only exists when deployed.
-            // This check now returns a mock response in preview environments instead of throwing an error.
-            
-            // This URL points to our secure backend function. It will work correctly once deployed.
-            const functionUrl = '/.netlify/functions/audit';
-
-            const parseAuditResponse = async (response) => {
-                const responseText = await response.text();
-                let parsed = {};
-                if (responseText && responseText.trim()) {
-                    try {
-                        parsed = JSON.parse(responseText);
-                    } catch (parseError) {
-                        if (!response.ok && response.status === 504) {
-                            throw new Error('The audit service is taking longer than expected. Please try again in a few seconds.');
-                        }
-                        if (!response.ok) {
-                            throw new Error(`Audit service returned a non-JSON error response (HTTP ${response.status}).`);
-                        }
-                        throw new Error('Audit service returned an invalid response format. Please try again.');
-                    }
-                }
-
-                if (!response.ok) {
-                    const fallbackMessage = response.status === 504
-                        ? 'The audit service timed out while processing your CV. Please try again.'
-                        : responseText && responseText.trim()
-                            ? `Server error: ${response.status}`
-                            : `Server error: ${response.status} (empty response)`;
-                    throw new Error(parsed?.error || fallbackMessage);
-                }
-
-                return parsed;
-            };
-
-            const requestAudit = async () => {
-                const auditStart = performance.now();
-                console.info('[timing] audit request start', { at: auditStart });
-                const response = await fetch(functionUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cvText: cvText }),
-                    signal,
-                });
-                console.info('[timing] audit response received', { ms: Math.round(performance.now() - auditStart) });
-                return parseAuditResponse(response);
-            };
-
-            const isRetryableAuditError = (error) => {
-                const message = String(error?.message || '').toLowerCase();
-                return message.includes('504')
-                    || message.includes('timed out')
-                    || message.includes('timeout')
-                    || message.includes('high traffic')
-                    || message.includes('high demand')
-                    || message.includes('rate limit')
-                    || message.includes('temporarily unavailable');
-            };
-
-            try {
-                let result;
-                try {
-                    result = await requestAudit();
-                } catch (firstError) {
-                    if (!isRetryableAuditError(firstError)) {
-                        throw firstError;
-                    }
-                    await new Promise((resolve) => setTimeout(resolve, 500));
-                    result = await requestAudit();
-                }
-                return {
-                    audit: result.audit || result.auditResult || '',
-                    runId: result.runId || '',
-                    saveWarning: result.saveWarning || '',
-                };
-
-            } catch (error) {
-                 if (error.name === 'AbortError') {
-                     throw error;
-                 }
-                 console.error("Function call error:", error);
-                 throw new Error(error.message || "Could not connect to the audit service.");
+        async function initializeAuditRun(cvText) {
+            const response = await fetch('/.netlify/functions/init-run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cvText }),
+            });
+            const payload = await readJsonSafely(response);
+            if (!response.ok) {
+                throw new Error(payload?.error || 'Unable to initialize the AI audit session.');
             }
+            return payload;
         }
 
         function showError(message) {
@@ -2041,6 +2068,7 @@
                 const storedText = getStoredValue('cvText');
                 if (storedText) {
                     extractedCvText = storedText;
+                    auditOutput.innerHTML = buildInitialReviewHtml(storedText);
                 }
                 uploadSection.classList.add('hidden');
                 loadingSection.classList.add('hidden');
@@ -2048,7 +2076,6 @@
                 initializePayPalButtons();
                 initializeWhishPayCheckout();
                 warmUpCheckoutExperience();
-                prewarmRevisedPdfAfterAudit();
                 if (hasPaidCV && !revisedCvBlobUrl) {
                     applyPaidGatedLayout();
                     regeneratePdfOnRestore();
@@ -2068,7 +2095,6 @@
             initializePayPalButtons();
             initializeWhishPayCheckout();
             warmUpCheckoutExperience();
-            prewarmRevisedPdfAfterAudit();
             if (isAnyPaidStateActive()) {
                 activeDownloadType = activeDownloadType || "revised";
                 applyPaidGatedLayout();
@@ -2082,21 +2108,6 @@
         }
 
         let regeneratePdfTriggered = false;
-        let prewarmPdfTriggered = false;
-
-        function prewarmRevisedPdfAfterAudit() {
-            if (prewarmPdfTriggered || isGeneratingPdf || revisedCvBlobUrl) return;
-            if (!extractedCvText && !hasActiveRunId) return;
-            prewarmPdfTriggered = true;
-            generateRevisedPdf(extractedCvText)
-                .then(() => {})
-                .catch((error) => {
-                    console.warn('Background PDF prewarm failed.', error);
-                })
-                .finally(() => {
-                    prewarmPdfTriggered = false;
-                });
-        }
 
         function regeneratePdfOnRestore() {
             if (regeneratePdfTriggered || isGeneratingPdf) return;
@@ -2381,10 +2392,15 @@
                     }
                     localStorage.setItem('cv_email', paymentEmail);
                     if (!currentRunId) {
-                        await generateRevisedPdf(extractedCvText || getStoredValue('cvText') || '');
+                        const setupResponse = await initializeAuditRun(extractedCvText || getStoredValue('cvText') || '');
+                        if (setupResponse?.runId) {
+                            currentRunId = setupResponse.runId;
+                            hasActiveRunId = true;
+                            persistRunId(currentRunId);
+                        }
                     }
                     if (!currentRunId) {
-                        throw new Error('Unable to start payment right now. Please run the audit again.');
+                        throw new Error('Unable to start payment right now. Please run the CV scan again.');
                     }
                     const response = await fetch('/.netlify/functions/paypal-create-order', {
                         method: 'POST',
@@ -2616,11 +2632,16 @@
                 if (!currentRunId) {
                     const storedCvText = extractedCvText || getStoredValue('cvText') || '';
                     if (storedCvText) {
-                        await generateRevisedPdf(storedCvText);
+                        const runPayload = await initializeAuditRun(storedCvText);
+                        if (runPayload?.runId) {
+                            currentRunId = runPayload.runId;
+                            hasActiveRunId = true;
+                            persistRunId(currentRunId);
+                        }
                     }
                 }
                 if (!currentRunId) {
-                    throw new Error('Unable to start WhishPay checkout right now. Please run the audit again to regenerate your revised CV, then retry payment.');
+                    throw new Error('Unable to start WhishPay checkout right now. Please rerun the CV scan and try again.');
                 }
 
                 const config = await fetchWhishPayConfig();
