@@ -182,21 +182,14 @@
     <div class="container mx-auto px-4 py-8 md:py-12">
         <!-- Header Section -->
         <header class="text-center mb-8 md:mb-12">
-            <!-- Embedded SVG Logo -->
-            <div class="mx-auto h-auto w-48 mb-6">
-                 <svg viewBox="0 0 200 150" xmlns="http://www.w3.org/2000/svg">
-                    <!-- Diamond Shape -->
-                    <path d="M 100 0 L 150 50 L 100 100 L 50 50 Z" fill="none" stroke="white" stroke-width="2"/>
-                    <!-- Waves -->
-                    <path d="M 65 40 Q 85 30, 100 40 T 135 40" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"/>
-                    <path d="M 60 55 Q 80 45, 100 55 T 140 55" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"/>
-                    <path d="M 68 70 Q 88 60, 103 70 T 138 70" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"/>
-                    <!-- Text -->
-                    <text x="100" y="125" font-family="Inter, sans-serif" font-size="14" font-weight="300" fill="white" text-anchor="middle" letter-spacing="4">WORK WAVES</text>
-                    <text x="100" y="145" font-family="Inter, sans-serif" font-size="8" font-weight="300" fill="white" text-anchor="middle" letter-spacing="2">BY COPYARABIA</text>
-                </svg>
-            </div>
-            
+            <a id="header-home-link" href="#upload-section" class="mx-auto mb-6 block max-w-4xl" aria-label="Go to upload CV section">
+                <img
+                    src="assets/freecv-audit-logo.svg"
+                    alt="FreeCVAudit by Work Waves"
+                    class="mx-auto h-auto w-full max-w-4xl"
+                >
+            </a>
+
             <p class="text-lg md:text-xl text-slate-400 mt-2">Get Your Free, Instant ATS-Friendly CV Audit</p>
         </header>
 
@@ -411,8 +404,14 @@
         </main>
 
         <!-- Footer -->
-        <footer class="text-center mt-8 md:mt-12">
-            <p class="text-sm text-slate-500">&copy; 2025 <a class="text-slate-500 underline hover:text-slate-700" href="https://www.workwaveslb.com" rel="noopener noreferrer" target="_blank">Work Waves</a> Career Services. All rights reserved.</p>
+        <footer class="mt-8 md:mt-12">
+            <div class="flex flex-col gap-4 text-sm md:flex-row md:items-end md:justify-between">
+                <div class="text-left">
+                    <a class="block text-slate-500 underline hover:text-slate-300" href="terms-and-conditions.html">Terms and Conditions</a>
+                    <a class="mt-2 block text-slate-500 underline hover:text-slate-300" href="privacy-policy.html">Privacy Policy</a>
+                </div>
+                <p class="text-slate-500 md:text-right">&copy; 2025 <a class="text-slate-500 underline hover:text-slate-300" href="https://www.workwaveslb.com" rel="noopener noreferrer" target="_blank">Work Waves</a> Career Services. All rights reserved.</p>
+            </div>
         </footer>
     </div>
 
@@ -569,6 +568,7 @@
         const auditOutput = document.getElementById('audit-output');
         const errorBox = document.getElementById('error-box');
         const errorMessage = document.getElementById('error-message');
+        const headerHomeLink = document.getElementById('header-home-link');
         
         let cvFile = null;
         let cvFileKind = '';
@@ -1505,6 +1505,25 @@
             resetRunStateForNewAudit({ clearAuditArtifacts: true });
         }
 
+        if (headerHomeLink) {
+            headerHomeLink.addEventListener('click', (event) => {
+                event.preventDefault();
+                resetRunStateForNewAudit({ clearAuditArtifacts: true });
+                loadingSection.classList.add('hidden');
+                resultsSection.classList.add('hidden');
+                uploadSection.classList.remove('hidden');
+                auditOutput.innerHTML = '';
+                hideError();
+                try {
+                    const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+                    window.history.replaceState({}, '', cleanUrl);
+                } catch (error) {
+                    console.warn('Unable to clear URL state after logo click.', error);
+                }
+                uploadSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        }
+
         function setAuditStepState(activeIndex) {
             auditStepItems.forEach((item, index) => {
                 if (!item) return;
@@ -1537,7 +1556,6 @@
         function buildInitialReviewHtml() {
             return `
                 <div class="audit-report">
-                    <h3>Your Free CV Audit:</h3>
                     <p>Your CV has a good base, but right now it is not selling you as strongly as it should. It presents information, but it is not yet positioning you as the obvious choice. A strong CV should not just list experience. It should market your value, highlight your wins, and make an employer quickly understand why you are worth interviewing.</p>
                     <p>At the moment, the CV likely tells the reader what you did, but not strongly enough what you achieved. Hiring managers are drawn to results, impact, and clear proof of performance. The more your CV shows measurable contributions, problem solving, growth, efficiency, leadership, or revenue related value, the more persuasive it becomes.</p>
                     <p>It also needs stronger positioning. Within seconds, an employer should know exactly who you are, what you bring to the table, and where you fit best. If that message is not immediate, the CV loses selling power. A sharper summary and more targeted presentation would make it much more compelling.</p>
