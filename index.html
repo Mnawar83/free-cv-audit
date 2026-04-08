@@ -2419,10 +2419,16 @@
                 const handleApprove = async (data) => {
                     try {
                         const captureStart = performance.now();
+                        const paymentEmail = (paymentEmailInput?.value || cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim();
                         const response = await fetch('/.netlify/functions/paypal-capture-order', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ orderID: data.orderID, fulfillmentId: currentCvFulfillmentId || undefined }),
+                            body: JSON.stringify({
+                                orderID: data.orderID,
+                                fulfillmentId: currentCvFulfillmentId || undefined,
+                                runId: currentRunId || undefined,
+                                email: paymentEmail || undefined,
+                            }),
                         });
                         if (!response.ok) {
                             const errorData = await readJsonSafely(response);
@@ -2430,6 +2436,9 @@
                         }
                         console.info('[timing] CV PayPal capture response', { ms: Math.round(performance.now() - captureStart) });
                         const captureResult = await readJsonSafely(response);
+                        if (captureResult?.fulfillmentId) {
+                            persistCvFulfillmentId(captureResult.fulfillmentId);
+                        }
                         const captureStatus = (captureResult?.status || '').toString().toUpperCase();
                         if (captureStatus === 'COMPLETED' || captureStatus === 'SUCCESS' || captureStatus === 'CAPTURED') {
                             if (currentCvFulfillmentId) {
@@ -2741,6 +2750,9 @@
                     whishPayStatus.textContent = 'Confirming Whish Pay payment...';
                 }
                 const statusPayload = { externalId };
+                statusPayload.fulfillmentId = currentCvFulfillmentId || undefined;
+                statusPayload.runId = currentRunId || undefined;
+                statusPayload.email = (paymentEmailInput?.value || cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim() || undefined;
                 if (currency) {
                     statusPayload.currency = currency;
                 }
@@ -2759,6 +2771,9 @@
                         return readJsonSafely(response);
                     })
                     .then((statusData) => {
+                        if (statusData?.fulfillmentId) {
+                            persistCvFulfillmentId(statusData.fulfillmentId);
+                        }
                         const collectStatus = (statusData.collectStatus || '').toString().toUpperCase();
                         const isPaid = collectStatus === 'SUCCESS' || collectStatus === 'PAID' || collectStatus === 'COLLECTED' || statusData.isPaidStatus === true;
                         if (!isPaid) {
