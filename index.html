@@ -232,7 +232,7 @@
                 <div id="loading-section" class="hidden text-center py-12">
                     <div class="spinner w-12 h-12 rounded-full border-4 border-gray-700 mx-auto"></div>
                     <p id="loading-text" class="mt-6 text-lg font-medium text-slate-300">Our AI model is analyzing your CV. This will take a moment.</p>
-                    <p id="loading-subtext" class="text-slate-400">Analyzing Gimmick</p>
+                    <p id="loading-subtext" class="text-slate-400"></p>
                     <div id="audit-step-list" class="audit-step-list">
                         <div id="audit-step-1" class="audit-step-item">Step 1 · AI scanning</div>
                         <div id="audit-step-2" class="audit-step-item">Step 2 · Checking sections</div>
@@ -1520,17 +1520,17 @@
         async function runAuditProgressSimulation() {
             setAuditStepState(0);
             if (loadingText) loadingText.textContent = 'Our AI model is analyzing your CV. This will take a moment.';
-            if (loadingSubtext) loadingSubtext.textContent = 'Analyzing Gimmick';
+            if (loadingSubtext) loadingSubtext.textContent = '';
             await new Promise((resolve) => setTimeout(resolve, 750));
 
             setAuditStepState(1);
             if (loadingText) loadingText.textContent = 'Our AI model is analyzing your CV. This will take a moment.';
-            if (loadingSubtext) loadingSubtext.textContent = 'Analyzing Gimmick';
+            if (loadingSubtext) loadingSubtext.textContent = '';
             await new Promise((resolve) => setTimeout(resolve, 850));
 
             setAuditStepState(2);
             if (loadingText) loadingText.textContent = 'Our AI model is analyzing your CV. This will take a moment.';
-            if (loadingSubtext) loadingSubtext.textContent = 'Analyzing Gimmick';
+            if (loadingSubtext) loadingSubtext.textContent = '';
             await new Promise((resolve) => setTimeout(resolve, 700));
         }
 
