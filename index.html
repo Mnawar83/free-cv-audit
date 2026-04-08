@@ -147,16 +147,6 @@
             background: rgba(21, 128, 61, 0.25);
             color: #bbf7d0;
         }
-        .analysis-pill {
-            display: inline-flex;
-            margin: 0.25rem 0.4rem 0.25rem 0;
-            padding: 0.35rem 0.6rem;
-            border-radius: 999px;
-            background: rgba(148, 163, 184, 0.2);
-            border: 1px solid rgba(148, 163, 184, 0.35);
-            color: #cbd5e1;
-            font-size: 0.8rem;
-        }
         .upsell-mobile-summary {
             position: fixed;
             left: 0;
@@ -241,8 +231,8 @@
                 <!-- Loading Section -->
                 <div id="loading-section" class="hidden text-center py-12">
                     <div class="spinner w-12 h-12 rounded-full border-4 border-gray-700 mx-auto"></div>
-                    <p id="loading-text" class="mt-6 text-lg font-medium text-slate-300">Auditing your CV...</p>
-                    <p id="loading-subtext" class="text-slate-400">Our AI is analyzing your document for ATS compatibility. This may take a moment.</p>
+                    <p id="loading-text" class="mt-6 text-lg font-medium text-slate-300">Our AI model is analyzing your CV. This will take a moment.</p>
+                    <p id="loading-subtext" class="text-slate-400">Analyzing Gimmick</p>
                     <div id="audit-step-list" class="audit-step-list">
                         <div id="audit-step-1" class="audit-step-item">Step 1 · AI scanning</div>
                         <div id="audit-step-2" class="audit-step-item">Step 2 · Checking sections</div>
@@ -1529,51 +1519,31 @@
 
         async function runAuditProgressSimulation() {
             setAuditStepState(0);
-            if (loadingText) loadingText.textContent = 'AI scanning your CV…';
-            if (loadingSubtext) loadingSubtext.textContent = 'Parsing structure and running an initial machine scan.';
+            if (loadingText) loadingText.textContent = 'Our AI model is analyzing your CV. This will take a moment.';
+            if (loadingSubtext) loadingSubtext.textContent = 'Analyzing Gimmick';
             await new Promise((resolve) => setTimeout(resolve, 750));
 
             setAuditStepState(1);
-            if (loadingText) loadingText.textContent = 'Checking sections…';
-            if (loadingSubtext) loadingSubtext.textContent = 'Looking for contact details, summary, experience, education, and skills.';
+            if (loadingText) loadingText.textContent = 'Our AI model is analyzing your CV. This will take a moment.';
+            if (loadingSubtext) loadingSubtext.textContent = 'Analyzing Gimmick';
             await new Promise((resolve) => setTimeout(resolve, 850));
 
             setAuditStepState(2);
-            if (loadingText) loadingText.textContent = 'Initial review ready…';
-            if (loadingSubtext) loadingSubtext.textContent = 'Preparing broad feedback now. Full AI personalization unlocks after payment.';
+            if (loadingText) loadingText.textContent = 'Our AI model is analyzing your CV. This will take a moment.';
+            if (loadingSubtext) loadingSubtext.textContent = 'Analyzing Gimmick';
             await new Promise((resolve) => setTimeout(resolve, 700));
         }
 
-        function buildSectionPills(cvText) {
-            const source = String(cvText || '').toLowerCase();
-            const sectionMatchers = [
-                { label: 'Contact details found', pattern: /(email|phone|linkedin|contact)/ },
-                { label: 'Professional summary', pattern: /(summary|profile|objective)/ },
-                { label: 'Work experience', pattern: /(experience|employment|work history)/ },
-                { label: 'Education', pattern: /(education|degree|university|college)/ },
-                { label: 'Skills', pattern: /(skills|competencies|technical skills|tools)/ },
-            ];
-            return sectionMatchers.map((section) => {
-                const status = section.pattern.test(source) ? 'Detected' : 'Needs attention';
-                return `<span class="analysis-pill">${section.label}: ${status}</span>`;
-            }).join('');
-        }
-
-        function buildInitialReviewHtml(cvText) {
-            const sectionPills = buildSectionPills(cvText);
+        function buildInitialReviewHtml() {
             return `
                 <div class="audit-report">
-                    <h3>AI Initial Review</h3>
-                    <p>Your CV completed a quick automated pass. This preview confirms section coverage before deep AI analysis.</p>
-                    <h3>Checking sections</h3>
-                    <div>${sectionPills}</div>
-                    <h3>Initial review labels</h3>
-                    <ul>
-                        <li>Layout needs refinement</li>
-                        <li>Keyword targeting can improve</li>
-                        <li>Impact statements need stronger metrics</li>
-                    </ul>
-                    <p>Complete payment to unlock full AI-powered personalized analysis and revised CV generation.</p>
+                    <h3>Your free CV audit:</h3>
+                    <p>Your CV has a good base, but right now it is not selling you as strongly as it should. It presents information, but it is not yet positioning you as the obvious choice. A strong CV should not just list experience. It should market your value, highlight your wins, and make an employer quickly understand why you are worth interviewing.</p>
+                    <p>At the moment, the CV likely tells the reader what you did, but not strongly enough what you achieved. Hiring managers are drawn to results, impact, and clear proof of performance. The more your CV shows measurable contributions, problem solving, growth, efficiency, leadership, or revenue related value, the more persuasive it becomes.</p>
+                    <p>It also needs stronger positioning. Within seconds, an employer should know exactly who you are, what you bring to the table, and where you fit best. If that message is not immediate, the CV loses selling power. A sharper summary and more targeted presentation would make it much more compelling.</p>
+                    <p>The wording may also need to be more powerful. Generic descriptions do not create urgency or interest. Stronger, more confident language can make the difference between sounding average and sounding hireable. The goal is to shift the CV from informative to convincing.</p>
+                    <p>From a recruiter’s perspective, the CV should instantly answer one question: why this candidate? If that answer is not obvious, the CV needs stronger framing, better prioritization of key achievements, and a cleaner structure that draws attention to what matters most.</p>
+                    <p>Overall, the CV should not just reflect your background. It should actively sell your potential. With stronger positioning, more achievement driven content, and a clearer focus on value, it can become far more competitive and interview worthy.</p>
                 </div>
             `;
         }
@@ -1615,7 +1585,7 @@
                     hasActiveRunId = true;
                     persistRunId(returnedRunId);
                 }
-                const initialReview = buildInitialReviewHtml(text);
+                const initialReview = buildInitialReviewHtml();
                 extractedCvAnalysis = '';
                 setStoredValue('cvAnalysis', '');
                 auditOutput.innerHTML = initialReview;
@@ -2068,7 +2038,7 @@
                 const storedText = getStoredValue('cvText');
                 if (storedText) {
                     extractedCvText = storedText;
-                    auditOutput.innerHTML = buildInitialReviewHtml(storedText);
+                    auditOutput.innerHTML = buildInitialReviewHtml();
                 }
                 uploadSection.classList.add('hidden');
                 loadingSection.classList.add('hidden');
