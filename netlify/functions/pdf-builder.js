@@ -18,6 +18,16 @@ function sanitizePdfText(text) {
     .trim();
 }
 
+function isSourcePageMarker(line) {
+  const normalized = line.toLowerCase().trim();
+  if (!normalized) return false;
+  return (
+    /^page\s+\d+(\s+of\s+\d+)?$/.test(normalized) ||
+    /^-\s*page\s+\d+(\s+of\s+\d+)?\s*-$/.test(normalized) ||
+    /^p(age)?\.?\s*\d+\s*(\/|of)\s*\d+$/.test(normalized)
+  );
+}
+
 function transliterateToAscii(text) {
   return text
     .normalize('NFKD')
@@ -76,7 +86,8 @@ function splitAndCleanLines(text) {
   return sanitizePdfText(text)
     .replace(/\r\n/g, '\n')
     .split('\n')
-    .map((line) => line.trim())
+    .map((line) => line.trim().replace(/\s{2,}/g, ' '))
+    .filter((line) => !isSourcePageMarker(line))
     .filter((line, idx, arr) => line || (arr[idx - 1] && arr[idx - 1] !== ''));
 }
 
@@ -119,7 +130,9 @@ function parseCv(text) {
       currentSection = detected;
       continue;
     }
-    rawSections[currentSection].push(line);
+    if (!isSourcePageMarker(line)) {
+      rawSections[currentSection].push(line);
+    }
   }
 
   return {
@@ -140,7 +153,8 @@ function normalizeSkills(lines) {
   const entries = lines
     .flatMap((line) => line.split(/[|,•]/g))
     .map((item) => item.replace(/^[-*]\s*/, '').trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((item) => !isSourcePageMarker(item));
   return [...new Set(entries)];
 }
 
@@ -153,7 +167,8 @@ function parseSimpleList(lines) {
       acc = [];
       continue;
     }
-    acc.push(line.replace(/^[-*]\s*/, '').trim());
+    const cleaned = line.replace(/^[-*]\s*/, '').trim();
+    if (!isSourcePageMarker(cleaned)) acc.push(cleaned);
   }
   if (acc.length) items.push(acc.join(' | '));
   return items;
@@ -163,6 +178,7 @@ function parseBullets(lines) {
   return lines
     .map((line) => line.replace(/^[-*•]\s*/, '').trim())
     .filter(Boolean)
+    .filter((line) => !isSourcePageMarker(line))
     .filter((line, idx, arr) => arr.indexOf(line) === idx);
 }
 
@@ -186,7 +202,7 @@ function parseExperience(lines) {
       employer: plain[0] || '',
       roleLine: plain[1] || '',
       dateLine: plain[2] || '',
-      bullets: bullets.slice(0, 6),
+      bullets: bullets.filter((line) => !isSourcePageMarker(line)).slice(0, 6),
     };
   }).filter((entry) => entry.employer || entry.roleLine || entry.bullets.length);
 }
@@ -263,6 +279,26 @@ function buildBlocks(cv) {
   return blocks;
 }
 
+function sanitizeBlocks(blocks) {
+  const cleaned = [];
+  const seenHeadings = new Set();
+
+  for (const block of blocks) {
+    if ((block.type === 'line' || block.type === 'paragraph' || block.type === 'bullet' || block.type === 'heading') && !block.text?.trim()) {
+      continue;
+    }
+    if (block.text && isSourcePageMarker(block.text)) {
+      continue;
+    }
+    if (block.type === 'heading') {
+      if (seenHeadings.has(block.text)) continue;
+      seenHeadings.add(block.text);
+    }
+    cleaned.push(block);
+  }
+  return cleaned;
+}
+
 function estimateBlockHeight(block) {
   if (block.type === 'spacer') return block.height;
   const lineHeight = Math.ceil((block.size || 10) * 1.45);
@@ -314,9 +350,19 @@ function buildPdfFromPages(pages) {
   return Buffer.from(pdf, 'latin1');
 }
 
+function removeIsolatedPageLabelPages(pages) {
+  return pages.filter((page) => {
+    const matches = page.stream.match(/\((.*?)\)\sTj/g) || [];
+    const extracted = matches.map((m) => m.replace(/^\(/, '').replace(/\)\sTj$/, ''));
+    if (!extracted.length) return false;
+    const nonPageLabels = extracted.filter((text) => !/^Page \d+$/.test(text));
+    return nonPageLabels.length > 0;
+  });
+}
+
 function buildPdfBuffer(text) {
   const cv = parseCv(text);
-  const blocks = buildBlocks(cv);
+  const blocks = sanitizeBlocks(buildBlocks(cv));
 
   const pages = [];
   let currentPageLines = [];
@@ -325,6 +371,9 @@ function buildPdfBuffer(text) {
   const minY = PAGE_MARGIN + footerGap;
 
   function pushPage() {
+    if (!currentPageLines.length) {
+      return;
+    }
     const pageIndex = pages.length + 1;
     currentPageLines.push(`1 0 0 1 ${PAGE_MARGIN} ${PAGE_MARGIN - 6} Tm\n/F1 8 Tf\n(${encodePdfText(`Page ${pageIndex}`)}) Tj`);
     pages.push({ stream: renderPageContent(currentPageLines) });
@@ -400,7 +449,8 @@ function buildPdfBuffer(text) {
   }
   pushPage();
 
-  return buildPdfFromPages(pages);
+  const cleanedPages = removeIsolatedPageLabelPages(pages);
+  return buildPdfFromPages(cleanedPages.length ? cleanedPages : pages);
 }
 
 function pdfResponse(pdfBuffer, filename, inline = false) {
