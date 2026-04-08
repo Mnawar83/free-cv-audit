@@ -182,7 +182,7 @@
     <div class="container mx-auto px-4 py-8 md:py-12">
         <!-- Header Section -->
         <header class="text-center mb-8 md:mb-12">
-            <a href="/" class="mx-auto mb-6 block max-w-4xl" aria-label="Go to homepage">
+            <a id="header-home-link" href="#upload-section" class="mx-auto mb-6 block max-w-4xl" aria-label="Go to upload CV section">
                 <img
                     src="assets/freecv-audit-logo.svg"
                     alt="FreeCVAudit by Work Waves"
@@ -407,8 +407,8 @@
         <footer class="mt-8 md:mt-12">
             <div class="flex flex-col gap-4 text-sm md:flex-row md:items-end md:justify-between">
                 <div class="text-left">
-                    <a class="block text-slate-500 underline hover:text-slate-300" href="/terms-and-conditions">Terms and Conditions</a>
-                    <a class="mt-2 block text-slate-500 underline hover:text-slate-300" href="/privacy-policy">Privacy Policy</a>
+                    <a class="block text-slate-500 underline hover:text-slate-300" href="terms-and-conditions.html">Terms and Conditions</a>
+                    <a class="mt-2 block text-slate-500 underline hover:text-slate-300" href="privacy-policy.html">Privacy Policy</a>
                 </div>
                 <p class="text-slate-500 md:text-right">&copy; 2025 <a class="text-slate-500 underline hover:text-slate-300" href="https://www.workwaveslb.com" rel="noopener noreferrer" target="_blank">Work Waves</a> Career Services. All rights reserved.</p>
             </div>
@@ -568,6 +568,7 @@
         const auditOutput = document.getElementById('audit-output');
         const errorBox = document.getElementById('error-box');
         const errorMessage = document.getElementById('error-message');
+        const headerHomeLink = document.getElementById('header-home-link');
         
         let cvFile = null;
         let cvFileKind = '';
@@ -1504,6 +1505,25 @@
             resetRunStateForNewAudit({ clearAuditArtifacts: true });
         }
 
+        if (headerHomeLink) {
+            headerHomeLink.addEventListener('click', (event) => {
+                event.preventDefault();
+                resetRunStateForNewAudit({ clearAuditArtifacts: true });
+                loadingSection.classList.add('hidden');
+                resultsSection.classList.add('hidden');
+                uploadSection.classList.remove('hidden');
+                auditOutput.innerHTML = '';
+                hideError();
+                try {
+                    const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+                    window.history.replaceState({}, '', cleanUrl);
+                } catch (error) {
+                    console.warn('Unable to clear URL state after logo click.', error);
+                }
+                uploadSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        }
+
         function setAuditStepState(activeIndex) {
             auditStepItems.forEach((item, index) => {
                 if (!item) return;
@@ -1536,7 +1556,6 @@
         function buildInitialReviewHtml() {
             return `
                 <div class="audit-report">
-                    <h3>Your Free CV Audit:</h3>
                     <p>Your CV has a good base, but right now it is not selling you as strongly as it should. It presents information, but it is not yet positioning you as the obvious choice. A strong CV should not just list experience. It should market your value, highlight your wins, and make an employer quickly understand why you are worth interviewing.</p>
                     <p>At the moment, the CV likely tells the reader what you did, but not strongly enough what you achieved. Hiring managers are drawn to results, impact, and clear proof of performance. The more your CV shows measurable contributions, problem solving, growth, efficiency, leadership, or revenue related value, the more persuasive it becomes.</p>
                     <p>It also needs stronger positioning. Within seconds, an employer should know exactly who you are, what you bring to the table, and where you fit best. If that message is not immediate, the CV loses selling power. A sharper summary and more targeted presentation would make it much more compelling.</p>
