@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 330" role="img" aria-labelledby="title desc">
+  <title id="title">FreeCVAudit by Work Waves</title>
+  <desc id="desc">Document and checkmark icon with FreeCVAudit wordmark and By Work Waves subtitle.</desc>
+  <g fill="none" stroke="#0b0c12" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M52 40h140l48 48v172a24 24 0 0 1-24 24H52a24 24 0 0 1-24-24V64a24 24 0 0 1 24-24z"/>
+    <path d="M192 40v48h48"/>
+    <path d="M74 102h86"/>
+    <path d="M74 132h100"/>
+    <path d="M74 162h84"/>
+  </g>
+
+  <g transform="translate(112 186)">
+    <circle cx="80" cy="48" r="48" fill="#f8fafc" stroke="#0b0c12" stroke-width="10"/>
+    <path d="M58 48l19 19 37-38" fill="none" stroke="#0b0c12" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M126 78l38 38" fill="none" stroke="#0b0c12" stroke-width="10" stroke-linecap="round"/>
+  </g>
+
+  <text x="310" y="110" font-family="Inter, Arial, sans-serif" font-size="110" font-weight="700" fill="#0b0c12">FreeCVAudit</text>
+  <text x="310" y="210" font-family="Inter, Arial, sans-serif" font-size="58" font-weight="500" letter-spacing="4" fill="#5a5f67">By Work Waves</text>
+</svg>
