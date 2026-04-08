@@ -1494,7 +1494,7 @@
             try {
                 const navigationEntry = performance.getEntriesByType('navigation')[0];
                 const navigationType = navigationEntry?.type || '';
-                return navigationType === 'navigate';
+                return navigationType === 'navigate' || navigationType === 'reload';
             } catch (error) {
                 console.warn('Unable to inspect navigation type.', error);
                 return false;
