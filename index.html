@@ -294,9 +294,6 @@
                         <a id="primary-download-link" href="#" class="hidden mt-5 inline-flex w-full max-w-md items-center justify-center rounded-lg bg-emerald-700/70 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-600/70" aria-disabled="true">
                             Download Linked Product
                         </a>
-                        <button id="retry-download-button" class="hidden mt-4 inline-flex w-full max-w-md items-center justify-center rounded-lg bg-slate-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-500">
-                            Retry Download
-                        </button>
                     </div>
 
                     <div id="upsell-cards" class="mt-8 hidden grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -506,7 +503,6 @@
         const emailCvButton = document.getElementById('email-cv-button');
         const cvEmailStatus = document.getElementById('cv-email-status');
         const primaryDownloadLink = document.getElementById('primary-download-link');
-        const retryDownloadButton = document.getElementById('retry-download-button');
         const upsellCards = document.getElementById('upsell-cards');
         const linkedinUpsellCard = document.getElementById('linkedin-upsell-card');
         const linkedinCheckoutSection = document.getElementById('linkedin-checkout-section');
@@ -699,6 +695,8 @@
         let auditRequestToken = 0;
         let checkoutWarmupStarted = false;
         let isSendingCvEmail = false;
+        let safeCvEmailTimer = null;
+        let safeCvEmailAttempt = 0;
         let whishPayRetryAvailableAt = 0;
 
         const auditMountParent = auditSection ? auditSection.parentElement : null;
@@ -2131,15 +2129,77 @@
         }
 
         function updateRetryVisibility() {
-            if (!retryDownloadButton) return;
-            if (hasPaidCV && !revisedCvBlobUrl && !isGeneratingPdf) {
-                retryDownloadButton.classList.remove('hidden');
-                if (downloadNote) {
-                    downloadNote.textContent = 'Payment received. Generating your revised CV for email delivery.';
-                }
-            } else {
-                retryDownloadButton.classList.add('hidden');
+            if (downloadNote && hasPaidCV && !revisedCvBlobUrl && !isGeneratingPdf) {
+                downloadNote.textContent = 'Payment received. We are safely processing and delivering your revised CV by email.';
             }
+        }
+
+        function clearSafeCvEmailDeliverySchedule() {
+            if (safeCvEmailTimer) {
+                clearTimeout(safeCvEmailTimer);
+                safeCvEmailTimer = null;
+            }
+        }
+
+        function scheduleSafeCvEmailDelivery({ immediate = false } = {}) {
+            clearSafeCvEmailDeliverySchedule();
+            const hasEmail = Boolean((cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim());
+            if (!hasPaidCV || !hasEmail) return;
+
+            const delayMs = immediate ? 250 : Math.min(120000, 15000 * Math.max(1, safeCvEmailAttempt));
+            safeCvEmailTimer = setTimeout(async () => {
+                safeCvEmailTimer = null;
+                try {
+                    await generateRevisedPdfWithRecovery();
+                    const sent = await sendCvEmail({ resend: safeCvEmailAttempt > 0, silent: true });
+                    if (sent) {
+                        safeCvEmailAttempt = 0;
+                        if (currentRunId) {
+                            localStorage.setItem('cv_email_auto_sent_run_id', currentRunId);
+                        }
+                        if (cvEmailStatus) cvEmailStatus.textContent = 'Delivery confirmed. Please check your inbox.';
+                        return;
+                    }
+                } catch (error) {
+                    console.warn('Safe CV email delivery attempt failed.', error);
+                }
+
+                safeCvEmailAttempt += 1;
+                if (cvEmailStatus) {
+                    cvEmailStatus.textContent = 'Still processing delivery safely. We will keep retrying automatically.';
+                }
+                if (safeCvEmailAttempt < 6) {
+                    scheduleSafeCvEmailDelivery({ immediate: false });
+                } else if (cvEmailStatus) {
+                    cvEmailStatus.textContent = 'Delivery is delayed. Please use Resend Email and we will continue safely.';
+                }
+            }, delayMs);
+        }
+
+        async function generateRevisedPdfWithRecovery() {
+            const candidates = [
+                extractedCvText,
+                getStoredValue('cvText'),
+                hasActiveRunId ? undefined : null,
+            ];
+            let lastError = null;
+
+            for (let i = 0; i < candidates.length; i += 1) {
+                const candidate = candidates[i];
+                if (candidate === null) continue;
+                try {
+                    await generateRevisedPdf(candidate);
+                    return;
+                } catch (error) {
+                    lastError = error;
+                    const isLastAttempt = i === candidates.length - 1;
+                    if (!isLastAttempt) {
+                        await new Promise((resolve) => setTimeout(resolve, 900 * (i + 1)));
+                    }
+                }
+            }
+
+            throw lastError || new Error('Unable to generate your revised CV right now. We will keep trying to deliver it safely by email.');
         }
 
         async function finalizeCvPaymentAndGenerate() {
@@ -2148,7 +2208,7 @@
             if (revisedCvBlobUrl) {
                 setDownloadLocked(false);
                 if ((localStorage.getItem('cv_email') || '').trim()) {
-                    sendCvEmail({ silent: true }).catch(() => {});
+                    scheduleSafeCvEmailDelivery({ immediate: true });
                 }
                 updateRetryVisibility();
                 return;
@@ -2158,16 +2218,11 @@
                 whishPayStatus.textContent = 'Payment confirmed. Preparing your revised CV...';
             }
             try {
-                await generateRevisedPdf(extractedCvText);
-            } catch (firstError) {
-                console.warn('Initial revised CV generation failed, retrying once.', firstError);
-                try {
-                    await new Promise((resolve) => setTimeout(resolve, 900));
-                    await generateRevisedPdf('');
-                } catch (retryError) {
-                    console.warn('Revised CV generation retry also failed.', retryError);
-                    showError('Unable to generate your revised CV right now. Please use the Retry button to try again.');
-                }
+                await generateRevisedPdfWithRecovery();
+            } catch (error) {
+                console.warn('Revised CV generation failed after recovery attempts.', error);
+                const fallbackErrorMessage = error?.message || 'Unable to generate your revised CV right now. We will keep trying to deliver it safely by email.';
+                showError(fallbackErrorMessage);
             }
             setDownloadLocked(false);
             updateRetryVisibility();
@@ -2260,13 +2315,7 @@
                     const autoSentKey = 'cv_email_auto_sent_run_id';
                     const sentRunId = localStorage.getItem(autoSentKey);
                     if (sentRunId !== currentRunId) {
-                        sendCvEmail({ resend: false, silent: true })
-                            .then((sent) => {
-                                if (sent) {
-                                    localStorage.setItem(autoSentKey, currentRunId);
-                                }
-                            })
-                            .catch(() => {});
+                        scheduleSafeCvEmailDelivery({ immediate: true });
                     }
                 }
             } finally {
@@ -3236,18 +3285,7 @@
         syncUpsellCardVisibilityForViewport();
         window.addEventListener('resize', syncUpsellCardVisibilityForViewport);
 
-        if (retryDownloadButton) {
-            retryDownloadButton.addEventListener('click', async () => {
-                try {
-                    await generateRevisedPdf(extractedCvText);
-                    setDownloadLocked(false);
-                } catch (error) {
-                    console.error('Retry PDF generation error:', error);
-                    showError(error.message || 'Unable to generate your revised CV yet.');
-                    updateRetryVisibility();
-                }
-            });
-        }
+        scheduleSafeCvEmailDelivery({ immediate: true });
     </script>
 </body>
 </html>
