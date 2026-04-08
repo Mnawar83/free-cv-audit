@@ -5,6 +5,7 @@ const {
   markPaymentEventProcessed,
   updateFulfillment,
 } = require('./run-store');
+const { triggerFulfillmentQueueProcessing } = require('./queue-trigger');
 
 function json(statusCode, payload) {
   return {
@@ -94,6 +95,7 @@ exports.handler = async (event) => {
           name: '',
           forceSync: true,
         });
+        await triggerFulfillmentQueueProcessing();
       }
     }
 

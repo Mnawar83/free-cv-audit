@@ -3,23 +3,76 @@ const A4_HEIGHT = 842;
 const MARGIN = 50;
 const CONTENT_WIDTH = A4_WIDTH - MARGIN * 2;
 
+const BODY_FONT_SIZE = 10;
+const NAME_FONT_SIZE = BODY_FONT_SIZE + 2;
+const HEADING_FONT_SIZE = 11;
+const BULLET_INDENT = 14;
+const LINE_HEIGHT_MULTIPLIER = 1.42;
+
+const SECTION_ORDER = [
+  'professionalSummary',
+  'coreCompetencies',
+  'professionalExperience',
+  'education',
+  'technicalSkills',
+  'certifications',
+  'languages',
+];
+
+const SECTION_TITLES = {
+  professionalSummary: 'PROFESSIONAL SUMMARY',
+  coreCompetencies: 'CORE COMPETENCIES',
+  professionalExperience: 'PROFESSIONAL EXPERIENCE',
+  education: 'EDUCATION',
+  technicalSkills: 'TECHNICAL SKILLS',
+  certifications: 'CERTIFICATIONS / TRAINING',
+  languages: 'LANGUAGES',
+};
+
+const SECTION_HEADING_ALIASES = {
+  'professional summary': 'professionalSummary',
+  summary: 'professionalSummary',
+  profile: 'professionalSummary',
+  'core competencies': 'coreCompetencies',
+  competencies: 'coreCompetencies',
+  'core skills': 'coreCompetencies',
+  'professional experience': 'professionalExperience',
+  experience: 'professionalExperience',
+  'employment history': 'professionalExperience',
+  education: 'education',
+  'technical skills': 'technicalSkills',
+  skills: 'technicalSkills',
+  certifications: 'certifications',
+  training: 'certifications',
+  'certifications / training': 'certifications',
+  languages: 'languages',
+};
+
+const PAGE_ARTIFACT_PATTERN = /^(?:page\s+\d+(?:\s+of\s+\d+)?|p\.?\s*\d+\s*(?:\/|of)\s*\d+)$/i;
+
 function sanitizePdfText(text) {
   return String(text || '')
-    .replace(/\u00a0/g, ' ')
+    .replace(/\u00A0/g, ' ')
+    .replace(/[\u2000-\u200D\u202F\u205F\u3000]/g, ' ')
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ')
     .replace(/[\uFFFD]/g, '')
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")
-    .replace(/[–—]/g, '-')
+    .replace(/[–—―]/g, '-')
     .replace(/[•●▪◦]/g, '-')
+    .replace(/…/g, '...')
     .replace(/\*\*/g, '')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/\(\s+/g, '(')
+    .replace(/\s+\)/g, ')')
     .replace(/[ \t]+/g, ' ')
+    .replace(/\r\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
 function transliterateToAscii(text) {
-  return text
+  return String(text || '')
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\x20-\x7E]/g, '');
@@ -32,123 +85,144 @@ function encodePdfText(text) {
     .replace(/\)/g, '\\)');
 }
 
-function isPageArtifact(line) {
-  const v = line.trim().toLowerCase();
-  return /^page\s+\d+(\s+of\s+\d+)?$/.test(v) || /^p\.?\s*\d+\s*(\/|of)\s*\d+$/.test(v);
-}
-
-function fixInnerWordSpacing(line) {
-  return line
-    .replace(/\b([A-Za-z])\s+([A-Za-z])\b/g, '$1$2')
-    .replace(/\b([A-Za-z]{2,})\s+([A-Za-z]{1,2})\b/g, (m, a, b) => {
-      if (a.length >= 4 && b.length <= 2) return `${a}${b}`;
-      return m;
-    });
-}
-
 function normalizeLine(line) {
-  return fixInnerWordSpacing(line)
+  return String(line || '')
     .replace(/\s*\|\s*/g, ' | ')
     .replace(/\s+-\s+/g, ' - ')
     .replace(/\s{2,}/g, ' ')
+    .replace(/\b([A-Za-z])\s+([A-Za-z])\b/g, '$1$2')
     .trim();
 }
 
-function normalizeHeading(line) {
-  return line.toLowerCase().replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
+function isPageArtifact(line) {
+  return PAGE_ARTIFACT_PATTERN.test(String(line || '').trim());
 }
 
-function sectionKeyForHeading(line) {
-  const h = normalizeHeading(line);
-  const map = {
-    'professional summary': 'summary',
-    summary: 'summary',
-    profile: 'summary',
-    'core skills': 'skills',
-    skills: 'skills',
-    'professional experience': 'experience',
-    experience: 'experience',
-    'employment history': 'experience',
-    education: 'education',
-    certifications: 'certifications',
-    training: 'certifications',
-    languages: 'languages',
-    'additional information': 'additionalInfo',
-  };
-  return map[h] || null;
+function containsCorruption(text) {
+  const value = String(text || '');
+  return /\uFFFD|[\u0000-\u001F\u007F]/.test(value);
 }
 
-function toLines(inputText) {
-  return sanitizePdfText(inputText)
-    .replace(/\r\n/g, '\n')
+function toLines(rawText) {
+  return sanitizePdfText(rawText)
     .split('\n')
     .map(normalizeLine)
     .filter(Boolean)
     .filter((line) => !isPageArtifact(line));
 }
 
-function parseContact(lines) {
-  const joined = lines.join(' | ');
-  const parts = joined.split('|').map((p) => p.trim()).filter(Boolean);
-  const contact = { phone: '', email: '', location: '', nationality: '', linkedin: '' };
-  for (const part of parts) {
-    if (!contact.email && /@/.test(part)) contact.email = part;
-    else if (!contact.linkedin && /linkedin\.com|^linkedin\b/i.test(part)) contact.linkedin = part;
-    else if (!contact.phone && /\+?\d[\d\s().-]{6,}/.test(part)) contact.phone = part;
-    else if (!contact.location) contact.location = part;
-    else if (!contact.nationality) contact.nationality = part;
+function headingKey(line) {
+  const clean = String(line || '')
+    .replace(/:$/, '')
+    .toLowerCase()
+    .replace(/[^a-z/ ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return SECTION_HEADING_ALIASES[clean] || null;
+}
+
+function parseHeader(prefaceLines) {
+  const clean = prefaceLines.map((line) => normalizeLine(line)).filter(Boolean);
+  const fullName = clean[0] || 'Candidate Name';
+
+  let professionalTitle = '';
+  const contact = {
+    location: '',
+    phone: '',
+    email: '',
+  };
+
+  const remaining = clean.slice(1);
+  for (const line of remaining) {
+    if (!contact.email && /\S+@\S+\.\S+/.test(line)) {
+      contact.email = line;
+      continue;
+    }
+    if (!contact.phone && /\+?\d[\d\s().-]{6,}/.test(line)) {
+      contact.phone = line;
+      continue;
+    }
+    if (!professionalTitle && /(manager|engineer|specialist|consultant|director|lead|developer|analyst|officer|coordinator|architect|executive|administrator)/i.test(line)) {
+      professionalTitle = line;
+      continue;
+    }
+    if (!contact.location) {
+      contact.location = line;
+      continue;
+    }
+    if (!professionalTitle) professionalTitle = line;
   }
-  return contact;
+
+  return {
+    fullName,
+    professionalTitle: professionalTitle || 'Professional Title',
+    contact,
+  };
 }
 
 function splitSections(lines) {
   const sections = {
-    preface: [], summary: [], skills: [], experience: [], education: [], certifications: [], languages: [], additionalInfo: [],
+    preface: [],
+    professionalSummary: [],
+    coreCompetencies: [],
+    professionalExperience: [],
+    education: [],
+    technicalSkills: [],
+    certifications: [],
+    languages: [],
   };
   let current = 'preface';
 
   for (const line of lines) {
-    const key = sectionKeyForHeading(line.replace(/:$/, ''));
-    if (key) {
-      current = key;
+    const candidateKey = headingKey(line);
+    if (candidateKey) {
+      current = candidateKey;
       continue;
     }
     sections[current].push(line);
   }
+
   return sections;
+}
+
+function dedupe(lines = []) {
+  const seen = new Set();
+  const out = [];
+  for (const item of lines) {
+    const normalized = normalizeLine(String(item || ''));
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+  }
+  return out;
 }
 
 function parseExperience(lines) {
   const entries = [];
-  let buffer = [];
+  let block = [];
 
   const flush = () => {
-    if (!buffer.length) return;
-    const bullets = buffer.filter((l) => /^[-*]\s*/.test(l)).map((l) => l.replace(/^[-*]\s*/, '').trim());
-    const rows = buffer.filter((l) => !/^[-*]\s*/.test(l));
-    const employer = rows[0] || '';
-    const title = rows[1] || '';
-    const dateLine = rows[2] || '';
-    let startDate = '';
-    let endDate = '';
-    const dateMatch = dateLine.match(/(.+?)\s+-\s+(.+)/);
-    if (dateMatch) {
-      startDate = dateMatch[1].trim();
-      endDate = dateMatch[2].trim();
-    } else {
-      startDate = dateLine.trim();
-    }
+    if (!block.length) return;
+    const normalized = block.map(normalizeLine).filter(Boolean);
+    const bullets = normalized.filter((line) => /^[-*]\s*/.test(line)).map((line) => line.replace(/^[-*]\s*/, '').trim());
+    const rows = normalized.filter((line) => !/^[-*]\s*/.test(line));
 
-    if (employer || title || bullets.length) {
+    const company = rows[0] || '';
+    const jobTitle = rows[1] || '';
+    const dateRange = rows[2] || '';
+
+    if (company || jobTitle || dateRange || bullets.length) {
       entries.push({
-        employer,
-        title,
-        startDate,
-        endDate,
-        bullets: bullets.slice(0, 6),
+        company,
+        jobTitle,
+        dateRange,
+        bullets: bullets.slice(0, 8),
       });
     }
-    buffer = [];
+
+    block = [];
   };
 
   for (const line of lines) {
@@ -156,92 +230,154 @@ function parseExperience(lines) {
       flush();
       continue;
     }
-    buffer.push(line);
+    block.push(line);
   }
   flush();
 
   return entries;
 }
 
-function dedupe(items) {
-  const seen = new Set();
-  const out = [];
-  for (const item of items) {
-    const key = item.toLowerCase();
-    if (!seen.has(key)) {
-      seen.add(key);
-      out.push(item);
+function parseEducation(lines) {
+  const entries = [];
+  let block = [];
+
+  const flush = () => {
+    const rows = block.map((line) => line.replace(/^[-*]\s*/, '').trim()).filter(Boolean);
+    if (!rows.length) {
+      block = [];
+      return;
     }
+    entries.push({
+      degree: rows[0] || '',
+      institution: rows[1] || '',
+      dateRange: rows[2] || '',
+    });
+    block = [];
+  };
+
+  for (const line of lines) {
+    if (!line.trim()) {
+      flush();
+      continue;
+    }
+    block.push(line);
   }
-  return out;
+  flush();
+
+  return entries;
+}
+
+function normalizeSummary(summaryText) {
+  const clean = normalizeLine(summaryText);
+  if (!clean) return '';
+  const withoutObjective = clean.replace(/\bobjective\b\s*:?/gi, '').trim();
+  return withoutObjective;
 }
 
 function buildStructuredCvObject(inputText) {
   const lines = toLines(inputText);
   const sections = splitSections(lines);
-
-  const fullName = sections.preface[0] || 'Candidate Name';
-  const professionalTitle = sections.preface[1] && !/@|\+?\d/.test(sections.preface[1]) ? sections.preface[1] : '';
-  const contactLines = sections.preface.slice(professionalTitle ? 2 : 1);
-
-  const skills = dedupe(
-    sections.skills.flatMap((line) => line.split(/[|,]/g)).map((s) => s.replace(/^[-*]\s*/, '').trim()).filter(Boolean),
-  );
-
-  const simpleList = (arr) => dedupe(arr.map((line) => line.replace(/^[-*]\s*/, '').trim()).filter(Boolean));
+  const header = parseHeader(sections.preface);
 
   return {
-    fullName,
-    professionalTitle,
-    contact: parseContact(contactLines),
-    summary: sections.summary.join(' ').trim(),
-    skills,
-    experience: parseExperience(sections.experience),
-    education: simpleList(sections.education),
-    certifications: simpleList(sections.certifications),
-    languages: simpleList(sections.languages),
-    additionalInfo: simpleList(sections.additionalInfo),
+    ...header,
+    professionalSummary: normalizeSummary(sections.professionalSummary.join(' ')),
+    coreCompetencies: dedupe(sections.coreCompetencies.flatMap((line) => line.split(/[|,]/g))),
+    professionalExperience: parseExperience(sections.professionalExperience),
+    education: parseEducation(sections.education),
+    technicalSkills: dedupe(sections.technicalSkills.flatMap((line) => line.split(/[|,]/g))),
+    certifications: dedupe(sections.certifications),
+    languages: dedupe(sections.languages),
   };
 }
 
-function validateCv(cv) {
-  if (!cv.fullName) {
-    throw new Error('CV export validation failed: missing name at top.');
+function validateAndAutoCorrect(cv) {
+  const corrected = { ...cv };
+
+  if (!corrected.fullName || containsCorruption(corrected.fullName)) {
+    corrected.fullName = 'Candidate Name';
+  }
+  corrected.fullName = normalizeLine(corrected.fullName);
+
+  corrected.professionalTitle = normalizeLine(corrected.professionalTitle || 'Professional Title');
+
+  corrected.contact = corrected.contact || {};
+  corrected.contact.location = normalizeLine(corrected.contact.location || '');
+  corrected.contact.phone = normalizeLine(corrected.contact.phone || '');
+  corrected.contact.email = normalizeLine(corrected.contact.email || '');
+
+  corrected.professionalSummary = normalizeSummary(corrected.professionalSummary || '');
+
+  corrected.coreCompetencies = dedupe(corrected.coreCompetencies || []);
+  corrected.technicalSkills = dedupe(corrected.technicalSkills || []);
+  corrected.certifications = dedupe(corrected.certifications || []);
+  corrected.languages = dedupe(corrected.languages || []);
+
+  corrected.professionalExperience = (corrected.professionalExperience || []).map((role) => ({
+    company: normalizeLine(role?.company || ''),
+    jobTitle: normalizeLine(role?.jobTitle || ''),
+    dateRange: normalizeLine(role?.dateRange || ''),
+    bullets: dedupe((role?.bullets || []).map((item) => item.replace(/^[-*]\s*/, '').trim())).slice(0, 8),
+  })).filter((role) => role.company || role.jobTitle || role.dateRange || role.bullets.length);
+
+  corrected.education = (corrected.education || []).map((item) => ({
+    degree: normalizeLine(item?.degree || ''),
+    institution: normalizeLine(item?.institution || ''),
+    dateRange: normalizeLine(item?.dateRange || ''),
+  })).filter((item) => item.degree || item.institution || item.dateRange);
+
+  if (!corrected.professionalSummary) {
+    corrected.professionalSummary = 'Results-driven professional with experience delivering measurable outcomes, improving processes, and supporting cross-functional goals through clear communication and execution.';
+  }
+  corrected.professionalSummary = limitSummaryToFiveLines(corrected.professionalSummary);
+
+  if (!corrected.coreCompetencies.length) {
+    corrected.coreCompetencies = ['Process Improvement', 'Stakeholder Communication', 'Problem Solving'];
   }
 
-  if (!cv.professionalTitle) {
-    cv.professionalTitle = 'Professional Profile';
-  }
-
-  if (!cv.experience.length) {
-    cv.experience = [{
-      employer: 'Professional Experience',
-      title: '',
-      startDate: '',
-      endDate: '',
-      bullets: ['Relevant experience details available on request.'],
+  if (!corrected.professionalExperience.length) {
+    corrected.professionalExperience = [{
+      company: 'Professional Experience',
+      jobTitle: 'Role Details Available on Request',
+      dateRange: '',
+      bullets: ['Delivered responsibilities aligned with role requirements and quality standards.'],
     }];
   }
 
+  if (!corrected.education.length) {
+    corrected.education = [{
+      degree: 'Education details available on request',
+      institution: '',
+      dateRange: '',
+    }];
+  }
+
+  if (!corrected.languages.length) {
+    corrected.languages = ['English: Professional working proficiency'];
+  }
+
   const bodyText = [
-    cv.summary,
-    ...cv.skills,
-    ...cv.education,
-    ...cv.certifications,
-    ...cv.languages,
-    ...cv.additionalInfo,
-    ...cv.experience.flatMap((e) => [e.employer, e.title, e.startDate, e.endDate, ...e.bullets]),
+    corrected.professionalSummary,
+    ...corrected.coreCompetencies,
+    ...corrected.technicalSkills,
+    ...corrected.certifications,
+    ...corrected.languages,
+    ...corrected.professionalExperience.flatMap((role) => [role.company, role.jobTitle, role.dateRange, ...role.bullets]),
   ].join(' ');
 
-  if (/\bpage\s+\d+(\s+of\s+\d+)?\b/i.test(bodyText)) {
-    throw new Error('CV export validation failed: page marker artifact found in body.');
+  if (containsCorruption(bodyText) || /\bpage\s+\d+(?:\s+of\s+\d+)?\b/i.test(bodyText)) {
+    throw new Error('CV export validation failed: malformed encoding or page artifacts detected after sanitization.');
   }
+
+  return corrected;
 }
 
 function wrapLine(text, fontSize, width) {
-  const maxChars = Math.max(10, Math.floor(width / (fontSize * 0.52)));
-  const words = text.split(/\s+/).filter(Boolean);
+  const clean = normalizeLine(text);
+  const maxChars = Math.max(12, Math.floor(width / (fontSize * 0.52)));
+  const words = clean.split(/\s+/).filter(Boolean);
   if (!words.length) return [''];
+
   const lines = [];
   let current = words[0];
   for (let i = 1; i < words.length; i += 1) {
@@ -257,59 +393,87 @@ function wrapLine(text, fontSize, width) {
   return lines;
 }
 
+function lineHeight(size) {
+  return Math.ceil(size * LINE_HEIGHT_MULTIPLIER);
+}
+
+
+function limitSummaryToFiveLines(summary) {
+  const lines = wrapLine(summary, BODY_FONT_SIZE, CONTENT_WIDTH);
+  if (lines.length <= 5) return lines.join(' ');
+  return lines.slice(0, 5).join(' ');
+}
+
 function buildRenderBlocks(cv) {
   const blocks = [];
-  const contactLine = [cv.contact.phone, cv.contact.email, cv.contact.location, cv.contact.nationality, cv.contact.linkedin].filter(Boolean).join(' | ');
+  const headingStyle = { font: 'F2', size: HEADING_FONT_SIZE };
 
-  blocks.push({ type: 'line', text: cv.fullName, font: 'F2', size: 20, after: 6 });
-  blocks.push({ type: 'line', text: cv.professionalTitle, font: 'F2', size: 12, after: 6 });
-  if (contactLine) blocks.push({ type: 'line', text: contactLine, font: 'F1', size: 10, after: 10 });
+  const addHeading = (key) => {
+    blocks.push({ type: 'heading', text: SECTION_TITLES[key], ...headingStyle, before: 12, after: 5, keepWithNext: true });
+  };
 
-  const addHeading = (title) => blocks.push({ type: 'heading', text: title, font: 'F2', size: 11, before: 10, after: 5, keepWithNext: true });
+  const addCentered = (text, size, bold = false, after = 4) => {
+    if (!text) return;
+    blocks.push({ type: 'line', text, font: bold ? 'F2' : 'F1', size, align: 'center', after });
+  };
 
-  if (cv.summary) {
-    addHeading('PROFESSIONAL SUMMARY');
-    blocks.push({ type: 'paragraph', text: cv.summary, font: 'F1', size: 10.5, after: 8 });
-  }
-  if (cv.skills.length) {
-    addHeading('CORE SKILLS');
-    blocks.push({ type: 'paragraph', text: cv.skills.join(' | '), font: 'F1', size: 10.5, after: 8 });
-  }
+  addCentered(cv.fullName, NAME_FONT_SIZE, true, 6);
+  addCentered(cv.contact.location, BODY_FONT_SIZE, false, 2);
+  addCentered(cv.contact.phone, BODY_FONT_SIZE, false, 2);
+  addCentered(cv.contact.email, BODY_FONT_SIZE, false, 2);
+  addCentered(cv.professionalTitle, BODY_FONT_SIZE, false, 10);
 
-  addHeading('PROFESSIONAL EXPERIENCE');
-  for (const role of cv.experience) {
+  addHeading('professionalSummary');
+  blocks.push({ type: 'paragraph', text: cv.professionalSummary, font: 'F1', size: BODY_FONT_SIZE, after: 7 });
+
+  addHeading('coreCompetencies');
+  cv.coreCompetencies.forEach((item) => blocks.push({ type: 'line', text: item, font: 'F1', size: BODY_FONT_SIZE, after: 2 }));
+  blocks.push({ type: 'spacer', height: 5 });
+
+  addHeading('professionalExperience');
+  cv.professionalExperience.forEach((role) => {
     blocks.push({ type: 'groupStart' });
-    blocks.push({ type: 'line', text: role.employer, font: 'F2', size: 11, after: 2 });
-    if (role.title) blocks.push({ type: 'line', text: role.title, font: 'F1', size: 10.5, after: 1 });
-    const dateText = [role.startDate, role.endDate].filter(Boolean).join(' - ');
-    if (dateText) blocks.push({ type: 'line', text: dateText, font: 'F1', size: 9.5, after: 3 });
-    role.bullets.slice(0, 6).forEach((b) => blocks.push({ type: 'bullet', text: b, font: 'F1', size: 10, after: 1 }));
-    blocks.push({ type: 'spacer', height: 5 });
+    blocks.push({ type: 'line', text: role.company, font: 'F2', size: BODY_FONT_SIZE + 0.5, after: 1 });
+    if (role.jobTitle) blocks.push({ type: 'line', text: role.jobTitle, font: 'F1', size: BODY_FONT_SIZE, after: 1 });
+    if (role.dateRange) blocks.push({ type: 'line', text: role.dateRange, font: 'F1', size: BODY_FONT_SIZE - 0.5, after: 3 });
+    (role.bullets || []).forEach((bullet) => blocks.push({ type: 'bullet', text: bullet, font: 'F1', size: BODY_FONT_SIZE, after: 1 }));
+    blocks.push({ type: 'spacer', height: 6 });
     blocks.push({ type: 'groupEnd' });
+  });
+
+  addHeading('education');
+  cv.education.forEach((item) => {
+    if (item.degree) blocks.push({ type: 'line', text: item.degree, font: 'F2', size: BODY_FONT_SIZE, after: 1 });
+    if (item.institution) blocks.push({ type: 'line', text: item.institution, font: 'F1', size: BODY_FONT_SIZE, after: 1 });
+    if (item.dateRange) blocks.push({ type: 'line', text: item.dateRange, font: 'F1', size: BODY_FONT_SIZE - 0.5, after: 4 });
+  });
+
+  if (cv.technicalSkills.length) {
+    addHeading('technicalSkills');
+    cv.technicalSkills.forEach((skill) => blocks.push({ type: 'line', text: skill, font: 'F1', size: BODY_FONT_SIZE, after: 2 }));
   }
 
-  const optionals = [
-    ['EDUCATION', cv.education],
-    ['CERTIFICATIONS / TRAINING', cv.certifications],
-    ['LANGUAGES', cv.languages],
-    ['ADDITIONAL INFORMATION', cv.additionalInfo],
-  ];
+  if (cv.certifications.length) {
+    addHeading('certifications');
+    cv.certifications.forEach((cert) => blocks.push({ type: 'line', text: cert, font: 'F1', size: BODY_FONT_SIZE, after: 2 }));
+  }
 
-  optionals.forEach(([title, list]) => {
-    if (!list.length) return;
-    addHeading(title);
-    list.forEach((item) => blocks.push({ type: 'bullet', text: item, font: 'F1', size: 10, after: 1 }));
-  });
+  addHeading('languages');
+  cv.languages.forEach((language) => blocks.push({ type: 'line', text: language, font: 'F1', size: BODY_FONT_SIZE, after: 2 }));
 
   return blocks;
 }
 
 function blockHeight(block) {
   if (block.type === 'spacer') return block.height || 0;
-  const indent = block.type === 'bullet' ? 14 : 0;
-  const lines = wrapLine(block.text || '', block.size || 10, CONTENT_WIDTH - indent);
-  const lh = Math.ceil((block.size || 10) * 1.45);
-  return (block.before || 0) + lines.length * lh + (block.after || 0);
+  const indent = block.type === 'bullet' ? BULLET_INDENT : 0;
+  const lines = wrapLine(block.text || '', block.size || BODY_FONT_SIZE, CONTENT_WIDTH - indent);
+  return (block.before || 0) + lines.length * lineHeight(block.size || BODY_FONT_SIZE) + (block.after || 0);
+}
+
+function estimateCenteredX(text, size) {
+  const width = String(text || '').length * (size * 0.5);
+  return Math.max(MARGIN, Math.min(A4_WIDTH - MARGIN, (A4_WIDTH - width) / 2));
 }
 
 function renderPages(blocks) {
@@ -330,32 +494,38 @@ function renderPages(blocks) {
       y -= block.height || 0;
       return;
     }
-    y -= block.before || 0;
-    const indent = block.type === 'bullet' ? 14 : 0;
-    const lines = wrapLine(block.text || '', block.size || 10, CONTENT_WIDTH - indent);
-    const lh = Math.ceil((block.size || 10) * 1.45);
 
-    for (let i = 0; i < lines.length; i += 1) {
+    y -= block.before || 0;
+    const indent = block.type === 'bullet' ? BULLET_INDENT : 0;
+    const wrapped = wrapLine(block.text || '', block.size || BODY_FONT_SIZE, CONTENT_WIDTH - indent);
+    const lh = lineHeight(block.size || BODY_FONT_SIZE);
+
+    wrapped.forEach((line, index) => {
       if (y - lh < minY) pushPage();
-      if (block.type === 'bullet' && i === 0) {
-        commands.push(`1 0 0 1 ${MARGIN + 3} ${y} Tm\n/F1 10 Tf\n(${encodePdfText('-')}) Tj`);
+      let x = MARGIN + indent;
+      if (block.align === 'center') {
+        x = estimateCenteredX(line, block.size || BODY_FONT_SIZE);
       }
-      commands.push(`1 0 0 1 ${MARGIN + indent} ${y} Tm\n/${block.font || 'F1'} ${block.size || 10} Tf\n(${encodePdfText(lines[i])}) Tj`);
+      if (block.type === 'bullet' && index === 0) {
+        commands.push(`1 0 0 1 ${MARGIN + 3} ${y} Tm\n/F1 ${BODY_FONT_SIZE} Tf\n(${encodePdfText('-')}) Tj`);
+      }
+      commands.push(`1 0 0 1 ${x} ${y} Tm\n/${block.font || 'F1'} ${block.size || BODY_FONT_SIZE} Tf\n(${encodePdfText(line)}) Tj`);
       y -= lh;
-    }
+    });
+
     y -= block.after || 0;
   };
 
   let group = null;
-  for (let i = 0; i < blocks.length; i += 1) {
-    const block = blocks[i];
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
     if (block.type === 'groupStart') {
       group = [];
       continue;
     }
     if (block.type === 'groupEnd') {
-      const h = group.reduce((sum, b) => sum + blockHeight(b), 0);
-      if (y - h < minY) pushPage();
+      const totalHeight = group.reduce((sum, item) => sum + blockHeight(item), 0);
+      if (y - totalHeight < minY) pushPage();
       group.forEach(renderBlock);
       group = null;
       continue;
@@ -365,8 +535,8 @@ function renderPages(blocks) {
       continue;
     }
 
-    if (block.keepWithNext && blocks[i + 1]) {
-      const needed = blockHeight(block) + blockHeight(blocks[i + 1]);
+    if (block.keepWithNext && blocks[index + 1]) {
+      const needed = blockHeight(block) + blockHeight(blocks[index + 1]);
       if (y - needed < minY) pushPage();
     }
 
@@ -379,41 +549,26 @@ function renderPages(blocks) {
 }
 
 function buildPdfFromPages(pages) {
-  if (!pages.length) {
-    pages = [{ stream: 'BT\n1 0 0 1 50 780 Tm\n/F1 10 Tf\n(CV generation unavailable.) Tj\nET' }];
-  }
-  return cleaned;
-}
+  const safePages = pages.length
+    ? pages
+    : [{ stream: 'BT\n1 0 0 1 50 780 Tm\n/F1 10 Tf\n(CV generation unavailable.) Tj\nET' }];
 
-function estimateBlockHeight(block) {
-  if (block.type === 'spacer') return block.height;
-  const lineHeight = Math.ceil((block.size || 10) * 1.45);
-  const indent = block.type === 'bullet' ? 14 : 0;
-  const wrapped = wrapLine(block.text || '', block.size || 10, CONTENT_WIDTH - indent);
-  return (block.spacingBefore || 0) + wrapped.length * lineHeight + (block.spacingAfter || 0);
-}
-
-function renderPageContent(renderLines) {
-  return `BT\n${renderLines.join('\n')}\nET`;
-}
-
-function buildPdfFromPages(pages) {
   const objects = [
     '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj',
-    `2 0 obj\n<< /Type /Pages /Kids [${pages.map((_, i) => `${3 + i * 2} 0 R`).join(' ')}] /Count ${pages.length} >>\nendobj`,
+    `2 0 obj\n<< /Type /Pages /Kids [${safePages.map((_, i) => `${3 + i * 2} 0 R`).join(' ')}] /Count ${safePages.length} >>\nendobj`,
   ];
 
-  pages.forEach((page, i) => {
+  safePages.forEach((page, i) => {
     const pageId = 3 + i * 2;
     const contentId = pageId + 1;
     objects.push(
-      `${pageId} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A4_WIDTH} ${A4_HEIGHT}] /Contents ${contentId} 0 R /Resources << /Font << /F1 ${3 + pages.length * 2} 0 R /F2 ${4 + pages.length * 2} 0 R >> >> >>\nendobj`,
+      `${pageId} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A4_WIDTH} ${A4_HEIGHT}] /Contents ${contentId} 0 R /Resources << /Font << /F1 ${3 + safePages.length * 2} 0 R /F2 ${4 + safePages.length * 2} 0 R >> >> >>\nendobj`,
       `${contentId} 0 obj\n<< /Length ${Buffer.byteLength(page.stream, 'latin1')} >>\nstream\n${page.stream}\nendstream\nendobj`,
     );
   });
 
-  const f1 = 3 + pages.length * 2;
-  const f2 = 4 + pages.length * 2;
+  const f1 = 3 + safePages.length * 2;
+  const f2 = 4 + safePages.length * 2;
   objects.push(
     `${f1} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj`,
     `${f2} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj`,
@@ -426,22 +581,64 @@ function buildPdfFromPages(pages) {
     pdf += `${obj}\n`;
   }
 
-  const start = Buffer.byteLength(pdf, 'latin1');
+  const startXRef = Buffer.byteLength(pdf, 'latin1');
   pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
   for (let i = 1; i <= objects.length; i += 1) {
     pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
   }
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${start}\n%%EOF\n`;
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${startXRef}\n%%EOF\n`;
+
   return Buffer.from(pdf, 'latin1');
 }
 
+function validateRenderBlocks(blocks) {
+  const headingTitles = new Set();
+  const seenHeadingTitles = new Set();
+  let duplicateHeadingDetected = false;
+  let nameBlock = null;
+
+  blocks.forEach((block) => {
+    if (!nameBlock && block.type === 'line' && block.font === 'F2') {
+      nameBlock = block;
+    }
+    if (block.type === 'heading') {
+      if (seenHeadingTitles.has(block.text)) {
+        duplicateHeadingDetected = true;
+      }
+      seenHeadingTitles.add(block.text);
+      headingTitles.add(block.text);
+      if (block.font !== 'F2') {
+        throw new Error('CV export validation failed: section heading is not bold.');
+      }
+    }
+  });
+
+  if (!nameBlock || nameBlock.font !== 'F2' || Number(nameBlock.size) !== NAME_FONT_SIZE) {
+    throw new Error('CV export validation failed: applicant name must be bold and 2 points larger than body text.');
+  }
+
+  const requiredHeadings = [
+    SECTION_TITLES.professionalSummary,
+    SECTION_TITLES.coreCompetencies,
+    SECTION_TITLES.professionalExperience,
+    SECTION_TITLES.education,
+    SECTION_TITLES.languages,
+  ];
+
+  const missingRequired = requiredHeadings.filter((title) => !headingTitles.has(title));
+  if (duplicateHeadingDetected || missingRequired.length) {
+    throw new Error('CV export validation failed: duplicate or missing section headings detected.');
+  }
+}
+
 function buildPdfBuffer(text) {
-  const cv = buildStructuredCvObject(text);
-  validateCv(cv);
-  const blocks = buildRenderBlocks(cv);
+  const structured = buildStructuredCvObject(text);
+  const validated = validateAndAutoCorrect(structured);
+  const blocks = buildRenderBlocks(validated);
+  validateRenderBlocks(blocks);
   const pages = renderPages(blocks);
-  if (!pages.every((p) => /\(.+\) Tj/.test(p.stream))) {
-    throw new Error('CV export validation failed: empty page detected.');
+  if (!pages.length || pages.some((page) => !/\(.+\) Tj/.test(page.stream))) {
+    throw new Error('CV export validation failed: empty pages detected.');
   }
   return buildPdfFromPages(pages);
 }

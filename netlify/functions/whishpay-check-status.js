@@ -12,6 +12,7 @@ const {
   markPaymentEventProcessed,
   updateFulfillment,
 } = require('./run-store');
+const { triggerFulfillmentQueueProcessing } = require('./queue-trigger');
 const { hasSessionSecretConfigured, createFulfillmentSessionCookie } = require('./fulfillment-auth');
 
 exports.handler = async (event) => {
@@ -108,6 +109,7 @@ exports.handler = async (event) => {
               name: '',
               forceSync: true,
             });
+            await triggerFulfillmentQueueProcessing();
           }
         }
       }

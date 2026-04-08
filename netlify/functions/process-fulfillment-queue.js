@@ -96,6 +96,16 @@ exports.handler = async (event) => {
         processed.push({ jobId: job.id, status: retryable ? 'RETRY' : 'DEAD_LETTER', fulfillmentId });
         continue;
       }
+
+      if (String(fulfillment.email_status || '').toUpperCase() === 'SENT') {
+        await completeFulfillmentJob(job.id, {
+          status: 'COMPLETED',
+          last_status_code: 208,
+          last_response_body: JSON.stringify({ ok: true, duplicate: true, reason: 'EMAIL_ALREADY_SENT' }),
+        });
+        processed.push({ jobId: job.id, status: 'COMPLETED', fulfillmentId, duplicate: true });
+        continue;
+      }
       if (!email) {
         await completeFulfillmentJob(job.id, {
           status: 'DEAD_LETTER',
