@@ -9,6 +9,7 @@ const {
 } = require('./run-store');
 const { saveEmailDownloadSnapshot } = require('./email-download-store');
 const { buildPdfBuffer } = require('./pdf-builder');
+const { triggerEmailQueueProcessing } = require('./queue-trigger');
 const crypto = require('crypto');
 
 function json(statusCode, payload) {
@@ -214,6 +215,7 @@ exports.handler = async (event) => {
         resend: isResend,
         ...(fulfillmentId ? { fulfillmentId } : {}),
       });
+      await triggerEmailQueueProcessing();
       return json(202, { ok: true, queued: true, jobId: queued.id, ...(fulfillmentId ? { fulfillmentId } : {}) });
     }
 

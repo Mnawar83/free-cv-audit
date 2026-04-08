@@ -1,0 +1,83 @@
+const assert = require('assert');
+const { buildPdfBuffer } = require('../netlify/functions/pdf-builder');
+
+function decodePdf(buffer) {
+  return buffer.toString('latin1');
+}
+
+async function run() {
+  const sampleCv = [
+    'Jane Doe',
+    'Senior Product Manager',
+    'Dubai, UAE | +971 50 123 4567 | jane@example.com',
+    '',
+    'Professional Summary',
+    'Experienced product manager with 8+ years leading roadmap strategy, cross-functional delivery, and customer-centric product improvements across fintech and SaaS portfolios.',
+    '',
+    'Core Competencies',
+    '- Product Strategy',
+    '- Stakeholder Management',
+    '- KPI Optimization',
+    '',
+    'Professional Experience',
+    'Acme Corp',
+    'Senior Product Manager',
+    'Jan 2021 - Present',
+    '- Led discovery and launch of core growth initiatives.',
+    '- Improved conversion rates through experimentation.',
+    '',
+    'Education',
+    'MBA, Business Administration',
+    'State University',
+    '2019',
+    '',
+    'Technical Skills',
+    'SQL, Jira, Tableau',
+    '',
+    'Certifications',
+    'PMP Certification',
+    '',
+    'Languages',
+    'Arabic: Native',
+    'English: Proficient',
+  ].join('\n');
+
+  const pdf = buildPdfBuffer(sampleCv);
+  assert.ok(pdf.length > 1000, 'PDF should be generated.');
+
+  const content = decodePdf(pdf);
+  assert.ok(content.includes('/F2 12 Tf\n(Jane Doe) Tj'), 'Name should be bold and exactly 2 points larger than body text.');
+  assert.ok(content.includes('/F2 11 Tf\n(PROFESSIONAL SUMMARY) Tj'), 'Section heading should be bold.');
+  assert.ok(content.includes('/F2 11 Tf\n(CORE COMPETENCIES) Tj'), 'Section heading should be bold.');
+  assert.ok(content.includes('/F2 11 Tf\n(PROFESSIONAL EXPERIENCE) Tj'), 'Section heading should be bold.');
+  assert.ok(!/Page\s+1\b/i.test(content), 'Page marker artifacts should not be rendered in content.');
+  assert.ok(!content.includes('�'), 'Corrupted replacement symbols must be removed.');
+
+  const corruptedInput = [
+    'Jane Doe',
+    'Page 1 of 2',
+    'Professional Summary',
+    'Objective: Build great products � with modern strategy.',
+    'Core Competencies',
+    'Roadmap, Discovery',
+    'Professional Experience',
+    'Foo Inc',
+    'Manager',
+    '2020 - 2024',
+    '- Delivered outcomes',
+    'Languages',
+    'English: Proficient',
+  ].join('\n');
+
+  const repairedPdf = buildPdfBuffer(corruptedInput);
+  const repairedContent = decodePdf(repairedPdf);
+  assert.ok(!/Page\s+1\s+of\s+2/i.test(repairedContent), 'Page labels must be removed before render.');
+  assert.ok(!repairedContent.includes('�'), 'Malformed encoding should be removed before render.');
+
+  console.log('pdf builder formatting test passed');
+}
+
+run().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

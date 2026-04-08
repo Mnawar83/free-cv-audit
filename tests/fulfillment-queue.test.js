@@ -59,6 +59,21 @@ async function run() {
   const updatedFulfillment = await runStore.getFulfillment(fulfillment.fulfillment_id);
   assert.strictEqual(updatedFulfillment.email_status, 'SENT');
 
+
+  await runStore.enqueueFulfillmentJob({
+    fulfillmentId: fulfillment.fulfillment_id,
+    email: 'queue@example.com',
+    name: 'Queue User',
+    forceSync: true,
+  });
+  const duplicateResponse = await handler({
+    httpMethod: 'POST',
+    headers: { Authorization: 'Bearer queue-secret' },
+  });
+  const duplicatePayload = JSON.parse(duplicateResponse.body || '{}');
+  assert.strictEqual(duplicatePayload.processed[0].duplicate, true, 'Already-sent fulfillments should be short-circuited.');
+  assert.strictEqual(sendCount, 1, 'Duplicate fulfillment jobs should not send duplicate emails.');
+
   const pending = await runStore.createFulfillment({
     run_id: runId,
     email: 'pendingqueue@example.com',
