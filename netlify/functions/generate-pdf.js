@@ -1,6 +1,6 @@
 const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { LINKEDIN_UPSELL_STATUS, createRunId, getRun, upsertRun } = require('./run-store');
-const { buildPdfBuffer } = require('./pdf-builder');
+const { buildPdfBuffer, normalizeToCvTemplateText } = require('./pdf-builder');
 
 const PDF_FILENAME = 'revised-cv.pdf';
 
@@ -23,6 +23,11 @@ function normalizeRevisedCvText(text) {
     .replace(/^\s*additional information\s*:?\s*$/gim, 'ADDITIONAL INFORMATION');
 
   return normalized.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function canonicalizeCvText(text) {
+  const normalizedText = normalizeRevisedCvText(text);
+  return normalizeToCvTemplateText(normalizedText);
 }
 
 function htmlErrorResponse(statusCode, message, options = {}) {
@@ -79,7 +84,8 @@ exports.handler = async (event) => {
       }
       const run = await getRun(runId);
       if (run?.revised_cv_text) {
-        const pdfBuffer = buildPdfBuffer(run.revised_cv_text);
+        const canonicalText = canonicalizeCvText(run.revised_cv_text);
+        const pdfBuffer = buildPdfBuffer(canonicalText);
         return pdfResponse(pdfBuffer, runId, true);
       }
       if (!run?.original_cv_text) {
@@ -112,7 +118,8 @@ exports.handler = async (event) => {
     const resolvedCvAnalysis = cvAnalysis || existingRun?.audit_result || '';
 
     if (existingRun?.revised_cv_text && !forceRegenerate) {
-      const cachedPdfBuffer = buildPdfBuffer(existingRun.revised_cv_text);
+      const canonicalText = canonicalizeCvText(existingRun.revised_cv_text);
+      const cachedPdfBuffer = buildPdfBuffer(canonicalText);
       return pdfResponse(cachedPdfBuffer, incomingRunId, isGetRequest);
     }
     const candidateModels = getGoogleAiCandidateModels();
@@ -252,7 +259,7 @@ Before returning, verify:
       revisedText = resolvedCvText;
       usedFallbackText = true;
     }
-    revisedText = normalizeRevisedCvText(revisedText);
+    revisedText = canonicalizeCvText(revisedText);
 
     const pdfBuffer = buildPdfBuffer(revisedText);
     let runId = incomingRunId || createRunId();

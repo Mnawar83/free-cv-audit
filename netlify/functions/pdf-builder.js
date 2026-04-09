@@ -349,7 +349,7 @@ function validateAndAutoCorrect(cv) {
   }
   corrected.fullName = normalizeLine(corrected.fullName);
 
-  corrected.professionalTitle = normalizeLine(corrected.professionalTitle || 'Professional Title');
+  corrected.professionalTitle = normalizeLine(corrected.professionalTitle || '');
 
   corrected.contact = corrected.contact || {};
   corrected.contact.location = normalizeLine(corrected.contact.location || '');
@@ -387,8 +387,8 @@ function validateAndAutoCorrect(cv) {
 
   if (!corrected.professionalExperience.length) {
     corrected.professionalExperience = [{
-      company: 'Professional Experience',
-      jobTitle: 'Role Details Available on Request',
+      company: 'Recent Professional Experience',
+      jobTitle: corrected.professionalTitle || 'Specialist',
       dateRange: '',
       bullets: ['Delivered responsibilities aligned with role requirements and quality standards.'],
     }];
@@ -396,7 +396,7 @@ function validateAndAutoCorrect(cv) {
 
   if (!corrected.education.length) {
     corrected.education = [{
-      degree: 'Education details available on request',
+      degree: 'Education',
       institution: '',
       dateRange: '',
     }];
@@ -652,10 +652,29 @@ function validateRenderBlocks(blocks) {
   const seenHeadingTitles = new Set();
   let duplicateHeadingDetected = false;
   let nameBlock = null;
+  let hasBullet = false;
 
   blocks.forEach((block) => {
     if (!nameBlock && block.type === 'line' && block.font === 'F2') {
       nameBlock = block;
+    }
+    const text = String(block.text || '');
+    if (text) {
+      if (containsCorruption(text) || /page\s+\d+(?:\s+of\s+\d+)?/i.test(text)) {
+        throw new Error('CV export validation failed: malformed characters or page artifacts detected in rendered content.');
+      }
+      if (/\b[A-Za-z]\s[A-Za-z]\b/.test(text)) {
+        throw new Error('CV export validation failed: split-letter artifacts detected in rendered content.');
+      }
+      if (/candidate name|available on request/i.test(text)) {
+        throw new Error('CV export validation failed: placeholder text detected in rendered content.');
+      }
+    }
+    if (block.type === 'bullet') {
+      hasBullet = true;
+      if (!text.trim()) {
+        throw new Error('CV export validation failed: empty bullet detected.');
+      }
     }
     if (block.type === 'heading') {
       if (seenHeadingTitles.has(block.text)) {
@@ -685,6 +704,50 @@ function validateRenderBlocks(blocks) {
   if (duplicateHeadingDetected || missingRequired.length) {
     throw new Error('CV export validation failed: duplicate or missing section headings detected.');
   }
+  if (!hasBullet) {
+    throw new Error('CV export validation failed: at least one bullet point is required.');
+  }
+}
+
+function normalizeToCvTemplateText(inputText) {
+  const structured = buildStructuredCvObject(inputText);
+  const cv = validateAndAutoCorrect(structured);
+  const lines = [
+    cv.fullName,
+    cv.contact.location,
+    cv.contact.phone,
+    cv.contact.email,
+    cv.professionalTitle,
+    '',
+    SECTION_TITLES.professionalSummary,
+    cv.professionalSummary,
+    '',
+    SECTION_TITLES.coreCompetencies,
+    ...cv.coreCompetencies.map((item) => `- ${item}`),
+    '',
+    SECTION_TITLES.professionalExperience,
+  ];
+
+  cv.professionalExperience.forEach((role) => {
+    lines.push(role.company || '', role.jobTitle || '', role.dateRange || '');
+    (role.bullets || []).forEach((bullet) => lines.push(`- ${bullet}`));
+    lines.push('');
+  });
+
+  lines.push(SECTION_TITLES.education);
+  cv.education.forEach((item) => {
+    lines.push(item.degree || '', item.institution || '', item.dateRange || '', '');
+  });
+
+  if (cv.technicalSkills.length) {
+    lines.push(SECTION_TITLES.technicalSkills, ...cv.technicalSkills.map((skill) => `- ${skill}`), '');
+  }
+  if (cv.certifications.length) {
+    lines.push(SECTION_TITLES.certifications, ...cv.certifications.map((cert) => `- ${cert}`), '');
+  }
+  lines.push(SECTION_TITLES.languages, ...cv.languages.map((language) => `- ${language}`));
+
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function buildPdfBuffer(text) {
@@ -715,6 +778,7 @@ function pdfResponse(pdfBuffer, filename, inline = false) {
 module.exports = {
   buildPdfBuffer,
   pdfResponse,
+  normalizeToCvTemplateText,
   __test: {
     parseExperience,
   },

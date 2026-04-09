@@ -8,7 +8,7 @@ const {
   upsertEmailDelivery,
 } = require('./run-store');
 const { saveEmailDownloadSnapshot } = require('./email-download-store');
-const { buildPdfBuffer } = require('./pdf-builder');
+const { buildPdfBuffer, normalizeToCvTemplateText } = require('./pdf-builder');
 const { triggerEmailQueueProcessing } = require('./queue-trigger');
 const crypto = require('crypto');
 
@@ -82,6 +82,17 @@ function createIdempotencyKey({ email, runId, isResend }) {
     .createHash('sha256')
     .update(`${email}|${runId}|${isResend ? 'resend' : 'first'}`)
     .digest('hex');
+}
+
+function canonicalizeCvText(text) {
+  const safeText = toSafeText(text);
+  if (!safeText) return '';
+  try {
+    return normalizeToCvTemplateText(safeText);
+  } catch (error) {
+    console.warn('Unable to normalize CV text; using source text for PDF generation.', error?.message || error);
+    return safeText;
+  }
 }
 
 async function fetchPdfBase64FromUrl(cvUrl) {
@@ -240,7 +251,7 @@ exports.handler = async (event) => {
         });
       }
     }
-    const revisedCvText = String(run?.revised_cv_text || '');
+    const revisedCvText = run?.revised_cv_text ? canonicalizeCvText(run.revised_cv_text) : '';
     if (!revisedCvText) {
       console.warn('Run is missing revised CV text; sending email with runId download URL only.', { runId });
     }
@@ -258,7 +269,8 @@ exports.handler = async (event) => {
     }
     if (!snapshotPdfBase64 && clientCvText) {
       try {
-        snapshotPdfBase64 = buildPdfBuffer(clientCvText).toString('base64');
+        const canonicalClientText = canonicalizeCvText(clientCvText);
+        snapshotPdfBase64 = buildPdfBuffer(canonicalClientText).toString('base64');
       } catch (buildError) {
         console.warn('Unable to build CV PDF from client-provided text.', buildError?.message || buildError);
       }
