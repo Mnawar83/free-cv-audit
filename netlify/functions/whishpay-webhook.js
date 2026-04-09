@@ -83,15 +83,17 @@ exports.handler = async (event) => {
 
     const paid = isPaidStatus(payload);
     if (paid) {
+      const deliveryEmail = String(fulfillment.email || '').trim().toLowerCase();
       await updateFulfillment(fulfillment.fulfillment_id, {
         payment_status: 'PAID',
+        email: deliveryEmail || null,
         provider_capture_id: String(payload?.transactionId || payload?.id || fulfillment.provider_capture_id || ''),
         paid_at: fulfillment.paid_at || new Date().toISOString(),
       });
-      if (fulfillment.email) {
+      if (deliveryEmail) {
         await enqueueFulfillmentJob({
           fulfillmentId: fulfillment.fulfillment_id,
-          email: fulfillment.email,
+          email: deliveryEmail,
           name: '',
           forceSync: true,
         });
