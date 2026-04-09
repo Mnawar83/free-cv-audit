@@ -137,7 +137,7 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         id: data.id,
         approvalUrl: approveLink,
-        ...(fulfillmentId ? { fulfillmentId } : {}),
+        ...((sessionCookie && fulfillmentId) ? { fulfillmentId } : {}),
       }),
     };
   } catch (error) {

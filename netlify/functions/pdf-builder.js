@@ -206,6 +206,7 @@ function dedupe(lines = []) {
 function parseExperience(lines) {
   const entries = [];
   let currentRole = null;
+  let sawBlankLine = false;
 
   const flushCurrentRole = () => {
     if (!currentRole) return;
@@ -242,9 +243,16 @@ function parseExperience(lines) {
   for (const rawLine of lines) {
     const line = normalizeLine(rawLine);
     if (!line) {
-      flushCurrentRole();
+      sawBlankLine = true;
       continue;
     }
+    if (sawBlankLine && currentRole) {
+      const startsBullet = /^[-*]\s*/.test(line);
+      if (!startsBullet && currentRole.bullets.length) {
+        flushCurrentRole();
+      }
+    }
+    sawBlankLine = false;
     const bullet = line.match(/^[-*]\s*(.+)$/);
     if (bullet) {
       if (!currentRole) {
@@ -704,4 +712,10 @@ function pdfResponse(pdfBuffer, filename, inline = false) {
   };
 }
 
-module.exports = { buildPdfBuffer, pdfResponse };
+module.exports = {
+  buildPdfBuffer,
+  pdfResponse,
+  __test: {
+    parseExperience,
+  },
+};

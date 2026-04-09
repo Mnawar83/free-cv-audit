@@ -155,6 +155,7 @@ exports.handler = async (event) => {
     }
 
     const updated = fulfillmentId ? await getFulfillmentByProviderOrderId('paypal', orderID) : null;
+    const responseFulfillmentId = setCookie ? (updated?.fulfillment_id || fulfillmentId || null) : null;
     return {
       statusCode: 200,
       headers: {
@@ -163,7 +164,7 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         status: data.status,
         paid: updated?.payment_status === 'PAID',
-        fulfillmentId: updated?.fulfillment_id || fulfillmentId || null,
+        fulfillmentId: responseFulfillmentId,
       }),
     };
   } catch (error) {
