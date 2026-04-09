@@ -97,6 +97,7 @@ exports.handler = async (event) => {
     } else {
       const body = JSON.parse(event.body || '{}');
       incomingRunId = body.runId;
+      var forceRegenerate = Boolean(body.forceRegenerate);
       if (incomingRunId) {
         try {
           existingRun = await getRun(incomingRunId);
@@ -110,7 +111,7 @@ exports.handler = async (event) => {
     const resolvedCvText = cvText || existingRun?.original_cv_text || '';
     const resolvedCvAnalysis = cvAnalysis || existingRun?.audit_result || '';
 
-    if (existingRun?.revised_cv_text) {
+    if (existingRun?.revised_cv_text && !forceRegenerate) {
       const cachedPdfBuffer = buildPdfBuffer(existingRun.revised_cv_text);
       return pdfResponse(cachedPdfBuffer, incomingRunId, isGetRequest);
     }

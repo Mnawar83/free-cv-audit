@@ -219,7 +219,27 @@ exports.handler = async (event) => {
       return json(202, { ok: true, queued: true, jobId: queued.id, ...(fulfillmentId ? { fulfillmentId } : {}) });
     }
 
-    const run = await getRun(runId);
+    let run = await getRun(runId);
+    if (run?.revised_cv_fallback_generated_at && run?.original_cv_text) {
+      try {
+        const generatePdfHandler = require('./generate-pdf').handler;
+        await generatePdfHandler({
+          httpMethod: 'POST',
+          body: JSON.stringify({
+            runId,
+            cvText: run.original_cv_text,
+            cvAnalysis: run.audit_result || '',
+            forceRegenerate: true,
+          }),
+        });
+        run = await getRun(runId);
+      } catch (refreshError) {
+        console.warn('Unable to refresh fallback revised CV before sending email.', {
+          runId,
+          error: refreshError?.message || refreshError,
+        });
+      }
+    }
     const revisedCvText = String(run?.revised_cv_text || '');
     if (!revisedCvText) {
       console.warn('Run is missing revised CV text; sending email with runId download URL only.', { runId });
