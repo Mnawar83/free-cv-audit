@@ -7,7 +7,7 @@ const BODY_FONT_SIZE = 10;
 const NAME_FONT_SIZE = BODY_FONT_SIZE + 2;
 const HEADING_FONT_SIZE = 11;
 const BULLET_INDENT = 14;
-const LINE_HEIGHT_MULTIPLIER = 1.42;
+const LINE_HEIGHT_MULTIPLIER = 1.38;
 
 const SECTION_ORDER = [
   'professionalSummary',
@@ -107,8 +107,8 @@ function toLines(rawText) {
   return sanitizePdfText(rawText)
     .split('\n')
     .map(normalizeLine)
-    .filter(Boolean)
-    .filter((line) => !isPageArtifact(line));
+    .filter((line) => !line || !isPageArtifact(line))
+    .filter((line, index, all) => !(line === '' && all[index - 1] === ''));
 }
 
 function headingKey(line) {
@@ -174,6 +174,10 @@ function splitSections(lines) {
   let current = 'preface';
 
   for (const line of lines) {
+    if (!line.trim()) {
+      sections[current].push('');
+      continue;
+    }
     const candidateKey = headingKey(line);
     if (candidateKey) {
       current = candidateKey;
@@ -201,38 +205,84 @@ function dedupe(lines = []) {
 
 function parseExperience(lines) {
   const entries = [];
-  let block = [];
+  let currentRole = null;
+  let sawBlankLine = false;
 
-  const flush = () => {
-    if (!block.length) return;
-    const normalized = block.map(normalizeLine).filter(Boolean);
-    const bullets = normalized.filter((line) => /^[-*]\s*/.test(line)).map((line) => line.replace(/^[-*]\s*/, '').trim());
-    const rows = normalized.filter((line) => !/^[-*]\s*/.test(line));
-
-    const company = rows[0] || '';
-    const jobTitle = rows[1] || '';
-    const dateRange = rows[2] || '';
-
-    if (company || jobTitle || dateRange || bullets.length) {
+  const flushCurrentRole = () => {
+    if (!currentRole) return;
+    if (currentRole.company || currentRole.jobTitle || currentRole.dateRange || currentRole.bullets.length) {
       entries.push({
-        company,
-        jobTitle,
-        dateRange,
-        bullets: bullets.slice(0, 8),
+        company: currentRole.company,
+        jobTitle: currentRole.jobTitle,
+        dateRange: currentRole.dateRange,
+        bullets: currentRole.bullets.slice(0, 8),
       });
     }
-
-    block = [];
+    currentRole = null;
   };
 
-  for (const line of lines) {
-    if (!line.trim()) {
-      flush();
+  const startRoleFromHeader = (line) => {
+    if (/^[-*]\s+/.test(line)) return false;
+    const parts = line.split('|').map((part) => normalizeLine(part)).filter(Boolean);
+    if (!parts.length) return false;
+    const looksLikeHeader = parts.length >= 4;
+    if (!looksLikeHeader) return false;
+    flushCurrentRole();
+    const jobTitle = parts[0] || '';
+    const company = [parts[1], parts[2]].filter(Boolean).join(' | ');
+    const dateRange = parts.slice(3).join(' | ');
+    currentRole = {
+      company,
+      jobTitle,
+      dateRange,
+      bullets: [],
+    };
+    return true;
+  };
+
+  for (const rawLine of lines) {
+    const line = normalizeLine(rawLine);
+    if (!line) {
+      sawBlankLine = true;
       continue;
     }
-    block.push(line);
+    if (sawBlankLine && currentRole) {
+      const startsBullet = /^[-*]\s*/.test(line);
+      if (!startsBullet && currentRole.bullets.length) {
+        flushCurrentRole();
+      }
+    }
+    sawBlankLine = false;
+    const bullet = line.match(/^[-*]\s*(.+)$/);
+    if (bullet) {
+      if (!currentRole) {
+        currentRole = { company: '', jobTitle: '', dateRange: '', bullets: [] };
+      }
+      currentRole.bullets.push(bullet[1].trim());
+      continue;
+    }
+    if (startRoleFromHeader(line)) {
+      continue;
+    }
+
+    if (!currentRole) {
+      currentRole = { company: '', jobTitle: '', dateRange: '', bullets: [] };
+    }
+    if (!currentRole.company) {
+      currentRole.company = line;
+      continue;
+    }
+    if (!currentRole.jobTitle) {
+      currentRole.jobTitle = line;
+      continue;
+    }
+    if (!currentRole.dateRange) {
+      currentRole.dateRange = line;
+      continue;
+    }
+    currentRole.bullets.push(line);
   }
-  flush();
+  flushCurrentRole();
 
   return entries;
 }
@@ -409,7 +459,7 @@ function buildRenderBlocks(cv) {
   const headingStyle = { font: 'F2', size: HEADING_FONT_SIZE };
 
   const addHeading = (key) => {
-    blocks.push({ type: 'heading', text: SECTION_TITLES[key], ...headingStyle, before: 12, after: 5, keepWithNext: true });
+    blocks.push({ type: 'heading', text: SECTION_TITLES[key], ...headingStyle, before: 10, after: 4, keepWithNext: true });
   };
 
   const addCentered = (text, size, bold = false, after = 4) => {
@@ -417,27 +467,26 @@ function buildRenderBlocks(cv) {
     blocks.push({ type: 'line', text, font: bold ? 'F2' : 'F1', size, align: 'center', after });
   };
 
-  addCentered(cv.fullName, NAME_FONT_SIZE, true, 6);
-  addCentered(cv.contact.location, BODY_FONT_SIZE, false, 2);
-  addCentered(cv.contact.phone, BODY_FONT_SIZE, false, 2);
-  addCentered(cv.contact.email, BODY_FONT_SIZE, false, 2);
-  addCentered(cv.professionalTitle, BODY_FONT_SIZE, false, 10);
+  const contactLine = [cv.contact.location, cv.contact.phone, cv.contact.email].filter(Boolean).join('  •  ');
+
+  addCentered(cv.fullName, NAME_FONT_SIZE, true, 4);
+  addCentered(cv.professionalTitle, BODY_FONT_SIZE + 0.4, true, 4);
+  addCentered(contactLine, BODY_FONT_SIZE - 0.2, false, 8);
 
   addHeading('professionalSummary');
-  blocks.push({ type: 'paragraph', text: cv.professionalSummary, font: 'F1', size: BODY_FONT_SIZE, after: 7 });
+  blocks.push({ type: 'paragraph', text: cv.professionalSummary, font: 'F1', size: BODY_FONT_SIZE, after: 6 });
 
   addHeading('coreCompetencies');
-  cv.coreCompetencies.forEach((item) => blocks.push({ type: 'line', text: item, font: 'F1', size: BODY_FONT_SIZE, after: 2 }));
-  blocks.push({ type: 'spacer', height: 5 });
+  blocks.push({ type: 'paragraph', text: cv.coreCompetencies.join(' | '), font: 'F1', size: BODY_FONT_SIZE, after: 5 });
 
   addHeading('professionalExperience');
   cv.professionalExperience.forEach((role) => {
     blocks.push({ type: 'groupStart' });
     blocks.push({ type: 'line', text: role.company, font: 'F2', size: BODY_FONT_SIZE + 0.5, after: 1 });
     if (role.jobTitle) blocks.push({ type: 'line', text: role.jobTitle, font: 'F1', size: BODY_FONT_SIZE, after: 1 });
-    if (role.dateRange) blocks.push({ type: 'line', text: role.dateRange, font: 'F1', size: BODY_FONT_SIZE - 0.5, after: 3 });
+    if (role.dateRange) blocks.push({ type: 'line', text: role.dateRange, font: 'F1', size: BODY_FONT_SIZE - 0.5, after: 2 });
     (role.bullets || []).forEach((bullet) => blocks.push({ type: 'bullet', text: bullet, font: 'F1', size: BODY_FONT_SIZE, after: 1 }));
-    blocks.push({ type: 'spacer', height: 6 });
+    blocks.push({ type: 'spacer', height: 4 });
     blocks.push({ type: 'groupEnd' });
   });
 
@@ -450,16 +499,16 @@ function buildRenderBlocks(cv) {
 
   if (cv.technicalSkills.length) {
     addHeading('technicalSkills');
-    cv.technicalSkills.forEach((skill) => blocks.push({ type: 'line', text: skill, font: 'F1', size: BODY_FONT_SIZE, after: 2 }));
+    blocks.push({ type: 'paragraph', text: cv.technicalSkills.join(' | '), font: 'F1', size: BODY_FONT_SIZE, after: 4 });
   }
 
   if (cv.certifications.length) {
     addHeading('certifications');
-    cv.certifications.forEach((cert) => blocks.push({ type: 'line', text: cert, font: 'F1', size: BODY_FONT_SIZE, after: 2 }));
+    cv.certifications.forEach((cert) => blocks.push({ type: 'line', text: cert, font: 'F1', size: BODY_FONT_SIZE, after: 1 }));
   }
 
   addHeading('languages');
-  cv.languages.forEach((language) => blocks.push({ type: 'line', text: language, font: 'F1', size: BODY_FONT_SIZE, after: 2 }));
+  blocks.push({ type: 'paragraph', text: cv.languages.join(' | '), font: 'F1', size: BODY_FONT_SIZE, after: 0 });
 
   return blocks;
 }
@@ -474,6 +523,11 @@ function blockHeight(block) {
 function estimateCenteredX(text, size) {
   const width = String(text || '').length * (size * 0.5);
   return Math.max(MARGIN, Math.min(A4_WIDTH - MARGIN, (A4_WIDTH - width) / 2));
+}
+
+function estimateRightX(text, size) {
+  const width = String(text || '').length * (size * 0.5);
+  return Math.max(MARGIN, A4_WIDTH - MARGIN - width);
 }
 
 function renderPages(blocks) {
@@ -505,6 +559,8 @@ function renderPages(blocks) {
       let x = MARGIN + indent;
       if (block.align === 'center') {
         x = estimateCenteredX(line, block.size || BODY_FONT_SIZE);
+      } else if (block.align === 'right') {
+        x = estimateRightX(line, block.size || BODY_FONT_SIZE);
       }
       if (block.type === 'bullet' && index === 0) {
         commands.push(`1 0 0 1 ${MARGIN + 3} ${y} Tm\n/F1 ${BODY_FONT_SIZE} Tf\n(${encodePdfText('-')}) Tj`);
@@ -656,4 +712,10 @@ function pdfResponse(pdfBuffer, filename, inline = false) {
   };
 }
 
-module.exports = { buildPdfBuffer, pdfResponse };
+module.exports = {
+  buildPdfBuffer,
+  pdfResponse,
+  __test: {
+    parseExperience,
+  },
+};

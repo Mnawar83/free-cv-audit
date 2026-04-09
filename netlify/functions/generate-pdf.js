@@ -4,6 +4,27 @@ const { buildPdfBuffer } = require('./pdf-builder');
 
 const PDF_FILENAME = 'revised-cv.pdf';
 
+function normalizeRevisedCvText(text) {
+  if (!text) return '';
+  let normalized = String(text).replace(/\r\n?/g, '\n');
+  normalized = normalized.replace(/^\s{0,3}#{1,6}\s+/gm, '');
+  normalized = normalized.replace(/^\s*[-*•]\s+/gm, '- ');
+  normalized = normalized
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+$/g, ''))
+    .join('\n');
+
+  normalized = normalized
+    .replace(/^\s*professional summary\s*:?\s*$/gim, 'PROFESSIONAL SUMMARY')
+    .replace(/^\s*core skills\s*:?\s*$/gim, 'CORE SKILLS')
+    .replace(/^\s*professional experience\s*:?\s*$/gim, 'PROFESSIONAL EXPERIENCE')
+    .replace(/^\s*education\s*:?\s*$/gim, 'EDUCATION')
+    .replace(/^\s*certifications?\s*:?\s*$/gim, 'CERTIFICATIONS')
+    .replace(/^\s*additional information\s*:?\s*$/gim, 'ADDITIONAL INFORMATION');
+
+  return normalized.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function htmlErrorResponse(statusCode, message, options = {}) {
   const { showRetryHint } = options;
   const retryHint = showRetryHint
@@ -112,16 +133,46 @@ exports.handler = async (event) => {
       revisedText = resolvedCvText;
       usedFallbackText = true;
     } else {
-    const systemPrompt = `You are an expert CV writer for Work Waves Career Services.
-Rewrite the CV for ATS compatibility and professional impact.
-Return only the revised CV content, formatted as plain text with clear section headings.`;
+    const systemPrompt = `You are a senior CV writer and ATS optimization specialist at Work Waves Career Services.
+
+Rewrite the provided CV into an ATS-friendly, submission-ready version.
+
+Rules:
+- Use only facts found in the provided CV text (and optional audit notes).
+- Do not invent employers, dates, titles, certifications, tools, or metrics.
+- If a metric is missing, strengthen wording without fabricating numbers.
+- Keep chronology and tense consistent.
+- Return plain text only. No preamble. No markdown code fences.
+
+Style:
+- Crisp, professional, and impact-oriented.
+- Replace weak responsibility statements with achievement-driven bullets.
+- Keep bullets concise and avoid repetition.
+- Integrate relevant keywords naturally (no keyword stuffing).
+
+Output sections (in this order):
+PROFESSIONAL SUMMARY
+CORE SKILLS
+PROFESSIONAL EXPERIENCE
+EDUCATION
+CERTIFICATIONS (omit if not present in source)
+ADDITIONAL INFORMATION (omit if not present in source)
+
+Within PROFESSIONAL EXPERIENCE:
+- Format each role as: Job Title | Company | Location | Dates
+- Use clear bullet points under each role.
+
+Before returning, verify:
+- No invented facts.
+- No duplicate bullets.
+- Clear section headings and readable ATS-safe structure.`;
 
     const analysisNote = resolvedCvAnalysis
-      ? `\n\nUse this CV analysis as reference while revising:\n${resolvedCvAnalysis}`
+      ? `\n\nReference these audit notes when improving structure, wording, and keyword alignment (without inventing facts):\n${resolvedCvAnalysis}`
       : '';
     const payload = {
       systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ parts: [{ text: `Rewrite this CV:\n\n${resolvedCvText}${analysisNote}` }] }],
+      contents: [{ parts: [{ text: `Rewrite this CV into a polished ATS-optimized version:\n\n${resolvedCvText}${analysisNote}` }] }],
     };
 
     for (const model of candidateModels) {
@@ -201,6 +252,7 @@ Return only the revised CV content, formatted as plain text with clear section h
       revisedText = resolvedCvText;
       usedFallbackText = true;
     }
+    revisedText = normalizeRevisedCvText(revisedText);
 
     const pdfBuffer = buildPdfBuffer(revisedText);
     let runId = incomingRunId || createRunId();
