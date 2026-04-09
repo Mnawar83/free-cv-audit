@@ -3,7 +3,14 @@ const {
   PAYPAL_CURRENCY,
   getPayPalAccessToken,
 } = require('./paypal-utils');
-const { createFulfillment, createFulfillmentAccessToken, getRun, upsertRun } = require('./run-store');
+const {
+  createFulfillment,
+  createFulfillmentAccessToken,
+  getFulfillmentByProviderOrderId,
+  getRun,
+  updateFulfillment,
+  upsertRun,
+} = require('./run-store');
 const { hasSessionSecretConfigured, createFulfillmentSessionCookie } = require('./fulfillment-auth');
 
 exports.handler = async (event) => {
@@ -87,9 +94,12 @@ exports.handler = async (event) => {
       : null;
     let fulfillmentId = '';
     let sessionCookie = '';
-    if (sessionSecretAvailable) {
-      const fulfillmentAccessToken = createFulfillmentAccessToken();
-      const fulfillment = await createFulfillment({
+    const existingFulfillment = await getFulfillmentByProviderOrderId('paypal', data.id);
+    let fulfillment = existingFulfillment;
+    let fulfillmentAccessToken = '';
+    if (!fulfillment) {
+      fulfillmentAccessToken = createFulfillmentAccessToken();
+      fulfillment = await createFulfillment({
         run_id: runId,
         email,
         provider: 'paypal',
@@ -97,12 +107,25 @@ exports.handler = async (event) => {
         payment_status: 'PENDING',
         access_token: fulfillmentAccessToken,
       });
-      fulfillmentId = fulfillment.fulfillment_id;
-      sessionCookie = createFulfillmentSessionCookie({
-        fulfillmentId: fulfillment.fulfillment_id,
-        accessToken: fulfillmentAccessToken,
-        expiresAt: fulfillment.access_token_expires_at,
+    } else if (!fulfillment.email || fulfillment.email !== email) {
+      fulfillment = await updateFulfillment(fulfillment.fulfillment_id, {
+        email,
       });
+    }
+    fulfillmentId = fulfillment?.fulfillment_id || '';
+    if (sessionSecretAvailable) {
+      if (fulfillmentAccessToken && fulfillment) {
+        sessionCookie = createFulfillmentSessionCookie({
+          fulfillmentId: fulfillment.fulfillment_id,
+          accessToken: fulfillmentAccessToken,
+          expiresAt: fulfillment.access_token_expires_at,
+        });
+      } else {
+        console.warn('PayPal fulfillment session cookie skipped: existing fulfillment does not expose recoverable access token.', {
+          providerOrderId: data.id,
+          fulfillmentId,
+        });
+      }
     }
     console.info('[timing] paypal-create-order complete', { ms: Date.now() - functionStart });
     return {

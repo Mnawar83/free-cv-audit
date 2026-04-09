@@ -74,6 +74,32 @@ async function run() {
   assert.ok(!/Page\s+1\s+of\s+2/i.test(repairedContent), 'Page labels must be removed before render.');
   assert.ok(!repairedContent.includes('�'), 'Malformed encoding should be removed before render.');
 
+  const pipesInBulletInput = [
+    'Jane Doe',
+    'Senior Engineer',
+    'Professional Summary',
+    'Builder of resilient systems.',
+    'Core Competencies',
+    'API Design',
+    'Professional Experience',
+    'Senior Engineer | Acme Corp | Remote | 2022 - Present',
+    '- Built APIs | React services | AWS',
+    '- Led platform migration and reduced downtime.',
+    'Education',
+    'BSc Computer Science',
+    'Tech University',
+    '2020',
+    'Languages',
+    'English: Fluent',
+  ].join('\n');
+
+  const pipesInBulletPdf = buildPdfBuffer(pipesInBulletInput);
+  const pipesInBulletContent = decodePdf(pipesInBulletPdf);
+  assert.ok(
+    pipesInBulletContent.includes('(Built APIs | React services | AWS) Tj'),
+    'Pipe-delimited bullet content should be preserved as a bullet, not treated as a new role header.',
+  );
+
   console.log('pdf builder formatting test passed');
 }
 
