@@ -156,7 +156,6 @@ CORE SKILLS
 PROFESSIONAL EXPERIENCE
 EDUCATION
 CERTIFICATIONS (omit if not present in source)
-ADDITIONAL INFORMATION (omit if not present in source)
 
 Within PROFESSIONAL EXPERIENCE:
 - Format each role as: Job Title | Company | Location | Dates
