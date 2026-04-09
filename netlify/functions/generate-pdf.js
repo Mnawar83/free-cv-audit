@@ -4,6 +4,27 @@ const { buildPdfBuffer } = require('./pdf-builder');
 
 const PDF_FILENAME = 'revised-cv.pdf';
 
+function normalizeRevisedCvText(text) {
+  if (!text) return '';
+  let normalized = String(text).replace(/\r\n?/g, '\n');
+  normalized = normalized.replace(/^\s{0,3}#{1,6}\s+/gm, '');
+  normalized = normalized.replace(/^\s*[-*•]\s+/gm, '- ');
+  normalized = normalized
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+$/g, ''))
+    .join('\n');
+
+  normalized = normalized
+    .replace(/^\s*professional summary\s*:?\s*$/gim, 'PROFESSIONAL SUMMARY')
+    .replace(/^\s*core skills\s*:?\s*$/gim, 'CORE SKILLS')
+    .replace(/^\s*professional experience\s*:?\s*$/gim, 'PROFESSIONAL EXPERIENCE')
+    .replace(/^\s*education\s*:?\s*$/gim, 'EDUCATION')
+    .replace(/^\s*certifications?\s*:?\s*$/gim, 'CERTIFICATIONS')
+    .replace(/^\s*additional information\s*:?\s*$/gim, 'ADDITIONAL INFORMATION');
+
+  return normalized.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function htmlErrorResponse(statusCode, message, options = {}) {
   const { showRetryHint } = options;
   const retryHint = showRetryHint
@@ -112,56 +133,39 @@ exports.handler = async (event) => {
       revisedText = resolvedCvText;
       usedFallbackText = true;
     } else {
-    const systemPrompt = `You are a senior executive CV writer and ATS optimization specialist at Work Waves Career Services.
+    const systemPrompt = `You are a senior CV writer and ATS optimization specialist at Work Waves Career Services.
 
-Task:
-Rewrite the provided CV into a high-impact, ATS-friendly version tailored for modern recruiter screening.
+Rewrite the provided CV into an ATS-friendly, submission-ready version.
 
-Non-negotiable rules:
-- Use ONLY facts present in the input CV (and optional audit notes). Do not invent employers, dates, titles, tools, certifications, or metrics.
-- If a metric is missing, improve wording without fabricating numbers.
-- Keep chronology internally consistent.
-- Output plain text only. No markdown code fences. No preamble.
+Rules:
+- Use only facts found in the provided CV text (and optional audit notes).
+- Do not invent employers, dates, titles, certifications, tools, or metrics.
+- If a metric is missing, strengthen wording without fabricating numbers.
+- Keep chronology and tense consistent.
+- Return plain text only. No preamble. No markdown code fences.
 
-Writing standards:
-- Prioritize clarity, credibility, and measurable business impact.
-- Replace weak “responsible for…” phrasing with action + scope + outcome.
-- Keep bullets concise (ideally 1–2 lines each).
-- Use strong verbs, avoid repetition, remove filler.
+Style:
+- Crisp, professional, and impact-oriented.
+- Replace weak responsibility statements with achievement-driven bullets.
+- Keep bullets concise and avoid repetition.
+- Integrate relevant keywords naturally (no keyword stuffing).
 
-ATS standards:
-- Single-column logical structure.
-- Clear section headings and consistent date formatting.
-- Include role-relevant keywords naturally (no keyword stuffing).
-- Avoid graphics/tables/symbol-heavy formatting language.
+Output sections (in this order):
+PROFESSIONAL SUMMARY
+CORE SKILLS
+PROFESSIONAL EXPERIENCE
+EDUCATION
+CERTIFICATIONS (omit if not present in source)
+ADDITIONAL INFORMATION (omit if not present in source)
 
-Required output format (exact section order):
-1) PROFESSIONAL SUMMARY
-   - 3–5 lines, role-aligned, value-focused.
+Within PROFESSIONAL EXPERIENCE:
+- Format each role as: Job Title | Company | Location | Dates
+- Use clear bullet points under each role.
 
-2) CORE SKILLS
-   - 12–20 targeted skills grouped logically (e.g., Strategy | Tools | Domain).
-
-3) PROFESSIONAL EXPERIENCE
-   For each role:
-   Job Title | Company | Location | Dates
-   - 4–6 bullets for recent roles; 2–4 for older roles.
-   - Each bullet should emphasize achievement, scale, and result.
-
-4) EDUCATION
-   - Degree | Institution | Year (if present)
-
-5) CERTIFICATIONS
-   - Include only if present in source text; otherwise omit section.
-
-6) ADDITIONAL INFORMATION
-   - Tools, languages, affiliations, or projects only if present in source text.
-
-Quality checks before finalizing:
-- Ensure no invented facts.
-- Ensure tense consistency (present for current role, past for previous roles).
-- Ensure no duplicate bullets.
-- Ensure output reads like a polished, submission-ready CV.`;
+Before returning, verify:
+- No invented facts.
+- No duplicate bullets.
+- Clear section headings and readable ATS-safe structure.`;
 
     const analysisNote = resolvedCvAnalysis
       ? `\n\nReference these audit notes when improving structure, wording, and keyword alignment (without inventing facts):\n${resolvedCvAnalysis}`
@@ -248,6 +252,7 @@ Quality checks before finalizing:
       revisedText = resolvedCvText;
       usedFallbackText = true;
     }
+    revisedText = normalizeRevisedCvText(revisedText);
 
     const pdfBuffer = buildPdfBuffer(revisedText);
     let runId = incomingRunId || createRunId();

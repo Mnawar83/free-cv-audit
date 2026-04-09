@@ -89,15 +89,17 @@ exports.handler = async (event) => {
     const status = getCaptureStatus(payload);
     const isPaid = ['COMPLETED', 'CAPTURED', 'SUCCESS'].includes(status) || eventType.includes('PAYMENT.CAPTURE.COMPLETED');
     if (isPaid) {
+      const deliveryEmail = String(fulfillment.email || '').trim().toLowerCase();
       await updateFulfillment(fulfillment.fulfillment_id, {
         payment_status: 'PAID',
+        email: deliveryEmail || null,
         provider_capture_id: String(payload?.resource?.id || fulfillment.provider_capture_id || ''),
         paid_at: fulfillment.paid_at || new Date().toISOString(),
       });
-      if (fulfillment.email) {
+      if (deliveryEmail) {
         await enqueueFulfillmentJob({
           fulfillmentId: fulfillment.fulfillment_id,
-          email: fulfillment.email,
+          email: deliveryEmail,
           name: '',
           forceSync: true,
         });

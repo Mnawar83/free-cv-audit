@@ -10,6 +10,15 @@ function getQueueHeaders() {
   return { Authorization: `Bearer ${secret}` };
 }
 
+function canUseDirectFallback() {
+  return String(process.env.QUEUE_TRIGGER_DIRECT_FALLBACK || 'true').trim().toLowerCase() !== 'false';
+}
+
+function isTransientTriggerStatus(statusCode) {
+  const code = Number(statusCode);
+  return code === 408 || code === 429 || (code >= 500 && code <= 599);
+}
+
 async function invokeQueueHandlerDirectly(functionName) {
   try {
     const event = {
@@ -48,14 +57,20 @@ async function triggerQueue(functionName) {
     });
     if (!response.ok) {
       console.warn('Immediate queue trigger failed.', { functionName, status: response.status });
-      return invokeQueueHandlerDirectly(functionName);
+      if (canUseDirectFallback() && isTransientTriggerStatus(response.status)) {
+        return invokeQueueHandlerDirectly(functionName);
+      }
+      return { ok: false, statusCode: response.status };
     }
     return { ok: true, statusCode: response.status };
   } catch (error) {
     if (error?.name !== 'AbortError') {
       console.warn('Immediate queue trigger threw an error.', { functionName, error: error?.message || error });
     }
-    return invokeQueueHandlerDirectly(functionName);
+    if (canUseDirectFallback()) {
+      return invokeQueueHandlerDirectly(functionName);
+    }
+    return { ok: false, statusCode: error?.name === 'AbortError' ? 408 : 500 };
   } finally {
     clearTimeout(timeout);
   }
