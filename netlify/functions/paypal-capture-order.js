@@ -11,6 +11,12 @@ const {
 const { triggerFulfillmentQueueProcessing } = require('./queue-trigger');
 const { hasSessionSecretConfigured, createFulfillmentSessionCookie } = require('./fulfillment-auth');
 
+function buildCvUrlForRun(runId) {
+  const baseUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || 'https://freecvaudit.com';
+  const normalizedBaseUrl = /^https?:\/\//i.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
+  return new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(runId)}`, normalizedBaseUrl).toString();
+}
+
 exports.handler = async (event) => {
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
@@ -108,13 +114,41 @@ exports.handler = async (event) => {
             paid_at: new Date().toISOString(),
           });
           if (deliveryEmail) {
-            await enqueueFulfillmentJob({
-              fulfillmentId,
-              email: deliveryEmail,
-              name: '',
-              forceSync: true,
-            });
-            await triggerFulfillmentQueueProcessing();
+            const runIdForDelivery = String(fulfillment?.run_id || runId || '').trim();
+            let delivered = false;
+            if (runIdForDelivery) {
+              try {
+                const sendHandler = require('./send-cv-email').handler;
+                const sendResponse = await sendHandler({
+                  httpMethod: 'POST',
+                  body: JSON.stringify({
+                    email: deliveryEmail,
+                    name: '',
+                    cvUrl: buildCvUrlForRun(runIdForDelivery),
+                    runId: runIdForDelivery,
+                    fulfillmentId,
+                    forceSync: true,
+                    resend: false,
+                  }),
+                });
+                delivered = sendResponse?.statusCode >= 200 && sendResponse?.statusCode < 300;
+              } catch (deliveryError) {
+                console.warn('PayPal capture immediate CV email delivery failed; falling back to queue.', {
+                  fulfillmentId,
+                  error: deliveryError?.message || deliveryError,
+                });
+              }
+            }
+
+            if (!delivered) {
+              await enqueueFulfillmentJob({
+                fulfillmentId,
+                email: deliveryEmail,
+                name: '',
+                forceSync: true,
+              });
+              await triggerFulfillmentQueueProcessing();
+            }
           }
         }
       }

@@ -7,7 +7,7 @@ const BODY_FONT_SIZE = 10;
 const NAME_FONT_SIZE = BODY_FONT_SIZE + 2;
 const HEADING_FONT_SIZE = 11;
 const BULLET_INDENT = 14;
-const LINE_HEIGHT_MULTIPLIER = 1.46;
+const LINE_HEIGHT_MULTIPLIER = 1.38;
 
 const SECTION_ORDER = [
   'professionalSummary',
@@ -451,7 +451,7 @@ function buildRenderBlocks(cv) {
   const headingStyle = { font: 'F2', size: HEADING_FONT_SIZE };
 
   const addHeading = (key) => {
-    blocks.push({ type: 'heading', text: SECTION_TITLES[key], ...headingStyle, before: 14, after: 6, keepWithNext: true });
+    blocks.push({ type: 'heading', text: SECTION_TITLES[key], ...headingStyle, before: 10, after: 4, keepWithNext: true });
   };
 
   const addCentered = (text, size, bold = false, after = 4) => {
@@ -459,27 +459,26 @@ function buildRenderBlocks(cv) {
     blocks.push({ type: 'line', text, font: bold ? 'F2' : 'F1', size, align: 'center', after });
   };
 
-  const contactLine = [cv.contact.location, cv.contact.phone, cv.contact.email].filter(Boolean).join('  |  ');
+  const contactLine = [cv.contact.location, cv.contact.phone, cv.contact.email].filter(Boolean).join('  •  ');
 
-  addCentered(cv.fullName, NAME_FONT_SIZE, true, 5);
-  addCentered(cv.professionalTitle, BODY_FONT_SIZE + 0.5, true, 5);
-  addCentered(contactLine, BODY_FONT_SIZE - 0.2, false, 9);
+  addCentered(cv.fullName, NAME_FONT_SIZE, true, 4);
+  addCentered(cv.professionalTitle, BODY_FONT_SIZE + 0.4, true, 4);
+  addCentered(contactLine, BODY_FONT_SIZE - 0.2, false, 8);
 
   addHeading('professionalSummary');
-  blocks.push({ type: 'paragraph', text: cv.professionalSummary, font: 'F1', size: BODY_FONT_SIZE, after: 8 });
+  blocks.push({ type: 'paragraph', text: cv.professionalSummary, font: 'F1', size: BODY_FONT_SIZE, after: 6 });
 
   addHeading('coreCompetencies');
-  cv.coreCompetencies.forEach((item) => blocks.push({ type: 'bullet', text: item, font: 'F1', size: BODY_FONT_SIZE, after: 1 }));
-  blocks.push({ type: 'spacer', height: 5 });
+  blocks.push({ type: 'paragraph', text: cv.coreCompetencies.join(' | '), font: 'F1', size: BODY_FONT_SIZE, after: 5 });
 
   addHeading('professionalExperience');
   cv.professionalExperience.forEach((role) => {
     blocks.push({ type: 'groupStart' });
     blocks.push({ type: 'line', text: role.company, font: 'F2', size: BODY_FONT_SIZE + 0.5, after: 1 });
     if (role.jobTitle) blocks.push({ type: 'line', text: role.jobTitle, font: 'F1', size: BODY_FONT_SIZE, after: 1 });
-    if (role.dateRange) blocks.push({ type: 'line', text: role.dateRange, font: 'F1', size: BODY_FONT_SIZE - 0.5, align: 'right', after: 3 });
+    if (role.dateRange) blocks.push({ type: 'line', text: role.dateRange, font: 'F1', size: BODY_FONT_SIZE - 0.5, after: 2 });
     (role.bullets || []).forEach((bullet) => blocks.push({ type: 'bullet', text: bullet, font: 'F1', size: BODY_FONT_SIZE, after: 1 }));
-    blocks.push({ type: 'spacer', height: 6 });
+    blocks.push({ type: 'spacer', height: 4 });
     blocks.push({ type: 'groupEnd' });
   });
 
@@ -492,16 +491,16 @@ function buildRenderBlocks(cv) {
 
   if (cv.technicalSkills.length) {
     addHeading('technicalSkills');
-    cv.technicalSkills.forEach((skill) => blocks.push({ type: 'bullet', text: skill, font: 'F1', size: BODY_FONT_SIZE, after: 1 }));
+    blocks.push({ type: 'paragraph', text: cv.technicalSkills.join(' | '), font: 'F1', size: BODY_FONT_SIZE, after: 4 });
   }
 
   if (cv.certifications.length) {
     addHeading('certifications');
-    cv.certifications.forEach((cert) => blocks.push({ type: 'bullet', text: cert, font: 'F1', size: BODY_FONT_SIZE, after: 1 }));
+    cv.certifications.forEach((cert) => blocks.push({ type: 'line', text: cert, font: 'F1', size: BODY_FONT_SIZE, after: 1 }));
   }
 
   addHeading('languages');
-  cv.languages.forEach((language) => blocks.push({ type: 'bullet', text: language, font: 'F1', size: BODY_FONT_SIZE, after: 1 }));
+  blocks.push({ type: 'paragraph', text: cv.languages.join(' | '), font: 'F1', size: BODY_FONT_SIZE, after: 0 });
 
   return blocks;
 }
