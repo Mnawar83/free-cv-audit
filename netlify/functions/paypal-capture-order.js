@@ -100,15 +100,17 @@ exports.handler = async (event) => {
         const eventKey = data?.id || `${orderID}:${captureStatus}`;
         const eventState = await markPaymentEventProcessed('paypal', eventKey, JSON.stringify({ orderID, status: captureStatus }));
         if (!eventState?.duplicate) {
+          const deliveryEmail = String(fulfillment?.email || email || '').trim().toLowerCase();
           await updateFulfillment(fulfillmentId, {
             payment_status: 'PAID',
+            email: deliveryEmail || fulfillment?.email || null,
             provider_capture_id: data?.purchase_units?.[0]?.payments?.captures?.[0]?.id || data?.id || null,
             paid_at: new Date().toISOString(),
           });
-          if (fulfillment && fulfillment.email) {
+          if (deliveryEmail) {
             await enqueueFulfillmentJob({
               fulfillmentId,
-              email: fulfillment.email,
+              email: deliveryEmail,
               name: '',
               forceSync: true,
             });

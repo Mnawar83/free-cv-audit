@@ -112,16 +112,63 @@ exports.handler = async (event) => {
       revisedText = resolvedCvText;
       usedFallbackText = true;
     } else {
-    const systemPrompt = `You are an expert CV writer for Work Waves Career Services.
-Rewrite the CV for ATS compatibility and professional impact.
-Return only the revised CV content, formatted as plain text with clear section headings.`;
+    const systemPrompt = `You are a senior executive CV writer and ATS optimization specialist at Work Waves Career Services.
+
+Task:
+Rewrite the provided CV into a high-impact, ATS-friendly version tailored for modern recruiter screening.
+
+Non-negotiable rules:
+- Use ONLY facts present in the input CV (and optional audit notes). Do not invent employers, dates, titles, tools, certifications, or metrics.
+- If a metric is missing, improve wording without fabricating numbers.
+- Keep chronology internally consistent.
+- Output plain text only. No markdown code fences. No preamble.
+
+Writing standards:
+- Prioritize clarity, credibility, and measurable business impact.
+- Replace weak “responsible for…” phrasing with action + scope + outcome.
+- Keep bullets concise (ideally 1–2 lines each).
+- Use strong verbs, avoid repetition, remove filler.
+
+ATS standards:
+- Single-column logical structure.
+- Clear section headings and consistent date formatting.
+- Include role-relevant keywords naturally (no keyword stuffing).
+- Avoid graphics/tables/symbol-heavy formatting language.
+
+Required output format (exact section order):
+1) PROFESSIONAL SUMMARY
+   - 3–5 lines, role-aligned, value-focused.
+
+2) CORE SKILLS
+   - 12–20 targeted skills grouped logically (e.g., Strategy | Tools | Domain).
+
+3) PROFESSIONAL EXPERIENCE
+   For each role:
+   Job Title | Company | Location | Dates
+   - 4–6 bullets for recent roles; 2–4 for older roles.
+   - Each bullet should emphasize achievement, scale, and result.
+
+4) EDUCATION
+   - Degree | Institution | Year (if present)
+
+5) CERTIFICATIONS
+   - Include only if present in source text; otherwise omit section.
+
+6) ADDITIONAL INFORMATION
+   - Tools, languages, affiliations, or projects only if present in source text.
+
+Quality checks before finalizing:
+- Ensure no invented facts.
+- Ensure tense consistency (present for current role, past for previous roles).
+- Ensure no duplicate bullets.
+- Ensure output reads like a polished, submission-ready CV.`;
 
     const analysisNote = resolvedCvAnalysis
-      ? `\n\nUse this CV analysis as reference while revising:\n${resolvedCvAnalysis}`
+      ? `\n\nReference these audit notes when improving structure, wording, and keyword alignment (without inventing facts):\n${resolvedCvAnalysis}`
       : '';
     const payload = {
       systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ parts: [{ text: `Rewrite this CV:\n\n${resolvedCvText}${analysisNote}` }] }],
+      contents: [{ parts: [{ text: `Rewrite this CV into a polished ATS-optimized version:\n\n${resolvedCvText}${analysisNote}` }] }],
     };
 
     for (const model of candidateModels) {

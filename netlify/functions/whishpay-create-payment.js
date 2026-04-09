@@ -129,17 +129,17 @@ exports.handler = async (event) => {
 
     let fulfillmentId = '';
     let sessionCookie = '';
+    const fulfillmentAccessToken = createFulfillmentAccessToken();
+    const fulfillment = await createFulfillment({
+      run_id: runId,
+      email,
+      provider: 'whishpay',
+      provider_order_id: String(externalId),
+      payment_status: 'PENDING',
+      access_token: fulfillmentAccessToken,
+    });
+    fulfillmentId = fulfillment.fulfillment_id;
     if (sessionSecretAvailable) {
-      const fulfillmentAccessToken = createFulfillmentAccessToken();
-      const fulfillment = await createFulfillment({
-        run_id: runId,
-        email,
-        provider: 'whishpay',
-        provider_order_id: String(externalId),
-        payment_status: 'PENDING',
-        access_token: fulfillmentAccessToken,
-      });
-      fulfillmentId = fulfillment.fulfillment_id;
       sessionCookie = createFulfillmentSessionCookie({
         fulfillmentId: fulfillment.fulfillment_id,
         accessToken: fulfillmentAccessToken,
