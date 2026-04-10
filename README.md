@@ -62,7 +62,7 @@ This project includes a paid-fulfillment flow (PayPal/WhishPay), secure fulfillm
 
 ### Scheduled processing
 
-- Fulfillment queue scheduled runner is defined in `process-fulfillment-queue-scheduled.js` and runs every 2 minutes.
+- Fulfillment queue scheduled runner is defined in `process-fulfillment-queue-scheduled.js` and runs every 5 minutes.
 - Keep the scheduled function enabled in Netlify so paid fulfillments are retried and delivered even when webhooks are delayed.
 
 ### Quick smoke tests
