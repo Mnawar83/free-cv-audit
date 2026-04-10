@@ -652,6 +652,7 @@ function validateRenderBlocks(blocks) {
   const seenHeadingTitles = new Set();
   let duplicateHeadingDetected = false;
   let nameBlock = null;
+  let hasBullet = false;
 
   blocks.forEach((block) => {
     if (!nameBlock && block.type === 'line' && block.font === 'F2') {
@@ -702,6 +703,50 @@ function validateRenderBlocks(blocks) {
   if (duplicateHeadingDetected || missingRequired.length) {
     throw new Error('CV export validation failed: duplicate or missing section headings detected.');
   }
+  if (!hasBullet) {
+    throw new Error('CV export validation failed: at least one bullet point is required.');
+  }
+}
+
+function normalizeToCvTemplateText(inputText) {
+  const structured = buildStructuredCvObject(inputText);
+  const cv = validateAndAutoCorrect(structured);
+  const lines = [
+    cv.fullName,
+    cv.contact.location,
+    cv.contact.phone,
+    cv.contact.email,
+    cv.professionalTitle,
+    '',
+    SECTION_TITLES.professionalSummary,
+    cv.professionalSummary,
+    '',
+    SECTION_TITLES.coreCompetencies,
+    ...cv.coreCompetencies.map((item) => `- ${item}`),
+    '',
+    SECTION_TITLES.professionalExperience,
+  ];
+
+  cv.professionalExperience.forEach((role) => {
+    lines.push(role.company || '', role.jobTitle || '', role.dateRange || '');
+    (role.bullets || []).forEach((bullet) => lines.push(`- ${bullet}`));
+    lines.push('');
+  });
+
+  lines.push(SECTION_TITLES.education);
+  cv.education.forEach((item) => {
+    lines.push(item.degree || '', item.institution || '', item.dateRange || '', '');
+  });
+
+  if (cv.technicalSkills.length) {
+    lines.push(SECTION_TITLES.technicalSkills, ...cv.technicalSkills.map((skill) => `- ${skill}`), '');
+  }
+  if (cv.certifications.length) {
+    lines.push(SECTION_TITLES.certifications, ...cv.certifications.map((cert) => `- ${cert}`), '');
+  }
+  lines.push(SECTION_TITLES.languages, ...cv.languages.map((language) => `- ${language}`));
+
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function normalizeToCvTemplateText(inputText) {
