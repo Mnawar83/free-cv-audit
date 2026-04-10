@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { buildPdfBuffer } = require('../netlify/functions/pdf-builder');
+const { buildPdfBuffer, __test } = require('../netlify/functions/pdf-builder');
 
 function decodePdf(buffer) {
   return buffer.toString('latin1');
@@ -73,6 +73,41 @@ async function run() {
   const repairedContent = decodePdf(repairedPdf);
   assert.ok(!/Page\s+1\s+of\s+2/i.test(repairedContent), 'Page labels must be removed before render.');
   assert.ok(!repairedContent.includes('�'), 'Malformed encoding should be removed before render.');
+
+  const pipesInBulletInput = [
+    'Jane Doe',
+    'Senior Engineer',
+    'Professional Summary',
+    'Builder of resilient systems.',
+    'Core Competencies',
+    'API Design',
+    'Professional Experience',
+    'Senior Engineer | Acme Corp | Remote | 2022 - Present',
+    '- Built APIs | React services | AWS',
+    '- Led platform migration and reduced downtime.',
+    'Education',
+    'BSc Computer Science',
+    'Tech University',
+    '2020',
+    'Languages',
+    'English: Fluent',
+  ].join('\n');
+
+  const pipesInBulletPdf = buildPdfBuffer(pipesInBulletInput);
+  const pipesInBulletContent = decodePdf(pipesInBulletPdf);
+  assert.ok(
+    pipesInBulletContent.includes('(Built APIs | React services | AWS) Tj'),
+    'Pipe-delimited bullet content should be preserved as a bullet, not treated as a new role header.',
+  );
+
+  const parsedWithBlankBulletSpacing = __test.parseExperience([
+    'Senior Engineer | Acme Corp | Remote | 2022 - Present',
+    '- Built APIs and services',
+    '',
+    '- Improved uptime to 99.95%',
+  ]);
+  assert.strictEqual(parsedWithBlankBulletSpacing.length, 1, 'Blank lines between bullets must not split a role.');
+  assert.strictEqual(parsedWithBlankBulletSpacing[0].bullets.length, 2, 'Bullets separated by blank lines must remain in the same role.');
 
   console.log('pdf builder formatting test passed');
 }

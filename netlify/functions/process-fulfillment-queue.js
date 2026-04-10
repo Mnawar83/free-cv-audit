@@ -11,6 +11,13 @@ function isTransientStatus(statusCode) {
   return code === 429 || (code >= 500 && code <= 599);
 }
 
+function isRetryableDeliveryStatus(statusCode) {
+  const code = Number(statusCode);
+  if (isTransientStatus(code)) return true;
+  // Delivery can race PDF generation/run persistence right after payment.
+  return code === 404 || code === 409 || code === 423 || code === 425;
+}
+
 function shouldRetry(job, maxAttempts, statusCode, defaultTransient = false) {
   const attempts = job?.attempts || 1;
   const transient = Number.isFinite(Number(statusCode))
@@ -61,7 +68,7 @@ exports.handler = async (event) => {
     try {
       const payload = job.payload || {};
       const fulfillmentId = String(payload.fulfillmentId || '').trim();
-      const email = String(payload.email || '').trim();
+      const requestedEmail = String(payload.email || '').trim();
       const name = String(payload.name || '').trim();
       const forceSync = payload.forceSync !== false;
       if (!fulfillmentId) {
@@ -106,6 +113,7 @@ exports.handler = async (event) => {
         processed.push({ jobId: job.id, status: 'COMPLETED', fulfillmentId, duplicate: true });
         continue;
       }
+      const email = requestedEmail || String(fulfillment.email || '').trim();
       if (!email) {
         await completeFulfillmentJob(job.id, {
           status: 'DEAD_LETTER',
@@ -129,7 +137,7 @@ exports.handler = async (event) => {
           cvUrl,
           runId: fulfillment.run_id,
           fulfillmentId,
-          resend: true,
+          resend: false,
           forceSync,
         }),
       });
@@ -145,7 +153,7 @@ exports.handler = async (event) => {
         });
         processed.push({ jobId: job.id, status: 'COMPLETED', fulfillmentId });
       } else {
-        const retryable = shouldRetry(job, maxAttempts, response.statusCode);
+        const retryable = shouldRetry(job, maxAttempts, response.statusCode, isRetryableDeliveryStatus(response.statusCode));
         const retryDelayMs = getRetryDelayMs(job.attempts || 1);
         await completeFulfillmentJob(job.id, {
           status: retryable ? 'RETRY' : 'DEAD_LETTER',
