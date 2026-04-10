@@ -284,7 +284,7 @@ exports.handler = async (event) => {
     }
     const effectiveRevisedText = revisedCvText || clientCvText;
     if (!effectiveRevisedText && !snapshotPdfBase64) {
-      return json(404, { error: 'Your revised CV is no longer available. Please regenerate it and try again.' });
+      return json(409, { error: 'Your revised CV is still being prepared. Please retry shortly.' });
     }
     if (effectiveRevisedText || snapshotPdfBase64) {
       const token = createEmailDownloadToken();

@@ -155,7 +155,7 @@ exports.handler = async (event) => {
     }
 
     const updated = fulfillmentId ? await getFulfillmentByProviderOrderId('paypal', orderID) : null;
-    const responseFulfillmentId = setCookie ? (updated?.fulfillment_id || fulfillmentId || null) : null;
+    const responseFulfillmentId = updated?.fulfillment_id || fulfillmentId || null;
     return {
       statusCode: 200,
       headers: {
