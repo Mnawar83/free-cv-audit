@@ -11,6 +11,12 @@ const {
 const { triggerFulfillmentQueueProcessing } = require('./queue-trigger');
 const { hasSessionSecretConfigured, createFulfillmentSessionCookie } = require('./fulfillment-auth');
 
+function buildCvUrlForRun(runId) {
+  const baseUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || 'https://freecvaudit.com';
+  const normalizedBaseUrl = /^https?:\/\//i.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
+  return new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(runId)}`, normalizedBaseUrl).toString();
+}
+
 exports.handler = async (event) => {
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
@@ -100,25 +106,56 @@ exports.handler = async (event) => {
         const eventKey = data?.id || `${orderID}:${captureStatus}`;
         const eventState = await markPaymentEventProcessed('paypal', eventKey, JSON.stringify({ orderID, status: captureStatus }));
         if (!eventState?.duplicate) {
+          const deliveryEmail = String(fulfillment?.email || email || '').trim().toLowerCase();
           await updateFulfillment(fulfillmentId, {
             payment_status: 'PAID',
+            email: deliveryEmail || fulfillment?.email || null,
             provider_capture_id: data?.purchase_units?.[0]?.payments?.captures?.[0]?.id || data?.id || null,
             paid_at: new Date().toISOString(),
           });
-          if (fulfillment && fulfillment.email) {
-            await enqueueFulfillmentJob({
-              fulfillmentId,
-              email: fulfillment.email,
-              name: '',
-              forceSync: true,
-            });
-            await triggerFulfillmentQueueProcessing();
+          if (deliveryEmail) {
+            const runIdForDelivery = String(fulfillment?.run_id || runId || '').trim();
+            let delivered = false;
+            if (runIdForDelivery) {
+              try {
+                const sendHandler = require('./send-cv-email').handler;
+                const sendResponse = await sendHandler({
+                  httpMethod: 'POST',
+                  body: JSON.stringify({
+                    email: deliveryEmail,
+                    name: '',
+                    cvUrl: buildCvUrlForRun(runIdForDelivery),
+                    runId: runIdForDelivery,
+                    fulfillmentId,
+                    forceSync: true,
+                    resend: false,
+                  }),
+                });
+                delivered = sendResponse?.statusCode >= 200 && sendResponse?.statusCode < 300;
+              } catch (deliveryError) {
+                console.warn('PayPal capture immediate CV email delivery failed; falling back to queue.', {
+                  fulfillmentId,
+                  error: deliveryError?.message || deliveryError,
+                });
+              }
+            }
+
+            if (!delivered) {
+              await enqueueFulfillmentJob({
+                fulfillmentId,
+                email: deliveryEmail,
+                name: '',
+                forceSync: true,
+              });
+              await triggerFulfillmentQueueProcessing();
+            }
           }
         }
       }
     }
 
     const updated = fulfillmentId ? await getFulfillmentByProviderOrderId('paypal', orderID) : null;
+    const responseFulfillmentId = updated?.fulfillment_id || fulfillmentId || null;
     return {
       statusCode: 200,
       headers: {
@@ -127,7 +164,7 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         status: data.status,
         paid: updated?.payment_status === 'PAID',
-        fulfillmentId: updated?.fulfillment_id || fulfillmentId || null,
+        fulfillmentId: responseFulfillmentId,
       }),
     };
   } catch (error) {

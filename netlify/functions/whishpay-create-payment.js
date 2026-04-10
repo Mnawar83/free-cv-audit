@@ -8,7 +8,14 @@ const {
   getWhishPayHeaders,
   getWhishPayCreateUrl,
 } = require('./whishpay-utils');
-const { createFulfillment, createFulfillmentAccessToken, getRun, upsertRun } = require('./run-store');
+const {
+  createFulfillment,
+  createFulfillmentAccessToken,
+  getFulfillmentByProviderOrderId,
+  getRun,
+  updateFulfillment,
+  upsertRun,
+} = require('./run-store');
 const { hasSessionSecretConfigured, createFulfillmentSessionCookie } = require('./fulfillment-auth');
 
 function generateExternalId() {
@@ -129,9 +136,12 @@ exports.handler = async (event) => {
 
     let fulfillmentId = '';
     let sessionCookie = '';
-    if (sessionSecretAvailable) {
-      const fulfillmentAccessToken = createFulfillmentAccessToken();
-      const fulfillment = await createFulfillment({
+    const existingFulfillment = await getFulfillmentByProviderOrderId('whishpay', String(externalId));
+    let fulfillment = existingFulfillment;
+    let fulfillmentAccessToken = '';
+    if (!fulfillment) {
+      fulfillmentAccessToken = createFulfillmentAccessToken();
+      fulfillment = await createFulfillment({
         run_id: runId,
         email,
         provider: 'whishpay',
@@ -139,12 +149,25 @@ exports.handler = async (event) => {
         payment_status: 'PENDING',
         access_token: fulfillmentAccessToken,
       });
-      fulfillmentId = fulfillment.fulfillment_id;
-      sessionCookie = createFulfillmentSessionCookie({
-        fulfillmentId: fulfillment.fulfillment_id,
-        accessToken: fulfillmentAccessToken,
-        expiresAt: fulfillment.access_token_expires_at,
+    } else if (!fulfillment.email || fulfillment.email !== email) {
+      fulfillment = await updateFulfillment(fulfillment.fulfillment_id, {
+        email,
       });
+    }
+    fulfillmentId = fulfillment?.fulfillment_id || '';
+    if (sessionSecretAvailable) {
+      if (fulfillmentAccessToken && fulfillment) {
+        sessionCookie = createFulfillmentSessionCookie({
+          fulfillmentId: fulfillment.fulfillment_id,
+          accessToken: fulfillmentAccessToken,
+          expiresAt: fulfillment.access_token_expires_at,
+        });
+      } else {
+        console.warn('WhishPay fulfillment session cookie skipped: existing fulfillment does not expose recoverable access token.', {
+          providerOrderId: String(externalId),
+          fulfillmentId,
+        });
+      }
     }
 
     console.info('[timing] whishpay-create-payment complete', { ms: Date.now() - functionStart });
