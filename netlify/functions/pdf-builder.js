@@ -666,12 +666,11 @@ function validateRenderBlocks(blocks) {
       if (/\b[A-Za-z]\s[A-Za-z]\b/.test(text)) {
         throw new Error('CV export validation failed: split-letter artifacts detected in rendered content.');
       }
-      if (/candidate name|available on request/i.test(text)) {
+      if (/candidate name|your name|full name/i.test(text)) {
         throw new Error('CV export validation failed: placeholder text detected in rendered content.');
       }
     }
     if (block.type === 'bullet') {
-      hasBullet = true;
       if (!text.trim()) {
         throw new Error('CV export validation failed: empty bullet detected.');
       }
@@ -707,6 +706,47 @@ function validateRenderBlocks(blocks) {
   if (!hasBullet) {
     throw new Error('CV export validation failed: at least one bullet point is required.');
   }
+}
+
+function normalizeToCvTemplateText(inputText) {
+  const structured = buildStructuredCvObject(inputText);
+  const cv = validateAndAutoCorrect(structured);
+  const lines = [
+    cv.fullName,
+    cv.contact.location,
+    cv.contact.phone,
+    cv.contact.email,
+    cv.professionalTitle,
+    '',
+    SECTION_TITLES.professionalSummary,
+    cv.professionalSummary,
+    '',
+    SECTION_TITLES.coreCompetencies,
+    ...cv.coreCompetencies.map((item) => `- ${item}`),
+    '',
+    SECTION_TITLES.professionalExperience,
+  ];
+
+  cv.professionalExperience.forEach((role) => {
+    lines.push(role.company || '', role.jobTitle || '', role.dateRange || '');
+    (role.bullets || []).forEach((bullet) => lines.push(`- ${bullet}`));
+    lines.push('');
+  });
+
+  lines.push(SECTION_TITLES.education);
+  cv.education.forEach((item) => {
+    lines.push(item.degree || '', item.institution || '', item.dateRange || '', '');
+  });
+
+  if (cv.technicalSkills.length) {
+    lines.push(SECTION_TITLES.technicalSkills, ...cv.technicalSkills.map((skill) => `- ${skill}`), '');
+  }
+  if (cv.certifications.length) {
+    lines.push(SECTION_TITLES.certifications, ...cv.certifications.map((cert) => `- ${cert}`), '');
+  }
+  lines.push(SECTION_TITLES.languages, ...cv.languages.map((language) => `- ${language}`));
+
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function normalizeToCvTemplateText(inputText) {
