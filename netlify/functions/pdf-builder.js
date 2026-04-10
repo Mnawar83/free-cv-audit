@@ -47,9 +47,34 @@ const SECTION_HEADING_ALIASES = {
   training: 'certifications',
   'certifications / training': 'certifications',
   languages: 'languages',
+  'additional information': 'languages',
 };
 
 const PAGE_ARTIFACT_PATTERN = /^(?:page\s+\d+(?:\s+of\s+\d+)?|p\.?\s*\d+\s*(?:\/|of)\s*\d+)$/i;
+
+const FORBIDDEN_PHRASES = [
+  'candidate name',
+  'your name',
+  'full name',
+  'first name',
+  'last name',
+  'firstname lastname',
+  'professional title',
+  'recent professional experience',
+  'delivered responsibilities aligned with role requirements',
+  'results-driven professional with experience delivering measurable outcomes, improving processes, and supporting cross-functional goals',
+  'english: professional working proficiency',
+  'process improvement | stakeholder communication | problem solving',
+  '[your',
+  '[insert',
+  '[add',
+  'lorem ipsum',
+  'job title here',
+  'company name here',
+  'city, country',
+  'month year - month year',
+  'xx years',
+];
 
 function sanitizePdfText(text) {
   return String(text || '')
@@ -91,7 +116,6 @@ function normalizeLine(line) {
     .replace(/\s*\|\s*/g, ' | ')
     .replace(/\s+-\s+/g, ' - ')
     .replace(/\s{2,}/g, ' ')
-    .replace(/\b([A-Za-z])\s+([A-Za-z])\b/g, '$1$2')
     .trim();
 }
 
@@ -102,6 +126,11 @@ function isPageArtifact(line) {
 function containsCorruption(text) {
   const value = String(text || '');
   return /\uFFFD|[\u0000-\u001F\u007F]/.test(value);
+}
+
+function containsForbiddenPhrase(text) {
+  const lower = String(text || '').toLowerCase().trim();
+  return FORBIDDEN_PHRASES.some((phrase) => lower.includes(phrase));
 }
 
 function toLines(rawText) {
@@ -124,7 +153,7 @@ function headingKey(line) {
 
 function parseHeader(prefaceLines) {
   const clean = prefaceLines.map((line) => normalizeLine(line)).filter(Boolean);
-  const fullName = clean[0] || 'Candidate Name';
+  const fullName = clean[0] || '';
 
   let professionalTitle = '';
   const contact = {
@@ -156,7 +185,7 @@ function parseHeader(prefaceLines) {
 
   return {
     fullName,
-    professionalTitle: professionalTitle || 'Professional Title',
+    professionalTitle,
     contact,
   };
 }
@@ -226,14 +255,15 @@ function parseExperience(lines) {
     if (/^[-*]\s+/.test(line)) return false;
     const parts = line.split('|').map((part) => normalizeLine(part)).filter(Boolean);
     if (!parts.length) return false;
-    const looksLikeHeader = parts.length >= 4;
+    const looksLikeHeader = parts.length >= 2;
     if (!looksLikeHeader) return false;
     flushCurrentRole();
     const jobTitle = parts[0] || '';
-    const company = [parts[1], parts[2]].filter(Boolean).join(' | ');
-    const dateRange = parts.slice(3).join(' | ');
+    const company = parts[1] || '';
+    const location = parts.length >= 4 ? parts[2] : '';
+    const dateRange = parts.length >= 4 ? parts.slice(3).join(' | ') : (parts[2] || '');
     currentRole = {
-      company,
+      company: [company, location].filter(Boolean).join(' | '),
       jobTitle,
       dateRange,
       bullets: [],
@@ -345,12 +375,15 @@ function buildStructuredCvObject(inputText) {
 function validateAndAutoCorrect(cv) {
   const corrected = { ...cv };
 
-  if (!corrected.fullName || containsCorruption(corrected.fullName)) {
-    corrected.fullName = 'Candidate Name';
+  if (!corrected.fullName || containsCorruption(corrected.fullName) || containsForbiddenPhrase(corrected.fullName)) {
+    corrected.fullName = '';
   }
   corrected.fullName = normalizeLine(corrected.fullName);
 
   corrected.professionalTitle = normalizeLine(corrected.professionalTitle || '');
+  if (containsForbiddenPhrase(corrected.professionalTitle)) {
+    corrected.professionalTitle = '';
+  }
 
   corrected.contact = corrected.contact || {};
   corrected.contact.location = normalizeLine(corrected.contact.location || '');
@@ -358,53 +391,39 @@ function validateAndAutoCorrect(cv) {
   corrected.contact.email = normalizeLine(corrected.contact.email || '');
 
   corrected.professionalSummary = normalizeSummary(corrected.professionalSummary || '');
+  if (containsForbiddenPhrase(corrected.professionalSummary)) {
+    corrected.professionalSummary = '';
+  }
 
-  corrected.coreCompetencies = dedupe(corrected.coreCompetencies || []);
-  corrected.technicalSkills = dedupe(corrected.technicalSkills || []);
-  corrected.certifications = dedupe(corrected.certifications || []);
-  corrected.languages = dedupe(corrected.languages || []);
+  const filterForbidden = (items) => dedupe(items || []).filter((item) => !containsForbiddenPhrase(item));
+  corrected.coreCompetencies = filterForbidden(corrected.coreCompetencies);
+  corrected.technicalSkills = filterForbidden(corrected.technicalSkills);
+  corrected.certifications = filterForbidden(corrected.certifications);
+  corrected.languages = filterForbidden(corrected.languages);
 
   corrected.professionalExperience = (corrected.professionalExperience || []).map((role) => ({
     company: normalizeLine(role?.company || ''),
     jobTitle: normalizeLine(role?.jobTitle || ''),
     dateRange: normalizeLine(role?.dateRange || ''),
-    bullets: dedupe((role?.bullets || []).map((item) => item.replace(/^[-*]\s*/, '').trim())).slice(0, 8),
-  })).filter((role) => role.company || role.jobTitle || role.dateRange || role.bullets.length);
+    bullets: dedupe((role?.bullets || []).map((item) => item.replace(/^[-*]\s*/, '').trim()))
+      .filter((b) => !containsForbiddenPhrase(b))
+      .slice(0, 8),
+  })).filter((role) => {
+    if (containsForbiddenPhrase(role.company) || containsForbiddenPhrase(role.jobTitle)) return false;
+    return role.company || role.jobTitle || role.dateRange || role.bullets.length;
+  });
 
   corrected.education = (corrected.education || []).map((item) => ({
     degree: normalizeLine(item?.degree || ''),
     institution: normalizeLine(item?.institution || ''),
     dateRange: normalizeLine(item?.dateRange || ''),
-  })).filter((item) => item.degree || item.institution || item.dateRange);
+  })).filter((item) => {
+    if (containsForbiddenPhrase(item.degree)) return false;
+    return item.degree || item.institution || item.dateRange;
+  });
 
-  if (!corrected.professionalSummary) {
-    corrected.professionalSummary = 'Results-driven professional with experience delivering measurable outcomes, improving processes, and supporting cross-functional goals through clear communication and execution.';
-  }
-  corrected.professionalSummary = limitSummaryToFiveLines(corrected.professionalSummary);
-
-  if (!corrected.coreCompetencies.length) {
-    corrected.coreCompetencies = ['Process Improvement', 'Stakeholder Communication', 'Problem Solving'];
-  }
-
-  if (!corrected.professionalExperience.length) {
-    corrected.professionalExperience = [{
-      company: 'Recent Professional Experience',
-      jobTitle: corrected.professionalTitle || 'Specialist',
-      dateRange: '',
-      bullets: ['Delivered responsibilities aligned with role requirements and quality standards.'],
-    }];
-  }
-
-  if (!corrected.education.length) {
-    corrected.education = [{
-      degree: 'Education',
-      institution: '',
-      dateRange: '',
-    }];
-  }
-
-  if (!corrected.languages.length) {
-    corrected.languages = ['English: Professional working proficiency'];
+  if (corrected.professionalSummary) {
+    corrected.professionalSummary = limitSummaryToFiveLines(corrected.professionalSummary);
   }
 
   const bodyText = [
@@ -476,37 +495,49 @@ function buildRenderBlocks(cv) {
   const contactParts = [cv.contact.location, cv.contact.phone, cv.contact.email].filter(Boolean);
   const contactLine = contactParts.join('  |  ');
 
-  addCentered(cv.fullName, NAME_FONT_SIZE, true, 3);
-  addCentered(cv.professionalTitle, BODY_FONT_SIZE + 1, false, 3);
+  if (cv.fullName) {
+    addCentered(cv.fullName, NAME_FONT_SIZE, true, 3);
+  }
+  if (cv.professionalTitle) {
+    addCentered(cv.professionalTitle, BODY_FONT_SIZE + 1, false, 3);
+  }
   if (contactLine) {
     addCentered(contactLine, BODY_FONT_SIZE - 0.5, false, 4);
   }
   blocks.push({ type: 'accentRule', before: 4, after: 6 });
 
-  addHeading('professionalSummary');
-  blocks.push({ type: 'paragraph', text: cv.professionalSummary, font: 'F1', size: BODY_FONT_SIZE, after: 6 });
+  if (cv.professionalSummary) {
+    addHeading('professionalSummary');
+    blocks.push({ type: 'paragraph', text: cv.professionalSummary, font: 'F1', size: BODY_FONT_SIZE, after: 6 });
+  }
 
-  addHeading('coreCompetencies');
-  blocks.push({ type: 'paragraph', text: cv.coreCompetencies.join('  |  '), font: 'F1', size: BODY_FONT_SIZE, after: 5 });
+  if (cv.coreCompetencies.length) {
+    addHeading('coreCompetencies');
+    blocks.push({ type: 'paragraph', text: cv.coreCompetencies.join('  |  '), font: 'F1', size: BODY_FONT_SIZE, after: 5 });
+  }
 
-  addHeading('professionalExperience');
-  cv.professionalExperience.forEach((role, roleIndex) => {
-    blocks.push({ type: 'groupStart' });
-    if (roleIndex > 0) blocks.push({ type: 'spacer', height: 3 });
-    blocks.push({ type: 'line', text: role.company, font: 'F2', size: BODY_FONT_SIZE + 0.5, after: 1 });
-    if (role.jobTitle) blocks.push({ type: 'line', text: role.jobTitle, font: 'F1', size: BODY_FONT_SIZE, after: 1 });
-    if (role.dateRange) blocks.push({ type: 'line', text: role.dateRange, font: 'F1', size: BODY_FONT_SIZE - 0.5, after: 3 });
-    (role.bullets || []).forEach((bullet) => blocks.push({ type: 'bullet', text: bullet, font: 'F1', size: BODY_FONT_SIZE, after: 2 }));
-    blocks.push({ type: 'spacer', height: 2 });
-    blocks.push({ type: 'groupEnd' });
-  });
+  if (cv.professionalExperience.length) {
+    addHeading('professionalExperience');
+    cv.professionalExperience.forEach((role, roleIndex) => {
+      blocks.push({ type: 'groupStart' });
+      if (roleIndex > 0) blocks.push({ type: 'spacer', height: 3 });
+      if (role.company) blocks.push({ type: 'line', text: role.company, font: 'F2', size: BODY_FONT_SIZE + 0.5, after: 1 });
+      if (role.jobTitle) blocks.push({ type: 'line', text: role.jobTitle, font: 'F1', size: BODY_FONT_SIZE, after: 1 });
+      if (role.dateRange) blocks.push({ type: 'line', text: role.dateRange, font: 'F1', size: BODY_FONT_SIZE - 0.5, after: 3 });
+      (role.bullets || []).forEach((bullet) => blocks.push({ type: 'bullet', text: bullet, font: 'F1', size: BODY_FONT_SIZE, after: 2 }));
+      blocks.push({ type: 'spacer', height: 2 });
+      blocks.push({ type: 'groupEnd' });
+    });
+  }
 
-  addHeading('education');
-  cv.education.forEach((item) => {
-    if (item.degree) blocks.push({ type: 'line', text: item.degree, font: 'F2', size: BODY_FONT_SIZE, after: 1 });
-    if (item.institution) blocks.push({ type: 'line', text: item.institution, font: 'F1', size: BODY_FONT_SIZE, after: 1 });
-    if (item.dateRange) blocks.push({ type: 'line', text: item.dateRange, font: 'F1', size: BODY_FONT_SIZE - 0.5, after: 4 });
-  });
+  if (cv.education.length) {
+    addHeading('education');
+    cv.education.forEach((item) => {
+      if (item.degree) blocks.push({ type: 'line', text: item.degree, font: 'F2', size: BODY_FONT_SIZE, after: 1 });
+      if (item.institution) blocks.push({ type: 'line', text: item.institution, font: 'F1', size: BODY_FONT_SIZE, after: 1 });
+      if (item.dateRange) blocks.push({ type: 'line', text: item.dateRange, font: 'F1', size: BODY_FONT_SIZE - 0.5, after: 4 });
+    });
+  }
 
   if (cv.technicalSkills.length) {
     addHeading('technicalSkills');
@@ -518,8 +549,10 @@ function buildRenderBlocks(cv) {
     cv.certifications.forEach((cert) => blocks.push({ type: 'bullet', text: cert, font: 'F1', size: BODY_FONT_SIZE, after: 2 }));
   }
 
-  addHeading('languages');
-  blocks.push({ type: 'paragraph', text: cv.languages.join('  |  '), font: 'F1', size: BODY_FONT_SIZE, after: 0 });
+  if (cv.languages.length) {
+    addHeading('languages');
+    blocks.push({ type: 'paragraph', text: cv.languages.join('  |  '), font: 'F1', size: BODY_FONT_SIZE, after: 0 });
+  }
 
   return blocks;
 }
@@ -689,26 +722,24 @@ function buildPdfFromPages(pages) {
 }
 
 function validateRenderBlocks(blocks) {
-  const headingTitles = new Set();
   const seenHeadingTitles = new Set();
   let duplicateHeadingDetected = false;
   let nameBlock = null;
   let hasBullet = false;
+  let hasContent = false;
 
   blocks.forEach((block) => {
-    if (!nameBlock && block.type === 'line' && block.font === 'F2') {
+    if (!nameBlock && block.type === 'line' && block.font === 'F2' && block.align === 'center') {
       nameBlock = block;
     }
     const text = String(block.text || '');
     if (text) {
+      hasContent = true;
       if (containsCorruption(text) || /page\s+\d+(?:\s+of\s+\d+)?/i.test(text)) {
         throw new Error('CV export validation failed: malformed characters or page artifacts detected in rendered content.');
       }
-      if (/\b[A-Za-z]\s[A-Za-z]\b/.test(text)) {
-        throw new Error('CV export validation failed: split-letter artifacts detected in rendered content.');
-      }
-      if (/^(?:candidate name|your name|full name|first\s*(?:name)?last\s*(?:name)?)$/i.test(text.trim())) {
-        throw new Error('CV export validation failed: placeholder text detected in rendered content.');
+      if (containsForbiddenPhrase(text)) {
+        throw new Error(`CV export validation failed: placeholder text detected in rendered content: "${text.substring(0, 60)}".`);
       }
     }
     if (block.type === 'bullet') {
@@ -722,63 +753,65 @@ function validateRenderBlocks(blocks) {
         duplicateHeadingDetected = true;
       }
       seenHeadingTitles.add(block.text);
-      headingTitles.add(block.text);
       if (block.font !== 'F2') {
         throw new Error('CV export validation failed: section heading is not bold.');
       }
     }
   });
 
-  if (!nameBlock || nameBlock.font !== 'F2' || Number(nameBlock.size) !== NAME_FONT_SIZE) {
+  if (!hasContent) {
+    throw new Error('CV export validation failed: no content found in CV.');
+  }
+
+  if (nameBlock && (nameBlock.font !== 'F2' || Number(nameBlock.size) !== NAME_FONT_SIZE)) {
     throw new Error('CV export validation failed: applicant name must be bold and prominently sized.');
   }
 
-  const requiredHeadings = [
-    SECTION_TITLES.professionalSummary,
-    SECTION_TITLES.coreCompetencies,
-    SECTION_TITLES.professionalExperience,
-    SECTION_TITLES.education,
-    SECTION_TITLES.languages,
-  ];
-
-  const missingRequired = requiredHeadings.filter((title) => !headingTitles.has(title));
-  if (duplicateHeadingDetected || missingRequired.length) {
-    throw new Error('CV export validation failed: duplicate or missing section headings detected.');
-  }
-  if (!hasBullet) {
-    throw new Error('CV export validation failed: at least one bullet point is required.');
+  if (duplicateHeadingDetected) {
+    throw new Error('CV export validation failed: duplicate section headings detected.');
   }
 }
 
 function normalizeToCvTemplateText(inputText) {
   const structured = buildStructuredCvObject(inputText);
   const cv = validateAndAutoCorrect(structured);
-  const lines = [
-    cv.fullName,
-    cv.contact.location,
-    cv.contact.phone,
-    cv.contact.email,
-    cv.professionalTitle,
-    '',
-    SECTION_TITLES.professionalSummary,
-    cv.professionalSummary,
-    '',
-    SECTION_TITLES.coreCompetencies,
-    ...cv.coreCompetencies.map((item) => `- ${item}`),
-    '',
-    SECTION_TITLES.professionalExperience,
-  ];
+  const lines = [];
 
-  cv.professionalExperience.forEach((role) => {
-    lines.push(role.company || '', role.jobTitle || '', role.dateRange || '');
-    (role.bullets || []).forEach((bullet) => lines.push(`- ${bullet}`));
-    lines.push('');
-  });
+  if (cv.fullName) lines.push(cv.fullName);
+  if (cv.contact.location) lines.push(cv.contact.location);
+  if (cv.contact.phone) lines.push(cv.contact.phone);
+  if (cv.contact.email) lines.push(cv.contact.email);
+  if (cv.professionalTitle) lines.push(cv.professionalTitle);
 
-  lines.push(SECTION_TITLES.education);
-  cv.education.forEach((item) => {
-    lines.push(item.degree || '', item.institution || '', item.dateRange || '', '');
-  });
+  if (cv.professionalSummary) {
+    lines.push('', SECTION_TITLES.professionalSummary, cv.professionalSummary);
+  }
+
+  if (cv.coreCompetencies.length) {
+    lines.push('', SECTION_TITLES.coreCompetencies);
+    cv.coreCompetencies.forEach((item) => lines.push(`- ${item}`));
+  }
+
+  if (cv.professionalExperience.length) {
+    lines.push('', SECTION_TITLES.professionalExperience);
+    cv.professionalExperience.forEach((role) => {
+      if (role.company) lines.push(role.company);
+      if (role.jobTitle) lines.push(role.jobTitle);
+      if (role.dateRange) lines.push(role.dateRange);
+      (role.bullets || []).forEach((bullet) => lines.push(`- ${bullet}`));
+      lines.push('');
+    });
+  }
+
+  if (cv.education.length) {
+    lines.push(SECTION_TITLES.education);
+    cv.education.forEach((item) => {
+      if (item.degree) lines.push(item.degree);
+      if (item.institution) lines.push(item.institution);
+      if (item.dateRange) lines.push(item.dateRange);
+      lines.push('');
+    });
+  }
 
   if (cv.technicalSkills.length) {
     lines.push(SECTION_TITLES.technicalSkills, ...cv.technicalSkills.map((skill) => `- ${skill}`), '');
@@ -786,7 +819,9 @@ function normalizeToCvTemplateText(inputText) {
   if (cv.certifications.length) {
     lines.push(SECTION_TITLES.certifications, ...cv.certifications.map((cert) => `- ${cert}`), '');
   }
-  lines.push(SECTION_TITLES.languages, ...cv.languages.map((language) => `- ${language}`));
+  if (cv.languages.length) {
+    lines.push(SECTION_TITLES.languages, ...cv.languages.map((language) => `- ${language}`));
+  }
 
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
@@ -822,5 +857,11 @@ module.exports = {
   normalizeToCvTemplateText,
   __test: {
     parseExperience,
+    buildStructuredCvObject,
+    validateAndAutoCorrect,
+    buildRenderBlocks,
+    validateRenderBlocks,
+    containsForbiddenPhrase,
+    FORBIDDEN_PHRASES,
   },
 };
