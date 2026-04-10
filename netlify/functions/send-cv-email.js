@@ -96,8 +96,10 @@ function canonicalizeCvText(text) {
 }
 
 async function fetchPdfBase64FromUrl(cvUrl) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(500, Number(process.env.CV_EMAIL_SNAPSHOT_FETCH_TIMEOUT_MS || 2000)));
   try {
-    const response = await fetch(cvUrl, { method: 'GET' });
+    const response = await fetch(cvUrl, { method: 'GET', signal: controller.signal });
     if (!response.ok) return '';
     const contentType = String(response.headers?.get?.('content-type') || '').toLowerCase();
     if (!contentType.includes('application/pdf')) return '';
@@ -106,6 +108,8 @@ async function fetchPdfBase64FromUrl(cvUrl) {
     return buffer.toString('base64');
   } catch (error) {
     return '';
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -231,7 +235,7 @@ exports.handler = async (event) => {
     }
 
     let run = await getRun(runId);
-    if (run?.revised_cv_fallback_generated_at && run?.original_cv_text) {
+    if ((!run?.revised_cv_text || run?.revised_cv_fallback_generated_at) && run?.original_cv_text) {
       try {
         const generatePdfHandler = require('./generate-pdf').handler;
         await generatePdfHandler({
@@ -267,14 +271,8 @@ exports.handler = async (event) => {
     if (!snapshotPdfBase64 && clientPdfBase64) {
       snapshotPdfBase64 = clientPdfBase64;
     }
-    if (!snapshotPdfBase64 && clientCvText) {
-      try {
-        const canonicalClientText = canonicalizeCvText(clientCvText);
-        snapshotPdfBase64 = buildPdfBuffer(canonicalClientText).toString('base64');
-      } catch (buildError) {
-        console.warn('Unable to build CV PDF from client-provided text.', buildError?.message || buildError);
-      }
-    }
+    // Avoid emailing plain-text client fallback CV content for paid delivery.
+    // If revised text is not yet ready, send secure link first and let retries/queue deliver attachment later.
     if (!snapshotPdfBase64) {
       const resolvedCvUrl = buildRunCvUrl(runId, cvUrl);
       snapshotPdfBase64 = await fetchPdfBase64FromUrl(resolvedCvUrl);
@@ -282,9 +280,10 @@ exports.handler = async (event) => {
         console.warn('Unable to fetch CV PDF for email snapshot.', { runId });
       }
     }
-    const effectiveRevisedText = revisedCvText || clientCvText;
+    const effectiveRevisedText = revisedCvText;
     if (!effectiveRevisedText && !snapshotPdfBase64) {
-      return json(409, { error: 'Your revised CV is still being prepared. Please retry shortly.' });
+      canonicalCvUrl = buildRunCvUrl(runId, cvUrl);
+      console.warn('Sending CV email without attachment snapshot; using run URL for fast delivery.', { runId });
     }
     if (effectiveRevisedText || snapshotPdfBase64) {
       const token = createEmailDownloadToken();
