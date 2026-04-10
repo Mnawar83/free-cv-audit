@@ -159,31 +159,43 @@ async function sendResendEmail(apiKey, emailPayload, idempotencyKey) {
 function getHtml({ name, cvUrl, isResend, hasAttachment }) {
   const greetingName = escapeHtml(toSafeText(name, 'there'));
   const safeCvUrl = escapeHtml(toSafeText(cvUrl));
-  const heading = 'Your CV is ready';
+  const heading = isResend ? 'Your CV - Sent Again' : 'Your Revised CV is Ready';
   const intro = isResend
-    ? 'Here is your CV again. You can open it anytime from any device.'
-    : 'Your revised CV is ready. Open it now or save this email to access it later.';
+    ? 'Here is your revised CV again. You can open it anytime from any device.'
+    : 'Great news — your ATS-optimized CV is ready. Open it now or save this email to access it later from any device.';
   const attachmentNote = hasAttachment
-    ? '<p style="margin:16px 0 0;color:#334155;">Your revised CV is also attached as a PDF for backup access.</p>'
+    ? '<p style="margin:16px 0 0;color:#475569;font-size:14px;">Your revised CV is also attached as a PDF for easy offline access.</p>'
     : '';
 
   const primaryAction = safeCvUrl
-    ? `<a href="${safeCvUrl}" style="display:inline-block;background:#059669;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:700;">Open My CV</a>`
+    ? `<div style="text-align:center;margin:24px 0;">
+        <a href="${safeCvUrl}" style="display:inline-block;background:#2760AD;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:700;font-size:16px;">Download My CV</a>
+      </div>`
     : '<p style="margin:0 0 12px;color:#334155;font-weight:600;">Your download link is temporarily unavailable. Please use the attached PDF.</p>';
 
-  return `
-    <div style="font-family:Arial,sans-serif;background:#f8fafc;padding:24px;">
-      <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;padding:24px;border:1px solid #e2e8f0;">
-        <h1 style="margin:0 0 12px;font-size:24px;color:#0f172a;">${heading}</h1>
-        <p style="margin:0 0 16px;color:#334155;">Hi ${greetingName},</p>
-        <p style="margin:0 0 24px;color:#334155;">${intro}</p>
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;">
+  <div style="max-width:600px;margin:0 auto;padding:24px 16px;">
+    <div style="background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">
+      <div style="background:linear-gradient(135deg,#1e3a5f,#2760AD);padding:28px 24px;text-align:center;">
+        <h1 style="margin:0;font-size:22px;color:#ffffff;font-weight:700;">${heading}</h1>
+      </div>
+      <div style="padding:28px 24px;">
+        <p style="margin:0 0 8px;color:#0f172a;font-size:16px;font-weight:600;">Hi ${greetingName},</p>
+        <p style="margin:0 0 20px;color:#334155;font-size:15px;line-height:1.6;">${intro}</p>
         ${primaryAction}
-        <p style="margin:20px 0 0;color:#475569;">You can access this CV anytime from any device.</p>
-        ${attachmentNote}
-        <p style="margin:20px 0 0;color:#94a3b8;font-size:12px;">FreeCVAudit.com</p>
+        <div style="border-top:1px solid #e2e8f0;margin-top:20px;padding-top:16px;">
+          <p style="margin:0;color:#64748b;font-size:13px;line-height:1.5;">This link gives you secure access to your revised CV. You can open it anytime from any device.</p>
+          ${attachmentNote}
+        </div>
+      </div>
+      <div style="background:#f8fafc;padding:16px 24px;border-top:1px solid #e2e8f0;text-align:center;">
+        <p style="margin:0;color:#94a3b8;font-size:12px;">FreeCVAudit.com &mdash; Free ATS-Friendly CV Audits</p>
       </div>
     </div>
-  `;
+  </div>
+</body></html>`;
 }
 
 exports.handler = async (event) => {

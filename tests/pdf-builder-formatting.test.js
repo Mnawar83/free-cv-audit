@@ -46,10 +46,10 @@ async function run() {
   assert.ok(pdf.length > 1000, 'PDF should be generated.');
 
   const content = decodePdf(pdf);
-  assert.ok(content.includes('/F2 12 Tf\n(Jane Doe) Tj'), 'Name should be bold and exactly 2 points larger than body text.');
-  assert.ok(content.includes('/F2 11 Tf\n(PROFESSIONAL SUMMARY) Tj'), 'Section heading should be bold.');
-  assert.ok(content.includes('/F2 11 Tf\n(CORE COMPETENCIES) Tj'), 'Section heading should be bold.');
-  assert.ok(content.includes('/F2 11 Tf\n(PROFESSIONAL EXPERIENCE) Tj'), 'Section heading should be bold.');
+  assert.ok(content.includes('/F2 16 Tf\n(Jane Doe) Tj'), 'Name should be bold and prominently sized.');
+  assert.ok(content.includes('/F2 11 Tf\n(PROFESSIONAL SUMMARY) Tj'), 'Professional Summary heading should be bold.');
+  assert.ok(content.includes('/F2 11 Tf\n(CORE COMPETENCIES) Tj'), 'Core Competencies heading should be bold.');
+  assert.ok(content.includes('/F2 11 Tf\n(PROFESSIONAL EXPERIENCE) Tj'), 'Professional Experience heading should be bold.');
   assert.ok(!/Page\s+1\b/i.test(content), 'Page marker artifacts should not be rendered in content.');
   assert.ok(!content.includes('�'), 'Corrupted replacement symbols must be removed.');
 
