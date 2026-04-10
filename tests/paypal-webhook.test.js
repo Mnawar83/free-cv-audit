@@ -28,6 +28,8 @@ async function run() {
 
   clearModule('../netlify/functions/paypal-webhook');
   const handler = require('../netlify/functions/paypal-webhook').handler;
+  // Disable direct queue fallback so the enqueued job stays for the explicit queue handler test below.
+  process.env.QUEUE_TRIGGER_DIRECT_FALLBACK = 'false';
   const response = await handler({
     httpMethod: 'POST',
     headers: { 'x-webhook-secret': 'secret123' },
@@ -50,7 +52,9 @@ async function run() {
   assert.strictEqual(updated.payment_status, 'PAID');
 
   process.env.QUEUE_PROCESSOR_SECRET = 'paypal-queue-secret';
+  delete process.env.QUEUE_TRIGGER_DIRECT_FALLBACK;
 
+  clearModule('../netlify/functions/send-cv-email');
   clearModule('../netlify/functions/process-fulfillment-queue');
   let sendCount = 0;
   global.fetch = async () => {

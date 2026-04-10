@@ -40,8 +40,10 @@ async function run() {
   clearModule('../netlify/functions/send-cv-email');
   const { handler } = require('../netlify/functions/send-cv-email');
 
+  const backgroundWork = [];
   const response = await handler({
     httpMethod: 'POST',
+    waitUntil: (p) => backgroundWork.push(p),
     body: JSON.stringify({
       email: 'user@example.com',
       name: 'Jane',
@@ -62,6 +64,7 @@ async function run() {
     'Email should contain the hosted tokenized download link.',
   );
   assert.ok(Boolean(resendHeaders['Idempotency-Key']), 'Email send should include an idempotency key header.');
+  await Promise.allSettled(backgroundWork);
   const storedSnapshot = await runStore.getEmailDownload(token);
   assert.ok(storedSnapshot, 'Token snapshot should be stored.');
   assert.ok(storedSnapshot.pdf_base64, 'Stored snapshot should persist immutable PDF bytes.');
