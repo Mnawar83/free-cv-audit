@@ -4,10 +4,11 @@ const MARGIN = 50;
 const CONTENT_WIDTH = A4_WIDTH - MARGIN * 2;
 
 const BODY_FONT_SIZE = 10;
-const NAME_FONT_SIZE = BODY_FONT_SIZE + 2;
+const NAME_FONT_SIZE = 16;
 const HEADING_FONT_SIZE = 11;
-const BULLET_INDENT = 14;
-const LINE_HEIGHT_MULTIPLIER = 1.38;
+const BULLET_INDENT = 16;
+const LINE_HEIGHT_MULTIPLIER = 1.45;
+const ACCENT_COLOR = '0.153 0.376 0.678'; // professional blue (RGB 39 96 173)
 
 const SECTION_ORDER = [
   'professionalSummary',
@@ -424,7 +425,11 @@ function validateAndAutoCorrect(cv) {
 
 function wrapLine(text, fontSize, width) {
   const clean = normalizeLine(text);
-  const maxChars = Math.max(12, Math.floor(width / (fontSize * 0.52)));
+  // Improved character width estimation using average Helvetica character width.
+  // Helvetica average char width is ~0.50em; use 0.48 for regular and account for
+  // narrow chars (i,l,t ~0.28em) and wide chars (m,w ~0.72em) via averaging.
+  const avgCharWidth = fontSize * 0.48;
+  const maxChars = Math.max(12, Math.floor(width / avgCharWidth));
   const words = clean.split(/\s+/).filter(Boolean);
   if (!words.length) return [''];
 
@@ -459,7 +464,8 @@ function buildRenderBlocks(cv) {
   const headingStyle = { font: 'F2', size: HEADING_FONT_SIZE };
 
   const addHeading = (key) => {
-    blocks.push({ type: 'heading', text: SECTION_TITLES[key], ...headingStyle, before: 10, after: 4, keepWithNext: true });
+    blocks.push({ type: 'rule', before: 10, after: 0 });
+    blocks.push({ type: 'heading', text: SECTION_TITLES[key], ...headingStyle, before: 6, after: 5, keepWithNext: true });
   };
 
   const addCentered = (text, size, bold = false, after = 4) => {
@@ -467,26 +473,31 @@ function buildRenderBlocks(cv) {
     blocks.push({ type: 'line', text, font: bold ? 'F2' : 'F1', size, align: 'center', after });
   };
 
-  const contactLine = [cv.contact.location, cv.contact.phone, cv.contact.email].filter(Boolean).join('  •  ');
+  const contactParts = [cv.contact.location, cv.contact.phone, cv.contact.email].filter(Boolean);
+  const contactLine = contactParts.join('  |  ');
 
-  addCentered(cv.fullName, NAME_FONT_SIZE, true, 4);
-  addCentered(cv.professionalTitle, BODY_FONT_SIZE + 0.4, true, 4);
-  addCentered(contactLine, BODY_FONT_SIZE - 0.2, false, 8);
+  addCentered(cv.fullName, NAME_FONT_SIZE, true, 3);
+  addCentered(cv.professionalTitle, BODY_FONT_SIZE + 1, false, 3);
+  if (contactLine) {
+    addCentered(contactLine, BODY_FONT_SIZE - 0.5, false, 4);
+  }
+  blocks.push({ type: 'accentRule', before: 4, after: 6 });
 
   addHeading('professionalSummary');
   blocks.push({ type: 'paragraph', text: cv.professionalSummary, font: 'F1', size: BODY_FONT_SIZE, after: 6 });
 
   addHeading('coreCompetencies');
-  blocks.push({ type: 'paragraph', text: cv.coreCompetencies.join(' | '), font: 'F1', size: BODY_FONT_SIZE, after: 5 });
+  blocks.push({ type: 'paragraph', text: cv.coreCompetencies.join('  |  '), font: 'F1', size: BODY_FONT_SIZE, after: 5 });
 
   addHeading('professionalExperience');
-  cv.professionalExperience.forEach((role) => {
+  cv.professionalExperience.forEach((role, roleIndex) => {
     blocks.push({ type: 'groupStart' });
+    if (roleIndex > 0) blocks.push({ type: 'spacer', height: 3 });
     blocks.push({ type: 'line', text: role.company, font: 'F2', size: BODY_FONT_SIZE + 0.5, after: 1 });
     if (role.jobTitle) blocks.push({ type: 'line', text: role.jobTitle, font: 'F1', size: BODY_FONT_SIZE, after: 1 });
-    if (role.dateRange) blocks.push({ type: 'line', text: role.dateRange, font: 'F1', size: BODY_FONT_SIZE - 0.5, after: 2 });
-    (role.bullets || []).forEach((bullet) => blocks.push({ type: 'bullet', text: bullet, font: 'F1', size: BODY_FONT_SIZE, after: 1 }));
-    blocks.push({ type: 'spacer', height: 4 });
+    if (role.dateRange) blocks.push({ type: 'line', text: role.dateRange, font: 'F1', size: BODY_FONT_SIZE - 0.5, after: 3 });
+    (role.bullets || []).forEach((bullet) => blocks.push({ type: 'bullet', text: bullet, font: 'F1', size: BODY_FONT_SIZE, after: 2 }));
+    blocks.push({ type: 'spacer', height: 2 });
     blocks.push({ type: 'groupEnd' });
   });
 
@@ -499,22 +510,23 @@ function buildRenderBlocks(cv) {
 
   if (cv.technicalSkills.length) {
     addHeading('technicalSkills');
-    blocks.push({ type: 'paragraph', text: cv.technicalSkills.join(' | '), font: 'F1', size: BODY_FONT_SIZE, after: 4 });
+    blocks.push({ type: 'paragraph', text: cv.technicalSkills.join('  |  '), font: 'F1', size: BODY_FONT_SIZE, after: 4 });
   }
 
   if (cv.certifications.length) {
     addHeading('certifications');
-    cv.certifications.forEach((cert) => blocks.push({ type: 'line', text: cert, font: 'F1', size: BODY_FONT_SIZE, after: 1 }));
+    cv.certifications.forEach((cert) => blocks.push({ type: 'bullet', text: cert, font: 'F1', size: BODY_FONT_SIZE, after: 2 }));
   }
 
   addHeading('languages');
-  blocks.push({ type: 'paragraph', text: cv.languages.join(' | '), font: 'F1', size: BODY_FONT_SIZE, after: 0 });
+  blocks.push({ type: 'paragraph', text: cv.languages.join('  |  '), font: 'F1', size: BODY_FONT_SIZE, after: 0 });
 
   return blocks;
 }
 
 function blockHeight(block) {
   if (block.type === 'spacer') return block.height || 0;
+  if (block.type === 'rule' || block.type === 'accentRule') return (block.before || 0) + 1 + (block.after || 0);
   const indent = block.type === 'bullet' ? BULLET_INDENT : 0;
   const lines = wrapLine(block.text || '', block.size || BODY_FONT_SIZE, CONTENT_WIDTH - indent);
   return (block.before || 0) + lines.length * lineHeight(block.size || BODY_FONT_SIZE) + (block.after || 0);
@@ -533,19 +545,40 @@ function estimateRightX(text, size) {
 function renderPages(blocks) {
   const pages = [];
   let commands = [];
+  let graphicsCommands = [];
   let y = A4_HEIGHT - MARGIN;
   const minY = MARGIN;
 
   const pushPage = () => {
-    if (!commands.length) return;
-    pages.push({ stream: `BT\n${commands.join('\n')}\nET` });
+    if (!commands.length && !graphicsCommands.length) return;
+    let stream = '';
+    if (graphicsCommands.length) {
+      stream += graphicsCommands.join('\n') + '\n';
+    }
+    stream += `BT\n${commands.join('\n')}\nET`;
+    pages.push({ stream });
     commands = [];
+    graphicsCommands = [];
     y = A4_HEIGHT - MARGIN;
   };
 
   const renderBlock = (block) => {
     if (block.type === 'spacer') {
       y -= block.height || 0;
+      return;
+    }
+
+    if (block.type === 'rule') {
+      y -= block.before || 0;
+      graphicsCommands.push(`q\n0.78 0.8 0.82 RG\n0.5 w\n${MARGIN} ${y} m ${A4_WIDTH - MARGIN} ${y} l S\nQ`);
+      y -= 1 + (block.after || 0);
+      return;
+    }
+
+    if (block.type === 'accentRule') {
+      y -= block.before || 0;
+      graphicsCommands.push(`q\n${ACCENT_COLOR} RG\n1.5 w\n${MARGIN} ${y} m ${A4_WIDTH - MARGIN} ${y} l S\nQ`);
+      y -= 1.5 + (block.after || 0);
       return;
     }
 
@@ -563,9 +596,17 @@ function renderPages(blocks) {
         x = estimateRightX(line, block.size || BODY_FONT_SIZE);
       }
       if (block.type === 'bullet' && index === 0) {
-        commands.push(`1 0 0 1 ${MARGIN + 3} ${y} Tm\n/F1 ${BODY_FONT_SIZE} Tf\n(${encodePdfText('-')}) Tj`);
+        // Render bullet marker aligned with text
+        graphicsCommands.push(`q\n0.25 0.25 0.25 rg\n${MARGIN + 4} ${y - 3.5} 3 3 re f\nQ`);
+      }
+      // Use accent color for headings
+      if (block.type === 'heading') {
+        commands.push(`${ACCENT_COLOR} rg`);
       }
       commands.push(`1 0 0 1 ${x} ${y} Tm\n/${block.font || 'F1'} ${block.size || BODY_FONT_SIZE} Tf\n(${encodePdfText(line)}) Tj`);
+      if (block.type === 'heading') {
+        commands.push('0 0 0 rg');
+      }
       y -= lh;
     });
 
@@ -666,11 +707,12 @@ function validateRenderBlocks(blocks) {
       if (/\b[A-Za-z]\s[A-Za-z]\b/.test(text)) {
         throw new Error('CV export validation failed: split-letter artifacts detected in rendered content.');
       }
-      if (/candidate name|your name|full name/i.test(text)) {
+      if (/^(?:candidate name|your name|full name|first\s*(?:name)?last\s*(?:name)?)$/i.test(text.trim())) {
         throw new Error('CV export validation failed: placeholder text detected in rendered content.');
       }
     }
     if (block.type === 'bullet') {
+      hasBullet = true;
       if (!text.trim()) {
         throw new Error('CV export validation failed: empty bullet detected.');
       }
@@ -688,7 +730,7 @@ function validateRenderBlocks(blocks) {
   });
 
   if (!nameBlock || nameBlock.font !== 'F2' || Number(nameBlock.size) !== NAME_FONT_SIZE) {
-    throw new Error('CV export validation failed: applicant name must be bold and 2 points larger than body text.');
+    throw new Error('CV export validation failed: applicant name must be bold and prominently sized.');
   }
 
   const requiredHeadings = [
@@ -749,54 +791,13 @@ function normalizeToCvTemplateText(inputText) {
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-function normalizeToCvTemplateText(inputText) {
-  const structured = buildStructuredCvObject(inputText);
-  const cv = validateAndAutoCorrect(structured);
-  const lines = [
-    cv.fullName,
-    cv.contact.location,
-    cv.contact.phone,
-    cv.contact.email,
-    cv.professionalTitle,
-    '',
-    SECTION_TITLES.professionalSummary,
-    cv.professionalSummary,
-    '',
-    SECTION_TITLES.coreCompetencies,
-    ...cv.coreCompetencies.map((item) => `- ${item}`),
-    '',
-    SECTION_TITLES.professionalExperience,
-  ];
-
-  cv.professionalExperience.forEach((role) => {
-    lines.push(role.company || '', role.jobTitle || '', role.dateRange || '');
-    (role.bullets || []).forEach((bullet) => lines.push(`- ${bullet}`));
-    lines.push('');
-  });
-
-  lines.push(SECTION_TITLES.education);
-  cv.education.forEach((item) => {
-    lines.push(item.degree || '', item.institution || '', item.dateRange || '', '');
-  });
-
-  if (cv.technicalSkills.length) {
-    lines.push(SECTION_TITLES.technicalSkills, ...cv.technicalSkills.map((skill) => `- ${skill}`), '');
-  }
-  if (cv.certifications.length) {
-    lines.push(SECTION_TITLES.certifications, ...cv.certifications.map((cert) => `- ${cert}`), '');
-  }
-  lines.push(SECTION_TITLES.languages, ...cv.languages.map((language) => `- ${language}`));
-
-  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-}
-
 function buildPdfBuffer(text) {
   const structured = buildStructuredCvObject(text);
   const validated = validateAndAutoCorrect(structured);
   const blocks = buildRenderBlocks(validated);
   validateRenderBlocks(blocks);
   const pages = renderPages(blocks);
-  if (!pages.length || pages.some((page) => !/\(.+\) Tj/.test(page.stream))) {
+  if (!pages.length || pages.some((page) => !/\(.+\) Tj/.test(page.stream) && !/\bre\b/.test(page.stream))) {
     throw new Error('CV export validation failed: empty pages detected.');
   }
   return buildPdfFromPages(pages);

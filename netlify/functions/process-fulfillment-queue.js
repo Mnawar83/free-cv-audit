@@ -68,7 +68,7 @@ exports.handler = async (event) => {
     try {
       const payload = job.payload || {};
       const fulfillmentId = String(payload.fulfillmentId || '').trim();
-      const requestedEmail = String(payload.email || '').trim();
+      const requestedEmail = String(payload.email || '').trim().toLowerCase();
       const name = String(payload.name || '').trim();
       const forceSync = payload.forceSync !== false;
       if (!fulfillmentId) {

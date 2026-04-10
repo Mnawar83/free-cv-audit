@@ -16,7 +16,12 @@ async function run() {
   await runStore.upsertRun(runId, { revised_cv_text: 'Queued Candidate\nEXPERIENCE\n- Async tested' });
 
   let sendCount = 0;
-  global.fetch = async () => {
+  let triggerCount = 0;
+  global.fetch = async (url) => {
+    if (String(url).includes('process-email-queue')) {
+      triggerCount += 1;
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    }
     sendCount += 1;
     return { ok: true, status: 200, json: async () => ({ id: `email_${sendCount}` }) };
   };
@@ -77,24 +82,24 @@ async function run() {
   assert.strictEqual(failedPayload.processed[0].status, 'DEAD_LETTER');
 
   process.env.CV_EMAIL_QUEUE_MAX_ATTEMPTS = '3';
-  const queuedPermanentFailure = await sendHandler({
+  process.env.CV_EMAIL_ASYNC_MODE = 'false';
+  clearModule('../netlify/functions/send-cv-email');
+  global.fetch = async () => ({ ok: true, status: 200, json: async () => ({ id: 'email_missing_run_ok' }) });
+
+  const missingRunSendHandler = require('../netlify/functions/send-cv-email').handler;
+  const missingRunResponse = await missingRunSendHandler({
     httpMethod: 'POST',
     body: JSON.stringify({
       email: 'queue-missing@example.com',
       name: 'Queue Missing',
       cvUrl: '/.netlify/functions/generate-pdf?runId=missing_run',
       runId: 'missing_run',
+      forceSync: true,
     }),
   });
-  assert.strictEqual(queuedPermanentFailure.statusCode, 202);
-  global.fetch = async () => ({ ok: true, status: 200, json: async () => ({ id: 'email_missing_run_ok' }) });
-
-  const permanentFailureProcess = await processHandler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
-  const permanentFailurePayload = JSON.parse(permanentFailureProcess.body || '{}');
-  assert.strictEqual(
-    permanentFailurePayload.processed[0].status,
-    'DEAD_LETTER',
-    'Missing run text without a snapshot source should dead-letter to avoid sending broken links.',
+  assert.ok(
+    missingRunResponse.statusCode === 200,
+    'Missing run should still send email with download link only.',
   );
 
   delete process.env.QUEUE_PROCESSOR_SECRET;

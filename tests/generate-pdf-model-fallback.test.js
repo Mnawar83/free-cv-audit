@@ -35,7 +35,7 @@ async function run() {
       ok: true,
       status: 200,
       json: async () => ({
-        candidates: [{ content: { parts: [{ text: 'Jane Doe\nEXPERIENCE\nBuilt systems.' }] } }],
+        candidates: [{ content: { parts: [{ text: 'Jane Doe\nPROFESSIONAL SUMMARY\nExperienced engineer.\nCORE COMPETENCIES\n- Systems Design\nPROFESSIONAL EXPERIENCE\nAcme Corp\nEngineer\n2020 - Present\n- Built resilient systems\nEDUCATION\nBSc Computer Science\nMIT\n2018\nLANGUAGES\nEnglish: Native' }] } }],
       }),
     };
   };

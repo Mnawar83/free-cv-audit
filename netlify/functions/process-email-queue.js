@@ -6,9 +6,18 @@ function isTransientStatus(statusCode) {
   return code === 429 || (code >= 500 && code <= 599);
 }
 
+function isRetryableDeliveryStatus(statusCode) {
+  const code = Number(statusCode);
+  if (isTransientStatus(code)) return true;
+  // Email delivery can race PDF generation/run persistence right after payment.
+  return code === 404 || code === 409 || code === 423 || code === 425;
+}
+
 function shouldRetryJob(job, maxAttempts, statusCode, defaultTransient = false) {
   const attempts = job?.attempts || 1;
-  const transient = Number.isFinite(Number(statusCode)) ? isTransientStatus(statusCode) : defaultTransient;
+  const transient = Number.isFinite(Number(statusCode))
+    ? isRetryableDeliveryStatus(statusCode) || defaultTransient
+    : defaultTransient;
   return attempts < maxAttempts && transient;
 }
 
