@@ -150,7 +150,9 @@ Rules:
 - Do not invent employers, dates, titles, certifications, tools, or metrics.
 - If a metric is missing, strengthen wording without fabricating numbers.
 - Keep chronology and tense consistent.
-- Return plain text only. No preamble. No markdown code fences.
+- Return plain text only. No preamble. No markdown code fences. No decorative characters or icons.
+- Never include placeholder text like "Professional Title", "Candidate Name", "Recent Professional Experience", or generic filler content.
+- If a section has no data from the source CV, omit it entirely. Do not generate filler content.
 
 Style:
 - Crisp, professional, and impact-oriented.
@@ -158,21 +160,44 @@ Style:
 - Keep bullets concise and avoid repetition.
 - Integrate relevant keywords naturally (no keyword stuffing).
 
-Output sections (in this order):
-PROFESSIONAL SUMMARY
-CORE SKILLS
-PROFESSIONAL EXPERIENCE
-EDUCATION
-CERTIFICATIONS (omit if not present in source)
+Output format:
+- Line 1: Full name exactly as it appears in the source CV
+- Line 2: Professional title (only if clearly stated in the source CV)
+- Line 3: Contact details (location, phone, email) separated by pipes
 
-Within PROFESSIONAL EXPERIENCE:
-- Format each role as: Job Title | Company | Location | Dates
-- Use clear bullet points under each role.
+Then output sections in this order, each preceded by its heading in ALL CAPS on its own line:
+
+PROFESSIONAL SUMMARY
+(2-4 sentences, no bullet points)
+
+CORE SKILLS
+(comma-separated list of skills found in the source CV)
+
+PROFESSIONAL EXPERIENCE
+(Each role formatted as: Job Title | Company | Location | Dates
+followed by bullet points starting with -)
+
+EDUCATION
+(Each entry: Degree, Institution, Date)
+
+CERTIFICATIONS (omit if not present in source)
+(Each entry as a bullet point starting with -)
+
+LANGUAGES (omit if not present in source)
+(Each entry as: Language: Proficiency level)
+
+Critical rules for experience entries:
+- Each role MUST have its own header line with Job Title | Company | Location | Dates
+- Each role MUST have individual bullet points (starting with -), never paragraph blocks
+- Never combine multiple roles into one block
+- Never dump all experience into a single paragraph
 
 Before returning, verify:
-- No invented facts.
-- No duplicate bullets.
-- Clear section headings and readable ATS-safe structure.`;
+- No invented facts
+- No duplicate bullets or sections
+- No placeholder or generic filler text
+- Clear section headings and readable ATS-safe structure
+- Every experience entry has separate bullet points, not paragraphs`;
 
     const analysisNote = resolvedCvAnalysis
       ? `\n\nReference these audit notes when improving structure, wording, and keyword alignment (without inventing facts):\n${resolvedCvAnalysis}`
