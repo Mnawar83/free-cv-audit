@@ -199,6 +199,7 @@ function getHtml({ name, cvUrl, isResend, hasAttachment }) {
 }
 
 exports.handler = async (event) => {
+  const timing = { start: Date.now() };
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') {
@@ -225,6 +226,8 @@ exports.handler = async (event) => {
     if (!email) return json(400, { error: 'email is required.' });
     if (!cvUrl) return json(400, { error: 'cvUrl is required.' });
     if (!runId) return json(400, { error: 'runId is required to create a reliable download link.' });
+
+    // Parallelize fulfillment validation + run fetch when both are needed
     if (fulfillmentId) {
       const fulfillment = await getFulfillment(fulfillmentId);
       if (!fulfillment) return json(404, { error: 'fulfillmentId was not found.' });
@@ -245,6 +248,8 @@ exports.handler = async (event) => {
       await triggerEmailQueueProcessing();
       return json(202, { ok: true, queued: true, jobId: queued.id, ...(fulfillmentId ? { fulfillmentId } : {}) });
     }
+
+    timing.buildStart = Date.now();
 
     let run = await getRun(runId);
     if ((!run?.revised_cv_text || run?.revised_cv_fallback_generated_at) && run?.original_cv_text) {
@@ -302,21 +307,22 @@ exports.handler = async (event) => {
       const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
       const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
       const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
+      const snapshotData = {
+        runId,
+        ...(snapshotPdfBase64 ? { pdf_base64: snapshotPdfBase64 } : {}),
+        ...(effectiveRevisedText ? { revised_cv_text: effectiveRevisedText } : {}),
+        expires_at: expiresAt,
+      };
       try {
-        await createArtifactToken({
-          token,
-          runId,
-          fulfillmentId: fulfillmentId || null,
-          ...(snapshotPdfBase64 ? { pdf_base64: snapshotPdfBase64 } : {}),
-          ...(effectiveRevisedText ? { revised_cv_text: effectiveRevisedText } : {}),
-          expires_at: expiresAt,
-        });
-        await saveEmailDownloadSnapshot(event, token, {
-          runId,
-          ...(snapshotPdfBase64 ? { pdf_base64: snapshotPdfBase64 } : {}),
-          ...(effectiveRevisedText ? { revised_cv_text: effectiveRevisedText } : {}),
-          expires_at: expiresAt,
-        });
+        // Parallelize artifact token creation and blob snapshot write
+        await Promise.all([
+          createArtifactToken({
+            token,
+            fulfillmentId: fulfillmentId || null,
+            ...snapshotData,
+          }),
+          saveEmailDownloadSnapshot(event, token, snapshotData),
+        ]);
         canonicalCvUrl = buildCanonicalCvUrl(token, cvUrl, runId);
       } catch (snapshotError) {
         console.warn('Unable to persist email download snapshot; falling back to runId URL.', snapshotError?.message || snapshotError);
@@ -325,6 +331,8 @@ exports.handler = async (event) => {
         }
       }
     }
+
+    timing.buildEnd = Date.now();
 
     const subject = isResend ? 'Here Is Your CV Again' : 'Your CV is Ready';
     const from = 'FreeCVAudit <noreply@freecvaudit.com>';
@@ -345,14 +353,21 @@ exports.handler = async (event) => {
           }
         : {}),
     };
+
+    timing.sendStart = Date.now();
     const sendResult = await sendResendEmail(apiKey, emailPayload, idempotencyKey);
+    timing.sendEnd = Date.now();
+
     if (!sendResult.ok) {
       const details = sendResult?.payload?.message || sendResult?.payload?.error || 'Unable to send CV email.';
+      console.warn('[send-cv-email] timing', { ...timing, total: Date.now() - timing.start, outcome: 'send_failed' });
       return json(sendResult.statusCode || 502, { error: details });
     }
 
-    try {
-      await upsertEmailDelivery(`delivery:${idempotencyKey}`, {
+    // Fire-and-forget: post-send bookkeeping should not block the response
+    const bookkeepingPromises = [];
+    bookkeepingPromises.push(
+      upsertEmailDelivery(`delivery:${idempotencyKey}`, {
         runId,
         email,
         provider: 'resend',
@@ -360,29 +375,50 @@ exports.handler = async (event) => {
         status: 'SENT',
         is_resend: isResend,
         download_url: canonicalCvUrl,
-      });
-    } catch (deliveryStoreError) {
-      console.warn('Email sent but delivery record could not be persisted.', {
-        runId,
-        error: deliveryStoreError?.message || deliveryStoreError,
-      });
-    }
+      }).catch((deliveryStoreError) => {
+        console.warn('Email sent but delivery record could not be persisted.', {
+          runId,
+          error: deliveryStoreError?.message || deliveryStoreError,
+        });
+      })
+    );
     if (fulfillmentId) {
-      try {
-        await updateFulfillment(fulfillmentId, (existing) => ({
+      bookkeepingPromises.push(
+        updateFulfillment(fulfillmentId, (existing) => ({
           email: email || existing.email || null,
           email_status: 'SENT',
           email_sent_at: new Date().toISOString(),
-        }));
-      } catch (fulfillmentUpdateError) {
-        console.warn('Email sent but fulfillment record could not be updated.', {
-          fulfillmentId,
-          error: fulfillmentUpdateError?.message || fulfillmentUpdateError,
-        });
-      }
+        })).catch((fulfillmentUpdateError) => {
+          console.warn('Email sent but fulfillment record could not be updated.', {
+            fulfillmentId,
+            error: fulfillmentUpdateError?.message || fulfillmentUpdateError,
+          });
+        })
+      );
     }
+
+    // Log timing for observability, then return immediately
+    timing.total = Date.now() - timing.start;
+    console.log('[send-cv-email] timing', {
+      buildMs: (timing.buildEnd || timing.start) - (timing.buildStart || timing.start),
+      sendMs: (timing.sendEnd || timing.start) - (timing.sendStart || timing.start),
+      totalMs: timing.total,
+      hasAttachment: Boolean(snapshotPdfBase64),
+      outcome: 'ok',
+    });
+
+    // Wait for bookkeeping in background — Netlify Functions stay alive briefly after response
+    // Use waitUntil if available (Netlify Edge-compatible), otherwise best-effort Promise.allSettled
+    const waitHandle = Promise.allSettled(bookkeepingPromises);
+    if (typeof event?.waitUntil === 'function') {
+      event.waitUntil(waitHandle);
+    } else if (typeof globalThis?.waitUntil === 'function') {
+      globalThis.waitUntil(waitHandle);
+    }
+
     return json(200, { ok: true, id: sendResult.payload?.id || null, ...(fulfillmentId ? { fulfillmentId } : {}) });
   } catch (error) {
+    console.warn('[send-cv-email] timing', { totalMs: Date.now() - timing.start, outcome: 'error', error: error?.message });
     return json(500, { error: error.message || 'Unable to send CV email.' });
   }
 };

@@ -43,6 +43,7 @@ function getHtml({ name, pdfUrl, isResend }) {
 }
 
 exports.handler = async (event) => {
+  const timing = { start: Date.now() };
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') {
@@ -66,6 +67,8 @@ exports.handler = async (event) => {
 
     const subject = isResend ? 'Here Is Your Cover Letter Again' : 'Your Cover Letter is Ready';
     const from = 'FreeCVAudit <noreply@freecvaudit.com>';
+
+    timing.sendStart = Date.now();
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
@@ -81,13 +84,18 @@ exports.handler = async (event) => {
     });
 
     const payloadResponse = await response.json().catch(() => ({}));
+    timing.sendEnd = Date.now();
+
     if (!response.ok) {
       const details = payloadResponse?.message || payloadResponse?.error || 'Unable to send cover letter email.';
+      console.warn('[send-cover-letter-email] timing', { sendMs: timing.sendEnd - timing.sendStart, totalMs: Date.now() - timing.start, outcome: 'send_failed' });
       return json(502, { error: details });
     }
 
+    console.log('[send-cover-letter-email] timing', { sendMs: timing.sendEnd - timing.sendStart, totalMs: Date.now() - timing.start, outcome: 'ok' });
     return json(200, { ok: true, id: payloadResponse?.id || null });
   } catch (error) {
+    console.warn('[send-cover-letter-email] timing', { totalMs: Date.now() - timing.start, outcome: 'error' });
     return json(500, { error: error.message || 'Unable to send cover letter email.' });
   }
 };
