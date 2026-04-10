@@ -280,16 +280,10 @@
 
                     <div id="revised-download-only" class="hidden mt-8 rounded-lg border border-emerald-500/50 bg-emerald-950/30 p-8 text-center">
                         <h3 class="text-2xl font-semibold text-white">Your CV is ready</h3>
-                        <p class="mt-2 text-sm text-slate-300">Your revised CV will be delivered to your checkout email.</p>
+                        <p class="mt-2 text-sm text-slate-300">Your revised CV is being delivered automatically to your checkout email.</p>
                         <p id="cv-email-display" class="mt-1 text-xs text-slate-400"></p>
-                        <div class="mx-auto mt-5 grid w-full max-w-md grid-cols-1 gap-3">
-                            <input id="cv-name-input" type="text" class="w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white" placeholder="Name (optional)" />
-                            <button id="email-cv-button" class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60" disabled>
-                                Resend Email
-                            </button>
-                        </div>
                         <p id="cv-email-status" class="mt-3 min-h-[20px] text-xs text-slate-300"></p>
-                        <p class="mt-2 text-xs text-slate-400">We’ll send your revised CV link directly to your inbox.</p>
+                        <p class="mt-2 text-xs text-slate-400">Your revised CV will be emailed to your checkout address.</p>
 
                         <a id="primary-download-link" href="#" class="hidden mt-5 inline-flex w-full max-w-md items-center justify-center rounded-lg bg-emerald-700/70 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-600/70" aria-disabled="true">
                             Download Linked Product
@@ -781,9 +775,6 @@
                 await sendCvEmail({ resend: emailCvButton.textContent.toLowerCase().includes('resend') });
             });
         }
-        if (emailCvButton) {
-            emailCvButton.textContent = 'Resend Email';
-        }
         syncCvEmailDisplay();
 
         if (linkedinEmailInput) {
@@ -1151,10 +1142,10 @@
                         pdfBase64: attachmentBase64,
                         cvText,
                     };
-                let endpoint = currentCvFulfillmentId
-                    ? '/.netlify/functions/fulfillment-resend-email'
-                    : '/.netlify/functions/send-cv-email';
-                let requestBody = currentCvFulfillmentId ? fulfillmentRequestBody : runRequestBody;
+                let endpoint = '/.netlify/functions/send-cv-email';
+                let requestBody = currentCvFulfillmentId
+                    ? { ...runRequestBody, ...fulfillmentRequestBody, resend: false }
+                    : runRequestBody;
                 let response = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1204,7 +1195,6 @@
                 if (!silent && cvEmailStatus) {
                     cvEmailStatus.textContent = payload.queued ? 'Email queued. It will arrive shortly.' : 'Email sent. Check your inbox.';
                 }
-                if (emailCvButton) emailCvButton.textContent = 'Resend Email';
                 return true;
             } catch (error) {
                 if (!silent && cvEmailStatus) cvEmailStatus.textContent = error.message || 'Unable to send CV email right now.';
@@ -2141,39 +2131,63 @@
             }
         }
 
-        function scheduleSafeCvEmailDelivery({ immediate = false } = {}) {
+        function redirectToUploadHomeAfterPayment() {
             clearSafeCvEmailDeliverySchedule();
-            const hasEmail = Boolean((cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim());
-            if (!hasPaidCV || !hasEmail) return;
-
-            const delayMs = immediate ? 250 : Math.min(120000, 15000 * Math.max(1, safeCvEmailAttempt));
-            safeCvEmailTimer = setTimeout(async () => {
-                safeCvEmailTimer = null;
+            setTimeout(() => {
+                resetRunStateForNewAudit({ clearAuditArtifacts: true });
+                loadingSection.classList.add('hidden');
+                resultsSection.classList.add('hidden');
+                uploadSection.classList.remove('hidden');
+                auditOutput.innerHTML = '';
+                hideError();
                 try {
-                    await generateRevisedPdfWithRecovery();
-                    const sent = await sendCvEmail({ resend: safeCvEmailAttempt > 0, silent: true });
-                    if (sent) {
-                        safeCvEmailAttempt = 0;
-                        if (currentRunId) {
-                            localStorage.setItem('cv_email_auto_sent_run_id', currentRunId);
-                        }
-                        if (cvEmailStatus) cvEmailStatus.textContent = 'Delivery confirmed. Please check your inbox.';
-                        return;
-                    }
+                    const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+                    window.history.replaceState({}, '', cleanUrl);
                 } catch (error) {
-                    console.warn('Safe CV email delivery attempt failed.', error);
+                    console.warn('Unable to clear URL state after payment.', error);
                 }
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }, 1800);
+        }
 
-                safeCvEmailAttempt += 1;
+        let cvDeliveryFinalizePromise = null;
+
+        async function ensureCvEmailDeliveredThenReturn() {
+            if (cvDeliveryFinalizePromise) return cvDeliveryFinalizePromise;
+            cvDeliveryFinalizePromise = (async () => {
+            clearSafeCvEmailDeliverySchedule();
+            const maxAttempts = 6;
+            try {
+                await generateRevisedPdfWithRecovery();
+            } catch (generationError) {
+                console.warn('Unable to refresh revised CV before delivery confirmation loop.', generationError);
+            }
+            for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
                 if (cvEmailStatus) {
-                    cvEmailStatus.textContent = 'Still processing delivery safely. We will keep retrying automatically.';
+                    cvEmailStatus.textContent = attempt === 1
+                        ? 'Finalizing delivery...'
+                        : `Finalizing delivery (attempt ${attempt}/${maxAttempts})...`;
                 }
-                if (safeCvEmailAttempt < 6) {
-                    scheduleSafeCvEmailDelivery({ immediate: false });
-                } else if (cvEmailStatus) {
-                    cvEmailStatus.textContent = 'Delivery is delayed. Please use Resend Email and we will continue safely.';
+                const sent = await sendCvEmail({ resend: false, silent: true });
+                if (sent) {
+                    if (cvEmailStatus) cvEmailStatus.textContent = 'Email sent successfully. Redirecting...';
+                    redirectToUploadHomeAfterPayment();
+                    return true;
                 }
-            }, delayMs);
+                if (attempt < maxAttempts) {
+                    await new Promise((resolve) => setTimeout(resolve, Math.min(12000, attempt * 2000)));
+                }
+            }
+            if (cvEmailStatus) {
+                cvEmailStatus.textContent = 'We could not confirm email delivery yet. Please stay on this page while we keep processing.';
+            }
+            return false;
+            })();
+            try {
+                return await cvDeliveryFinalizePromise;
+            } finally {
+                cvDeliveryFinalizePromise = null;
+            }
         }
 
         async function generateRevisedPdfWithRecovery() {
@@ -2205,12 +2219,12 @@
         async function finalizeCvPaymentAndGenerate() {
             setPaidState('cv', true);
             applyPaidGatedLayout();
+            if (revisedPaymentSection) revisedPaymentSection.classList.add('hidden');
             if (revisedCvBlobUrl) {
                 setDownloadLocked(false);
-                if ((localStorage.getItem('cv_email') || '').trim()) {
-                    scheduleSafeCvEmailDelivery({ immediate: true });
-                }
+                if (cvEmailStatus) cvEmailStatus.textContent = 'Payment confirmed. Finalizing email delivery...';
                 updateRetryVisibility();
+                await ensureCvEmailDeliveredThenReturn();
                 return;
             }
             setDownloadLocked(true);
@@ -2225,7 +2239,9 @@
                 showError(fallbackErrorMessage);
             }
             setDownloadLocked(false);
+            if (cvEmailStatus) cvEmailStatus.textContent = 'Payment confirmed. Finalizing email delivery...';
             updateRetryVisibility();
+            await ensureCvEmailDeliveredThenReturn();
         }
 
         async function generateRevisedPdf(cvText) {
@@ -2310,14 +2326,6 @@
                 }
                 syncCvAccessActions();
 
-                const savedEmail = (cvEmailInput?.value || localStorage.getItem('cv_email') || '').trim();
-                if (hasPaidCV && savedEmail && currentRunId) {
-                    const autoSentKey = 'cv_email_auto_sent_run_id';
-                    const sentRunId = localStorage.getItem(autoSentKey);
-                    if (sentRunId !== currentRunId) {
-                        scheduleSafeCvEmailDelivery({ immediate: true });
-                    }
-                }
             } finally {
                 isGeneratingPdf = false;
             }
@@ -3285,7 +3293,7 @@
         syncUpsellCardVisibilityForViewport();
         window.addEventListener('resize', syncUpsellCardVisibilityForViewport);
 
-        scheduleSafeCvEmailDelivery({ immediate: true });
+        clearSafeCvEmailDeliverySchedule();
     </script>
 </body>
 </html>

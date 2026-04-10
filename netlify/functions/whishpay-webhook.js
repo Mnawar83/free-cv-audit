@@ -51,6 +51,12 @@ function isPaidStatus(payload) {
   return ['SUCCESS', 'PAID', 'COLLECTED'].includes(status) || payload?.isPaidStatus === true;
 }
 
+function buildCvUrlForRun(runId) {
+  const baseUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || 'https://freecvaudit.com';
+  const normalizedBaseUrl = /^https?:\/\//i.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
+  return new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(runId)}`, normalizedBaseUrl).toString();
+}
+
 exports.handler = async (event) => {
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
@@ -83,19 +89,49 @@ exports.handler = async (event) => {
 
     const paid = isPaidStatus(payload);
     if (paid) {
+      const deliveryEmail = String(fulfillment.email || '').trim().toLowerCase();
       await updateFulfillment(fulfillment.fulfillment_id, {
         payment_status: 'PAID',
+        email: deliveryEmail || null,
         provider_capture_id: String(payload?.transactionId || payload?.id || fulfillment.provider_capture_id || ''),
         paid_at: fulfillment.paid_at || new Date().toISOString(),
       });
-      if (fulfillment.email) {
-        await enqueueFulfillmentJob({
-          fulfillmentId: fulfillment.fulfillment_id,
-          email: fulfillment.email,
-          name: '',
-          forceSync: true,
-        });
-        await triggerFulfillmentQueueProcessing();
+      if (deliveryEmail) {
+        const runIdForDelivery = String(fulfillment.run_id || '').trim();
+        let delivered = false;
+        if (runIdForDelivery) {
+          try {
+            const sendHandler = require('./send-cv-email').handler;
+            const sendResponse = await sendHandler({
+              httpMethod: 'POST',
+              body: JSON.stringify({
+                email: deliveryEmail,
+                name: '',
+                cvUrl: buildCvUrlForRun(runIdForDelivery),
+                runId: runIdForDelivery,
+                fulfillmentId: fulfillment.fulfillment_id,
+                forceSync: true,
+                resend: false,
+              }),
+            });
+            delivered = sendResponse?.statusCode >= 200 && sendResponse?.statusCode < 300;
+          } catch (deliveryError) {
+            console.warn('WhishPay webhook immediate CV email delivery failed; falling back to queue.', {
+              fulfillmentId: fulfillment.fulfillment_id,
+              error: deliveryError?.message || deliveryError,
+            });
+          }
+        }
+
+        if (!delivered) {
+          await enqueueFulfillmentJob({
+            fulfillmentId: fulfillment.fulfillment_id,
+            email: deliveryEmail,
+            name: '',
+            forceSync: true,
+          });
+          await triggerFulfillmentQueueProcessing();
+        }
       }
     }
 
