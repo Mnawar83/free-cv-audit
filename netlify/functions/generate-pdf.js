@@ -31,6 +31,11 @@ function canonicalizeCvText(text) {
   return normalizeToCvTemplateText(normalizedText);
 }
 
+function resolveStructuredTemplateText(run) {
+  if (!run?.revised_cv_structured) return '';
+  return maybeStructuredCvToTemplateText(run.revised_cv_structured) || '';
+}
+
 function htmlErrorResponse(statusCode, message, options = {}) {
   const { showRetryHint } = options;
   const retryHint = showRetryHint
