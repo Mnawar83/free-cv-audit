@@ -1,7 +1,7 @@
 const assert = require('assert');
 
 async function run() {
-  const { maybeStructuredCvToTemplateText, tryExtractStructuredCv, structuredCvToTemplateText } = require('../netlify/functions/cv-schema');
+  const { normalizeStructuredCv, maybeStructuredCvToTemplateText, tryExtractStructuredCv, structuredCvToTemplateText } = require('../netlify/functions/cv-schema');
 
   const aiOutput = `Here is your result:
 {
@@ -56,6 +56,15 @@ async function run() {
     education: [{ degree: 'BSc', institution: 'School', date: '2020' }],
   });
   assert.ok(minimalValid && minimalValid.includes('EDUCATION'), 'Structured template should render for minimally valid CV');
+
+  const placeholderIdentity = normalizeStructuredCv({
+    fullName: 'Candidate Name',
+    professionalTitle: 'Professional Title',
+    summary: 'Valid summary',
+    experience: [{ jobTitle: 'Engineer', company: 'Acme', dates: '2022-Present', bullets: ['Did work'] }],
+  });
+  assert.strictEqual(placeholderIdentity.fullName, '');
+  assert.strictEqual(placeholderIdentity.professionalTitle, '');
 
   console.log('CV schema normalization test passed');
 }

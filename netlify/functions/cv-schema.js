@@ -49,10 +49,12 @@ function cleanList(input, limit = 12) {
 function normalizeStructuredCv(input) {
   const source = input && typeof input === 'object' ? input : {};
   const contact = source.contact && typeof source.contact === 'object' ? source.contact : {};
+  const fullName = cleanLine(source.fullName);
+  const professionalTitle = cleanLine(source.professionalTitle);
 
   const normalized = {
-    fullName: cleanLine(source.fullName),
-    professionalTitle: cleanLine(source.professionalTitle),
+    fullName: hasPlaceholder(fullName) ? '' : fullName,
+    professionalTitle: hasPlaceholder(professionalTitle) ? '' : professionalTitle,
     contact: {
       location: cleanLine(contact.location),
       phone: cleanLine(contact.phone),

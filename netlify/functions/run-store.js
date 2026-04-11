@@ -403,6 +403,7 @@ async function readStoreWithMeta() {
 async function writeStoreWithMeta(store, etag) {
   let nativeWriteError = null;
   let shouldResolveDurableEtagAfterNativeFailure = false;
+  let skipDurableWrite = false;
   if (hasNativeBlobs()) {
     try {
       await writeStoreToNativeBlobs(store, etag);
@@ -424,15 +425,22 @@ async function writeStoreWithMeta(store, etag) {
           durableEtag = durableState?.etag || null;
         } catch (durableReadError) {
           console.warn(
-            'Unable to refresh durable ETag after native write failure; using create-if-absent semantics.',
+            'Unable to refresh durable ETag after native write failure; skipping durable write and falling back to file store.',
             durableReadError?.message || durableReadError,
           );
-          durableEtag = null;
+          skipDurableWrite = true;
         }
+      }
+      if (skipDurableWrite) {
+        throw new Error('Durable ETag refresh failed after native write failure.');
       }
       await writeStoreToDurable(store, durableEtag);
       return;
     } catch (durableError) {
+      if (skipDurableWrite) {
+        await writeStoreToFile(store);
+        return;
+      }
       if (isConflictError(durableError)) {
         throw durableError;
       }
