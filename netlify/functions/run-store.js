@@ -402,6 +402,7 @@ async function readStoreWithMeta() {
 
 async function writeStoreWithMeta(store, etag) {
   let nativeWriteError = null;
+  let shouldIgnoreEtagForDurableWrite = false;
   if (hasNativeBlobs()) {
     try {
       await writeStoreToNativeBlobs(store, etag);
@@ -409,13 +410,15 @@ async function writeStoreWithMeta(store, etag) {
     } catch (error) {
       if (isConflictError(error)) throw error;
       nativeWriteError = error;
+      shouldIgnoreEtagForDurableWrite = true;
       console.warn('Native blobs write failed:', error.message);
     }
   }
 
   if (shouldUseDurableStore()) {
     try {
-      await writeStoreToDurable(store, etag);
+      const durableEtag = shouldIgnoreEtagForDurableWrite ? null : etag;
+      await writeStoreToDurable(store, durableEtag);
       return;
     } catch (durableError) {
       if (isConflictError(durableError)) {

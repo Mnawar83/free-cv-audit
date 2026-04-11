@@ -295,7 +295,9 @@ Before returning, verify:
         revisedStructuredCv = structuredCv;
         revisedText = structuredCvToTemplateText(structuredCv);
       } else {
-        revisedText = aiText;
+        console.warn('AI rewrite returned non-parseable structured JSON. Falling back to original CV text.');
+        revisedText = resolvedCvText;
+        usedFallbackText = true;
       }
     }
     } // end of apiKey else block
