@@ -5,6 +5,16 @@ const { structuredCvToTemplateText, tryExtractStructuredCv } = require('./cv-sch
 
 const PDF_FILENAME = 'revised-cv.pdf';
 
+function stableSeedFromText(text) {
+  const value = String(text || '');
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) % 2147483647;
+}
+
 function normalizeRevisedCvText(text) {
   if (!text) return '';
   let normalized = String(text).replace(/\r\n?/g, '\n');
@@ -226,6 +236,14 @@ Before returning, verify:
     const payload = {
       systemInstruction: { parts: [{ text: systemPrompt }] },
       contents: [{ parts: [{ text: `Rewrite this CV into a polished ATS-optimized version:\n\n${resolvedCvText}${analysisNote}` }] }],
+      generationConfig: {
+        temperature: 0,
+        topP: 0,
+        topK: 1,
+        candidateCount: 1,
+        responseMimeType: 'application/json',
+        seed: stableSeedFromText(resolvedCvText),
+      },
     };
 
     for (const model of candidateModels) {
