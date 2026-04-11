@@ -49,6 +49,10 @@ async function run() {
   const fenced = tryExtractStructuredCv(`\`\`\`json\n${aiOutput.slice(aiOutput.indexOf('{'))}\n\`\`\``);
   assert.ok(fenced, 'Structured CV should be extracted from fenced JSON');
 
+  const preambleThenJson = tryExtractStructuredCv(`Schema hint: {fullName}\nActual payload:\n${aiOutput.slice(aiOutput.indexOf('{'))}`);
+  assert.ok(preambleThenJson, 'Structured CV should be extracted even when earlier brace block is not JSON');
+  assert.strictEqual(preambleThenJson.fullName, 'Jane Doe');
+
   const minimalValid = maybeStructuredCvToTemplateText({
     fullName: 'Test User',
     summary: '',

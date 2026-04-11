@@ -171,8 +171,8 @@ function tryExtractStructuredCv(rawText) {
   const fencedMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fencedMatch?.[1]) candidates.push(fencedMatch[1].trim());
 
-  const jsonObjectSlice = extractFirstJsonObject(text);
-  if (jsonObjectSlice) candidates.push(jsonObjectSlice);
+  const jsonObjectSlices = extractJsonObjects(text);
+  if (jsonObjectSlices.length) candidates.push(...jsonObjectSlices);
 
   for (const candidate of candidates) {
     let parsed;
@@ -188,10 +188,11 @@ function tryExtractStructuredCv(rawText) {
   return null;
 }
 
-function extractFirstJsonObject(text) {
+function extractJsonObjects(text) {
   const value = asString(text);
-  if (!value) return '';
+  if (!value) return [];
 
+  const objects = [];
   let start = -1;
   let depth = 0;
   let inString = false;
@@ -226,12 +227,13 @@ function extractFirstJsonObject(text) {
       if (depth === 0) continue;
       depth -= 1;
       if (depth === 0 && start >= 0) {
-        return value.slice(start, i + 1);
+        objects.push(value.slice(start, i + 1));
+        start = -1;
       }
     }
   }
 
-  return '';
+  return objects;
 }
 
 function maybeStructuredCvToTemplateText(value) {

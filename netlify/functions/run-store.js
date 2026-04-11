@@ -274,6 +274,38 @@ function normalizeStore(parsed) {
   return parsed;
 }
 
+function mergeUniqueQueueItems(baseQueue, overlayQueue) {
+  const merged = [];
+  const seen = new Set();
+  for (const item of [...(Array.isArray(baseQueue) ? baseQueue : []), ...(Array.isArray(overlayQueue) ? overlayQueue : [])]) {
+    const key = JSON.stringify(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(item);
+  }
+  return merged;
+}
+
+function mergeStoreForDurableRebase(durableStoreInput, localStoreInput) {
+  const durableStore = normalizeStore(durableStoreInput);
+  const localStore = normalizeStore(localStoreInput);
+
+  return {
+    ...durableStore,
+    ...localStore,
+    runs: { ...durableStore.runs, ...localStore.runs },
+    emailDownloads: { ...durableStore.emailDownloads, ...localStore.emailDownloads },
+    emailDeliveries: { ...durableStore.emailDeliveries, ...localStore.emailDeliveries },
+    rateLimits: { ...durableStore.rateLimits, ...localStore.rateLimits },
+    webhookEvents: { ...durableStore.webhookEvents, ...localStore.webhookEvents },
+    fulfillments: { ...durableStore.fulfillments, ...localStore.fulfillments },
+    paymentEvents: { ...durableStore.paymentEvents, ...localStore.paymentEvents },
+    artifactTokens: { ...durableStore.artifactTokens, ...localStore.artifactTokens },
+    emailQueue: mergeUniqueQueueItems(durableStore.emailQueue, localStore.emailQueue),
+    fulfillmentQueue: mergeUniqueQueueItems(durableStore.fulfillmentQueue, localStore.fulfillmentQueue),
+  };
+}
+
 function isConflictError(error) {
   return error && (error.code === 'STORE_WRITE_CONFLICT' || error.statusCode === 409 || error.statusCode === 412);
 }
@@ -404,6 +436,7 @@ async function writeStoreWithMeta(store, etag) {
   let nativeWriteError = null;
   let shouldResolveDurableEtagAfterNativeFailure = false;
   let skipDurableWrite = false;
+  let storeForDurableWrite = store;
   if (hasNativeBlobs()) {
     try {
       await writeStoreToNativeBlobs(store, etag);
@@ -423,6 +456,7 @@ async function writeStoreWithMeta(store, etag) {
         try {
           const durableState = await readStoreFromDurable();
           durableEtag = durableState?.etag || null;
+          storeForDurableWrite = mergeStoreForDurableRebase(durableState?.store, store);
         } catch (durableReadError) {
           console.warn(
             'Unable to refresh durable ETag after native write failure; skipping durable write and falling back to file store.',
@@ -434,7 +468,7 @@ async function writeStoreWithMeta(store, etag) {
       if (skipDurableWrite) {
         throw new Error('Durable ETag refresh failed after native write failure.');
       }
-      await writeStoreToDurable(store, durableEtag);
+      await writeStoreToDurable(storeForDurableWrite, durableEtag);
       return;
     } catch (durableError) {
       if (skipDurableWrite) {
