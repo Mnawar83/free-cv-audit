@@ -1,4 +1,5 @@
 const fs = require('fs/promises');
+const fsSync = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
@@ -56,10 +57,19 @@ function isProductionRuntime() {
 
 let hasLoggedProductionFallbackWarning = false;
 
+function canResolveNetlifyBlobsModule() {
+  const lookupPaths = require.resolve.paths('@netlify/blobs') || [];
+  return lookupPaths.some((lookupPath) => fsSync.existsSync(path.join(lookupPath, '@netlify', 'blobs')));
+}
 
-const { getStore } = require('@netlify/blobs');
+const shouldLoadNativeBlobsModule = Boolean((process.env.NETLIFY || process.env.CONTEXT === 'production') && canResolveNetlifyBlobsModule());
+const { getStore } = shouldLoadNativeBlobsModule ? require('@netlify/blobs') : { getStore: null };
+let nativeBlobsAvailable = null;
 
 async function readStoreFromNativeBlobs() {
+  if (!getStore) {
+    throw new Error('Netlify Blobs is not available in this runtime.');
+  }
   const storeBlob = getStore({ name: 'run-store', consistency: 'strong' });
   const result = await storeBlob.getWithMetadata('state', { type: 'json' });
   if (!result || !result.data) {
@@ -69,6 +79,9 @@ async function readStoreFromNativeBlobs() {
 }
 
 async function writeStoreToNativeBlobs(storeData, etag) {
+  if (!getStore) {
+    throw new Error('Netlify Blobs is not available in this runtime.');
+  }
   const storeBlob = getStore({ name: 'run-store', consistency: 'strong' });
   const meta = await storeBlob.getMetadata('state');
   const currentEtag = meta?.metadata?.etag || null;
@@ -87,12 +100,20 @@ async function writeStoreToNativeBlobs(storeData, etag) {
 }
 
 function hasNativeBlobs() {
+  if (!getStore) return false;
+  if (nativeBlobsAvailable !== null) return nativeBlobsAvailable;
   try {
-    getStore('run-store');
-    return true;
-  } catch (error) {
-    return false;
+    const store = getStore({ name: 'run-store', consistency: 'strong' });
+    nativeBlobsAvailable = Boolean(
+      store &&
+      typeof store.getWithMetadata === 'function' &&
+      typeof store.getMetadata === 'function' &&
+      typeof store.setJSON === 'function'
+    );
+  } catch (_error) {
+    nativeBlobsAvailable = false;
   }
+  return nativeBlobsAvailable;
 }
 
 function shouldUseDurableStore() {
@@ -253,6 +274,38 @@ function normalizeStore(parsed) {
   return parsed;
 }
 
+function mergeUniqueQueueItems(baseQueue, overlayQueue) {
+  const merged = [];
+  const seen = new Set();
+  for (const item of [...(Array.isArray(baseQueue) ? baseQueue : []), ...(Array.isArray(overlayQueue) ? overlayQueue : [])]) {
+    const key = JSON.stringify(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(item);
+  }
+  return merged;
+}
+
+function mergeStoreForDurableRebase(durableStoreInput, localStoreInput) {
+  const durableStore = normalizeStore(durableStoreInput);
+  const localStore = normalizeStore(localStoreInput);
+
+  return {
+    ...durableStore,
+    ...localStore,
+    runs: { ...durableStore.runs, ...localStore.runs },
+    emailDownloads: { ...durableStore.emailDownloads, ...localStore.emailDownloads },
+    emailDeliveries: { ...durableStore.emailDeliveries, ...localStore.emailDeliveries },
+    rateLimits: { ...durableStore.rateLimits, ...localStore.rateLimits },
+    webhookEvents: { ...durableStore.webhookEvents, ...localStore.webhookEvents },
+    fulfillments: { ...durableStore.fulfillments, ...localStore.fulfillments },
+    paymentEvents: { ...durableStore.paymentEvents, ...localStore.paymentEvents },
+    artifactTokens: { ...durableStore.artifactTokens, ...localStore.artifactTokens },
+    emailQueue: mergeUniqueQueueItems(durableStore.emailQueue, localStore.emailQueue),
+    fulfillmentQueue: mergeUniqueQueueItems(durableStore.fulfillmentQueue, localStore.fulfillmentQueue),
+  };
+}
+
 function isConflictError(error) {
   return error && (error.code === 'STORE_WRITE_CONFLICT' || error.statusCode === 409 || error.statusCode === 412);
 }
@@ -380,23 +433,48 @@ async function readStoreWithMeta() {
 }
 
 async function writeStoreWithMeta(store, etag) {
+  let nativeWriteError = null;
+  let shouldResolveDurableEtagAfterNativeFailure = false;
+  let skipDurableWrite = false;
+  let storeForDurableWrite = store;
   if (hasNativeBlobs()) {
     try {
       await writeStoreToNativeBlobs(store, etag);
       return;
     } catch (error) {
       if (isConflictError(error)) throw error;
+      nativeWriteError = error;
+      shouldResolveDurableEtagAfterNativeFailure = true;
       console.warn('Native blobs write failed:', error.message);
-      await writeStoreToFile(store);
-      return;
     }
   }
 
   if (shouldUseDurableStore()) {
     try {
-      await writeStoreToDurable(store, etag);
+      let durableEtag = etag;
+      if (shouldResolveDurableEtagAfterNativeFailure) {
+        try {
+          const durableState = await readStoreFromDurable();
+          durableEtag = durableState?.etag || null;
+          storeForDurableWrite = mergeStoreForDurableRebase(durableState?.store, store);
+        } catch (durableReadError) {
+          console.warn(
+            'Unable to refresh durable ETag after native write failure; skipping durable write and falling back to file store.',
+            durableReadError?.message || durableReadError,
+          );
+          skipDurableWrite = true;
+        }
+      }
+      if (skipDurableWrite) {
+        throw new Error('Durable ETag refresh failed after native write failure.');
+      }
+      await writeStoreToDurable(storeForDurableWrite, durableEtag);
       return;
     } catch (durableError) {
+      if (skipDurableWrite) {
+        await writeStoreToFile(store);
+        return;
+      }
       if (isConflictError(durableError)) {
         throw durableError;
       }
@@ -406,6 +484,9 @@ async function writeStoreWithMeta(store, etag) {
     }
   }
 
+  if (nativeWriteError) {
+    console.warn('Falling back to local file store after native blobs write failure.');
+  }
   await writeStoreToFile(store);
 }
 

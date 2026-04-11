@@ -1,6 +1,7 @@
 const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { LINKEDIN_UPSELL_STATUS, createRunId, getRun, upsertRun } = require('./run-store');
 const { buildPdfBuffer, normalizeToCvTemplateText } = require('./pdf-builder');
+const { maybeStructuredCvToTemplateText, structuredCvToTemplateText, tryExtractStructuredCv } = require('./cv-schema');
 
 const PDF_FILENAME = 'revised-cv.pdf';
 
@@ -28,6 +29,11 @@ function normalizeRevisedCvText(text) {
 function canonicalizeCvText(text) {
   const normalizedText = normalizeRevisedCvText(text);
   return normalizeToCvTemplateText(normalizedText);
+}
+
+function resolveStructuredTemplateText(run) {
+  if (!run?.revised_cv_structured) return '';
+  return maybeStructuredCvToTemplateText(run.revised_cv_structured) || '';
 }
 
 function htmlErrorResponse(statusCode, message, options = {}) {
@@ -83,8 +89,10 @@ exports.handler = async (event) => {
         return htmlErrorResponse(400, 'The link is missing a reference ID. Please use the link from your email or request a new one from FreeCVAudit.');
       }
       const run = await getRun(runId);
-      if (run?.revised_cv_text) {
-        const canonicalText = canonicalizeCvText(run.revised_cv_text);
+      const structuredText = resolveStructuredTemplateText(run);
+      const cachedText = structuredText || run?.revised_cv_text || '';
+      if (cachedText) {
+        const canonicalText = canonicalizeCvText(cachedText);
         const pdfBuffer = buildPdfBuffer(canonicalText);
         return pdfResponse(pdfBuffer, runId, true);
       }
@@ -117,8 +125,10 @@ exports.handler = async (event) => {
     const resolvedCvText = cvText || existingRun?.original_cv_text || '';
     const resolvedCvAnalysis = cvAnalysis || existingRun?.audit_result || '';
 
-    if (existingRun?.revised_cv_text && !forceRegenerate) {
-      const canonicalText = canonicalizeCvText(existingRun.revised_cv_text);
+    const cachedStructuredText = resolveStructuredTemplateText(existingRun);
+    const cachedRevisedText = cachedStructuredText || existingRun?.revised_cv_text || '';
+    if (cachedRevisedText && !forceRegenerate) {
+      const canonicalText = canonicalizeCvText(cachedRevisedText);
       const cachedPdfBuffer = buildPdfBuffer(canonicalText);
       return pdfResponse(cachedPdfBuffer, incomingRunId, isGetRequest);
     }
@@ -133,6 +143,7 @@ exports.handler = async (event) => {
 
     let result;
     let revisedText = '';
+    let revisedStructuredCv = null;
     let usedFallbackText = false;
     let lastErrorMessage = 'AI request failed';
 
@@ -150,7 +161,7 @@ Rules:
 - Do not invent employers, dates, titles, certifications, tools, or metrics.
 - If a metric is missing, strengthen wording without fabricating numbers.
 - Keep chronology and tense consistent.
-- Return plain text only. No preamble. No markdown code fences. No decorative characters or icons.
+- Return only valid JSON. No preamble. No markdown code fences. No decorative characters or icons.
 - Never include placeholder text like "Professional Title", "Candidate Name", "Recent Professional Experience", or generic filler content.
 - If a section has no data from the source CV, omit it entirely. Do not generate filler content.
 
@@ -160,44 +171,47 @@ Style:
 - Keep bullets concise and avoid repetition.
 - Integrate relevant keywords naturally (no keyword stuffing).
 
-Output format:
-- Line 1: Full name exactly as it appears in the source CV
-- Line 2: Professional title (only if clearly stated in the source CV)
-- Line 3: Contact details (location, phone, email) separated by pipes
-
-Then output sections in this order, each preceded by its heading in ALL CAPS on its own line:
-
-PROFESSIONAL SUMMARY
-(2-4 sentences, no bullet points)
-
-CORE SKILLS
-(comma-separated list of skills found in the source CV)
-
-PROFESSIONAL EXPERIENCE
-(Each role formatted as: Job Title | Company | Location | Dates
-followed by bullet points starting with -)
-
-EDUCATION
-(Each entry: Degree, Institution, Date)
-
-CERTIFICATIONS (omit if not present in source)
-(Each entry as a bullet point starting with -)
-
-LANGUAGES (omit if not present in source)
-(Each entry as: Language: Proficiency level)
+Output JSON schema exactly:
+{
+  "fullName": "string",
+  "professionalTitle": "string",
+  "contact": {
+    "location": "string",
+    "phone": "string",
+    "email": "string"
+  },
+  "summary": "string",
+  "skills": ["string"],
+  "experience": [
+    {
+      "jobTitle": "string",
+      "company": "string",
+      "location": "string",
+      "dates": "string",
+      "bullets": ["string"]
+    }
+  ],
+  "education": [
+    {
+      "degree": "string",
+      "institution": "string",
+      "date": "string"
+    }
+  ],
+  "certifications": ["string"],
+  "languages": ["string"]
+}
 
 Critical rules for experience entries:
-- Each role MUST have its own header line with Job Title | Company | Location | Dates
-- Each role MUST have individual bullet points (starting with -), never paragraph blocks
-- Never combine multiple roles into one block
-- Never dump all experience into a single paragraph
+- Every role object MUST include jobTitle, company, dates, and bullets fields.
+- bullets MUST be an array of concise strings; never return paragraph blocks.
+- Never combine multiple roles into one role object.
 
 Before returning, verify:
 - No invented facts
 - No duplicate bullets or sections
 - No placeholder or generic filler text
-- Clear section headings and readable ATS-safe structure
-- Every experience entry has separate bullet points, not paragraphs`;
+- JSON must be parseable with JSON.parse`;
 
     const analysisNote = resolvedCvAnalysis
       ? `\n\nReference these audit notes when improving structure, wording, and keyword alignment (without inventing facts):\n${resolvedCvAnalysis}`
@@ -275,7 +289,16 @@ Before returning, verify:
       revisedText = resolvedCvText;
       usedFallbackText = true;
     } else if (result) {
-      revisedText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+      const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+      const structuredCv = tryExtractStructuredCv(aiText);
+      if (structuredCv) {
+        revisedStructuredCv = structuredCv;
+        revisedText = structuredCvToTemplateText(structuredCv);
+      } else {
+        console.warn('AI rewrite returned non-parseable structured JSON. Falling back to original CV text.');
+        revisedText = resolvedCvText;
+        usedFallbackText = true;
+      }
     }
     } // end of apiKey else block
 
@@ -301,6 +324,7 @@ Before returning, verify:
       original_cv_text: resolvedCvText,
       audit_result: resolvedCvAnalysis,
       revised_cv_text: revisedText,
+      revised_cv_structured: revisedStructuredCv,
       revised_cv_generated_at: new Date().toISOString(),
     };
     if (usedFallbackText) {
