@@ -1,4 +1,5 @@
 const fs = require('fs/promises');
+const fsSync = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
@@ -56,10 +57,19 @@ function isProductionRuntime() {
 
 let hasLoggedProductionFallbackWarning = false;
 
+function canResolveNetlifyBlobsModule() {
+  const lookupPaths = require.resolve.paths('@netlify/blobs') || [];
+  return lookupPaths.some((lookupPath) => fsSync.existsSync(path.join(lookupPath, '@netlify', 'blobs')));
+}
 
-const { getStore } = require('@netlify/blobs');
+const shouldLoadNativeBlobsModule = Boolean((process.env.NETLIFY || process.env.CONTEXT === 'production') && canResolveNetlifyBlobsModule());
+const { getStore } = shouldLoadNativeBlobsModule ? require('@netlify/blobs') : { getStore: null };
+let nativeBlobsAvailable = null;
 
 async function readStoreFromNativeBlobs() {
+  if (!getStore) {
+    throw new Error('Netlify Blobs is not available in this runtime.');
+  }
   const storeBlob = getStore({ name: 'run-store', consistency: 'strong' });
   const result = await storeBlob.getWithMetadata('state', { type: 'json' });
   if (!result || !result.data) {
@@ -69,6 +79,9 @@ async function readStoreFromNativeBlobs() {
 }
 
 async function writeStoreToNativeBlobs(storeData, etag) {
+  if (!getStore) {
+    throw new Error('Netlify Blobs is not available in this runtime.');
+  }
   const storeBlob = getStore({ name: 'run-store', consistency: 'strong' });
   const meta = await storeBlob.getMetadata('state');
   const currentEtag = meta?.metadata?.etag || null;
@@ -87,12 +100,20 @@ async function writeStoreToNativeBlobs(storeData, etag) {
 }
 
 function hasNativeBlobs() {
+  if (!getStore) return false;
+  if (nativeBlobsAvailable !== null) return nativeBlobsAvailable;
   try {
-    getStore('run-store');
-    return true;
-  } catch (error) {
-    return false;
+    const store = getStore({ name: 'run-store', consistency: 'strong' });
+    nativeBlobsAvailable = Boolean(
+      store &&
+      typeof store.getWithMetadata === 'function' &&
+      typeof store.getMetadata === 'function' &&
+      typeof store.setJSON === 'function'
+    );
+  } catch (_error) {
+    nativeBlobsAvailable = false;
   }
+  return nativeBlobsAvailable;
 }
 
 function shouldUseDurableStore() {
@@ -380,21 +401,24 @@ async function readStoreWithMeta() {
 }
 
 async function writeStoreWithMeta(store, etag) {
+  let nativeWriteError = null;
+  let shouldIgnoreEtagForDurableWrite = false;
   if (hasNativeBlobs()) {
     try {
       await writeStoreToNativeBlobs(store, etag);
       return;
     } catch (error) {
       if (isConflictError(error)) throw error;
+      nativeWriteError = error;
+      shouldIgnoreEtagForDurableWrite = true;
       console.warn('Native blobs write failed:', error.message);
-      await writeStoreToFile(store);
-      return;
     }
   }
 
   if (shouldUseDurableStore()) {
     try {
-      await writeStoreToDurable(store, etag);
+      const durableEtag = shouldIgnoreEtagForDurableWrite ? null : etag;
+      await writeStoreToDurable(store, durableEtag);
       return;
     } catch (durableError) {
       if (isConflictError(durableError)) {
@@ -406,6 +430,9 @@ async function writeStoreWithMeta(store, etag) {
     }
   }
 
+  if (nativeWriteError) {
+    console.warn('Falling back to local file store after native blobs write failure.');
+  }
   await writeStoreToFile(store);
 }
 
