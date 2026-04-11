@@ -56,10 +56,13 @@ function isProductionRuntime() {
 
 let hasLoggedProductionFallbackWarning = false;
 
-
-const { getStore } = require('@netlify/blobs');
+const shouldLoadNativeBlobsModule = Boolean(process.env.NETLIFY || process.env.CONTEXT === 'production');
+const { getStore } = shouldLoadNativeBlobsModule ? require('@netlify/blobs') : { getStore: null };
 
 async function readStoreFromNativeBlobs() {
+  if (!getStore) {
+    throw new Error('Netlify Blobs is not available in this runtime.');
+  }
   const storeBlob = getStore({ name: 'run-store', consistency: 'strong' });
   const result = await storeBlob.getWithMetadata('state', { type: 'json' });
   if (!result || !result.data) {
@@ -69,6 +72,9 @@ async function readStoreFromNativeBlobs() {
 }
 
 async function writeStoreToNativeBlobs(storeData, etag) {
+  if (!getStore) {
+    throw new Error('Netlify Blobs is not available in this runtime.');
+  }
   const storeBlob = getStore({ name: 'run-store', consistency: 'strong' });
   const meta = await storeBlob.getMetadata('state');
   const currentEtag = meta?.metadata?.etag || null;
@@ -87,12 +93,7 @@ async function writeStoreToNativeBlobs(storeData, etag) {
 }
 
 function hasNativeBlobs() {
-  try {
-    getStore('run-store');
-    return true;
-  } catch (error) {
-    return false;
-  }
+  return Boolean(getStore);
 }
 
 function shouldUseDurableStore() {
