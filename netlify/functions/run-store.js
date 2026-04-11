@@ -1,4 +1,5 @@
 const fs = require('fs/promises');
+const fsSync = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
@@ -56,8 +57,14 @@ function isProductionRuntime() {
 
 let hasLoggedProductionFallbackWarning = false;
 
-const shouldLoadNativeBlobsModule = Boolean(process.env.NETLIFY || process.env.CONTEXT === 'production');
+function canResolveNetlifyBlobsModule() {
+  const lookupPaths = require.resolve.paths('@netlify/blobs') || [];
+  return lookupPaths.some((lookupPath) => fsSync.existsSync(path.join(lookupPath, '@netlify', 'blobs')));
+}
+
+const shouldLoadNativeBlobsModule = Boolean((process.env.NETLIFY || process.env.CONTEXT === 'production') && canResolveNetlifyBlobsModule());
 const { getStore } = shouldLoadNativeBlobsModule ? require('@netlify/blobs') : { getStore: null };
+let nativeBlobsAvailable = null;
 
 async function readStoreFromNativeBlobs() {
   if (!getStore) {
@@ -93,7 +100,20 @@ async function writeStoreToNativeBlobs(storeData, etag) {
 }
 
 function hasNativeBlobs() {
-  return Boolean(getStore);
+  if (!getStore) return false;
+  if (nativeBlobsAvailable !== null) return nativeBlobsAvailable;
+  try {
+    const store = getStore({ name: 'run-store', consistency: 'strong' });
+    nativeBlobsAvailable = Boolean(
+      store &&
+      typeof store.getWithMetadata === 'function' &&
+      typeof store.getMetadata === 'function' &&
+      typeof store.setJSON === 'function'
+    );
+  } catch (_error) {
+    nativeBlobsAvailable = false;
+  }
+  return nativeBlobsAvailable;
 }
 
 function shouldUseDurableStore() {
@@ -381,15 +401,15 @@ async function readStoreWithMeta() {
 }
 
 async function writeStoreWithMeta(store, etag) {
+  let nativeWriteError = null;
   if (hasNativeBlobs()) {
     try {
       await writeStoreToNativeBlobs(store, etag);
       return;
     } catch (error) {
       if (isConflictError(error)) throw error;
+      nativeWriteError = error;
       console.warn('Native blobs write failed:', error.message);
-      await writeStoreToFile(store);
-      return;
     }
   }
 
@@ -407,6 +427,9 @@ async function writeStoreWithMeta(store, etag) {
     }
   }
 
+  if (nativeWriteError) {
+    console.warn('Falling back to local file store after native blobs write failure.');
+  }
   await writeStoreToFile(store);
 }
 
