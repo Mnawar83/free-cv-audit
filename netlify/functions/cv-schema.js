@@ -125,7 +125,7 @@ function structuredCvToTemplateText(cv) {
 
   if (cv.skills.length) {
     lines.push('', SECTION_TITLES.skills);
-    cv.skills.forEach((skill) => lines.push(`- ${skill}`));
+    lines.push(cv.skills.join(', '));
   }
 
   if (cv.experience.length) {

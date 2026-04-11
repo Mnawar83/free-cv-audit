@@ -43,6 +43,8 @@ async function run() {
   assert.ok(templateText.includes('PROFESSIONAL EXPERIENCE'));
   assert.ok(templateText.includes('Software Engineer | Acme | Remote | 2022 - Present'));
   assert.ok(templateText.includes('- Built APIs'));
+  assert.ok(templateText.includes('CORE SKILLS\nNode.js, AWS, System Design'));
+  assert.ok(!templateText.includes('- Node.js'));
 
   const fenced = tryExtractStructuredCv(`\`\`\`json\n${aiOutput.slice(aiOutput.indexOf('{'))}\n\`\`\``);
   assert.ok(fenced, 'Structured CV should be extracted from fenced JSON');

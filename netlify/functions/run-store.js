@@ -402,7 +402,7 @@ async function readStoreWithMeta() {
 
 async function writeStoreWithMeta(store, etag) {
   let nativeWriteError = null;
-  let shouldIgnoreEtagForDurableWrite = false;
+  let shouldResolveDurableEtagAfterNativeFailure = false;
   if (hasNativeBlobs()) {
     try {
       await writeStoreToNativeBlobs(store, etag);
@@ -410,14 +410,26 @@ async function writeStoreWithMeta(store, etag) {
     } catch (error) {
       if (isConflictError(error)) throw error;
       nativeWriteError = error;
-      shouldIgnoreEtagForDurableWrite = true;
+      shouldResolveDurableEtagAfterNativeFailure = true;
       console.warn('Native blobs write failed:', error.message);
     }
   }
 
   if (shouldUseDurableStore()) {
     try {
-      const durableEtag = shouldIgnoreEtagForDurableWrite ? null : etag;
+      let durableEtag = etag;
+      if (shouldResolveDurableEtagAfterNativeFailure) {
+        try {
+          const durableState = await readStoreFromDurable();
+          durableEtag = durableState?.etag || null;
+        } catch (durableReadError) {
+          console.warn(
+            'Unable to refresh durable ETag after native write failure; using create-if-absent semantics.',
+            durableReadError?.message || durableReadError,
+          );
+          durableEtag = null;
+        }
+      }
       await writeStoreToDurable(store, durableEtag);
       return;
     } catch (durableError) {
