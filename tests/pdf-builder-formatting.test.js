@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { buildPdfBuffer, __test } = require('../netlify/functions/pdf-builder');
+const { buildPdfBuffer, buildPdfBufferFromStructuredCv, __test } = require('../netlify/functions/pdf-builder');
 
 function decodePdf(buffer) {
   return buffer.toString('latin1');
@@ -99,6 +99,31 @@ async function run() {
     pipesInBulletContent.includes('(Built APIs | React services | AWS) Tj'),
     'Pipe-delimited bullet content should be preserved as a bullet, not treated as a new role header.',
   );
+
+
+  const structuredPdf = buildPdfBufferFromStructuredCv({
+    fullName: 'Jane Doe',
+    professionalTitle: 'Senior Product Manager',
+    contact: { location: 'Dubai, UAE', phone: '+971 50 123 4567', email: 'jane@example.com' },
+    summary: 'Experienced product manager with 8+ years leading roadmap strategy.',
+    skills: ['Product Strategy', 'Stakeholder Management'],
+    experience: [
+      {
+        jobTitle: 'Senior Product Manager',
+        company: 'Acme Corp',
+        location: 'Dubai, UAE',
+        dates: 'Jan 2021 - Present',
+        bullets: ['Led discovery and launch of core growth initiatives.'],
+      },
+    ],
+    education: [{ degree: 'MBA, Business Administration', institution: 'State University', date: '2019' }],
+    certifications: ['PMP Certification'],
+    languages: ['Arabic: Native', 'English: Proficient'],
+  });
+  const structuredContent = decodePdf(structuredPdf);
+  assert.ok(structuredContent.includes('/F2 16 Tf\n(Jane Doe) Tj'), 'Structured path should render the candidate name.');
+  assert.ok(structuredContent.includes('(PROFESSIONAL EXPERIENCE) Tj'), 'Structured path should render experience heading.');
+  assert.ok(structuredContent.includes('(Led discovery and launch of core growth initiatives.) Tj'), 'Structured bullets should render directly.');
 
   const parsedWithBlankBulletSpacing = __test.parseExperience([
     'Senior Engineer | Acme Corp | Remote | 2022 - Present',
