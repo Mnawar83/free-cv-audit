@@ -41,6 +41,11 @@ function canonicalizeCvText(text) {
   return normalizeToCvTemplateText(normalizedText);
 }
 
+function isPdfValidationError(error) {
+  const message = String(error?.message || '');
+  return message.startsWith('CV export validation failed:');
+}
+
 function resolveStructuredTemplateText(run) {
   if (!run?.revised_cv_structured) return '';
   return maybeStructuredCvToTemplateText(run.revised_cv_structured) || '';
@@ -336,7 +341,30 @@ Before returning, verify:
       revisedText = canonicalizeCvText(revisedText);
     }
 
-    const pdfBuffer = revisedStructuredCv ? buildPdfBufferFromStructuredCv(revisedStructuredCv) : buildPdfBuffer(revisedText);
+    let pdfBuffer;
+    try {
+      pdfBuffer = revisedStructuredCv ? buildPdfBufferFromStructuredCv(revisedStructuredCv) : buildPdfBuffer(revisedText);
+    } catch (renderError) {
+      if (!isPdfValidationError(renderError)) {
+        throw renderError;
+      }
+
+      console.warn('Structured/rewritten PDF validation failed. Falling back to canonicalized original CV text.', renderError?.message || renderError);
+      usedFallbackText = true;
+      revisedStructuredCv = null;
+      revisedText = canonicalizeCvText(resolvedCvText);
+
+      try {
+        pdfBuffer = buildPdfBuffer(revisedText);
+      } catch (fallbackError) {
+        if (!isPdfValidationError(fallbackError)) {
+          throw fallbackError;
+        }
+        console.warn('Fallback canonical CV validation failed. Retrying with minimally-normalized original CV text.', fallbackError?.message || fallbackError);
+        revisedText = normalizeRevisedCvText(resolvedCvText);
+        pdfBuffer = buildPdfBuffer(revisedText);
+      }
+    }
     let runId = incomingRunId || createRunId();
 
     if (
