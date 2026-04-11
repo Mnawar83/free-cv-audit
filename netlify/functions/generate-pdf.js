@@ -1,7 +1,7 @@
 const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { LINKEDIN_UPSELL_STATUS, createRunId, getRun, upsertRun } = require('./run-store');
-const { buildPdfBuffer, normalizeToCvTemplateText } = require('./pdf-builder');
-const { maybeStructuredCvToTemplateText, structuredCvToTemplateText, tryExtractStructuredCv } = require('./cv-schema');
+const { buildPdfBuffer, buildPdfBufferFromStructuredCv, normalizeToCvTemplateText } = require('./pdf-builder');
+const { structuredCvToTemplateText, tryExtractStructuredCv } = require('./cv-schema');
 
 const PDF_FILENAME = 'revised-cv.pdf';
 
@@ -89,8 +89,11 @@ exports.handler = async (event) => {
         return htmlErrorResponse(400, 'The link is missing a reference ID. Please use the link from your email or request a new one from FreeCVAudit.');
       }
       const run = await getRun(runId);
-      const structuredText = resolveStructuredTemplateText(run);
-      const cachedText = structuredText || run?.revised_cv_text || '';
+      if (run?.revised_cv_structured) {
+        const pdfBuffer = buildPdfBufferFromStructuredCv(run.revised_cv_structured);
+        return pdfResponse(pdfBuffer, runId, true);
+      }
+      const cachedText = run?.revised_cv_text || '';
       if (cachedText) {
         const canonicalText = canonicalizeCvText(cachedText);
         const pdfBuffer = buildPdfBuffer(canonicalText);
@@ -125,8 +128,12 @@ exports.handler = async (event) => {
     const resolvedCvText = cvText || existingRun?.original_cv_text || '';
     const resolvedCvAnalysis = cvAnalysis || existingRun?.audit_result || '';
 
-    const cachedStructuredText = resolveStructuredTemplateText(existingRun);
-    const cachedRevisedText = cachedStructuredText || existingRun?.revised_cv_text || '';
+    if (existingRun?.revised_cv_structured && !forceRegenerate) {
+      const cachedPdfBuffer = buildPdfBufferFromStructuredCv(existingRun.revised_cv_structured);
+      return pdfResponse(cachedPdfBuffer, incomingRunId, isGetRequest);
+    }
+
+    const cachedRevisedText = existingRun?.revised_cv_text || '';
     if (cachedRevisedText && !forceRegenerate) {
       const canonicalText = canonicalizeCvText(cachedRevisedText);
       const cachedPdfBuffer = buildPdfBuffer(canonicalText);
@@ -307,9 +314,11 @@ Before returning, verify:
       revisedText = resolvedCvText;
       usedFallbackText = true;
     }
-    revisedText = canonicalizeCvText(revisedText);
+    if (!revisedStructuredCv) {
+      revisedText = canonicalizeCvText(revisedText);
+    }
 
-    const pdfBuffer = buildPdfBuffer(revisedText);
+    const pdfBuffer = revisedStructuredCv ? buildPdfBufferFromStructuredCv(revisedStructuredCv) : buildPdfBuffer(revisedText);
     let runId = incomingRunId || createRunId();
 
     if (

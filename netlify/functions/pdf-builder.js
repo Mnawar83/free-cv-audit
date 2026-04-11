@@ -772,6 +772,50 @@ function validateRenderBlocks(blocks) {
   }
 }
 
+
+function mapStructuredCvForPdf(structuredCv) {
+  const source = structuredCv && typeof structuredCv === 'object' ? structuredCv : {};
+  const contact = source.contact && typeof source.contact === 'object' ? source.contact : {};
+
+  return {
+    fullName: source.fullName || '',
+    professionalTitle: source.professionalTitle || '',
+    contact: {
+      location: contact.location || '',
+      phone: contact.phone || '',
+      email: contact.email || '',
+    },
+    professionalSummary: source.summary || '',
+    coreCompetencies: Array.isArray(source.skills) ? source.skills : [],
+    professionalExperience: (Array.isArray(source.experience) ? source.experience : []).map((role) => ({
+      company: role?.company || '',
+      jobTitle: role?.jobTitle || '',
+      dateRange: role?.dates || '',
+      bullets: Array.isArray(role?.bullets) ? role.bullets : [],
+    })),
+    education: (Array.isArray(source.education) ? source.education : []).map((item) => ({
+      degree: item?.degree || '',
+      institution: item?.institution || '',
+      dateRange: item?.date || '',
+    })),
+    technicalSkills: Array.isArray(source.technicalSkills) ? source.technicalSkills : [],
+    certifications: Array.isArray(source.certifications) ? source.certifications : [],
+    languages: Array.isArray(source.languages) ? source.languages : [],
+  };
+}
+
+function buildPdfBufferFromStructuredCv(structuredCv) {
+  const mapped = mapStructuredCvForPdf(structuredCv);
+  const validated = validateAndAutoCorrect(mapped);
+  const blocks = buildRenderBlocks(validated);
+  validateRenderBlocks(blocks);
+  const pages = renderPages(blocks);
+  if (!pages.length || pages.some((page) => !/\(.+\) Tj/.test(page.stream) && !/\bre\b/.test(page.stream))) {
+    throw new Error('CV export validation failed: empty pages detected.');
+  }
+  return buildPdfFromPages(pages);
+}
+
 function normalizeToCvTemplateText(inputText) {
   const structured = buildStructuredCvObject(inputText);
   const cv = validateAndAutoCorrect(structured);
@@ -853,6 +897,7 @@ function pdfResponse(pdfBuffer, filename, inline = false) {
 
 module.exports = {
   buildPdfBuffer,
+  buildPdfBufferFromStructuredCv,
   pdfResponse,
   normalizeToCvTemplateText,
   __test: {
@@ -863,5 +908,6 @@ module.exports = {
     validateRenderBlocks,
     containsForbiddenPhrase,
     FORBIDDEN_PHRASES,
+    mapStructuredCvForPdf,
   },
 };
