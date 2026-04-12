@@ -890,27 +890,101 @@ function buildPdfBufferLenient(rawText) {
     .filter((line) => line && !isPageArtifact(line))
     .filter((line) => !containsCorruption(line))
     .filter((line) => !containsForbiddenPhrase(line));
+  const safeLines = cleanedLines.filter((line) => !SECTION_HEADING_ALIASES[line.toLowerCase()]);
 
-  const fallbackName = cleanedLines.find((line) => /^[A-Za-z][A-Za-z .'-]{2,}$/.test(line)) || 'CV Candidate';
-  const fallbackSummary = cleanedLines.slice(0, 3).join(' ').trim()
+  const findLine = (predicate) => safeLines.find((line) => predicate(line)) || '';
+  const email = findLine((line) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(line));
+  const phone = findLine((line) => /(?:\+?\d[\d\s().-]{6,}\d)/.test(line));
+  const location = findLine((line) => /,/.test(line) && !line.includes('@') && !/^\d/.test(line));
+
+  const headingSet = new Set(Object.keys(SECTION_HEADING_ALIASES));
+  const isLikelyHeading = (line) => headingSet.has(String(line || '').toLowerCase().trim());
+  const nameCandidate = findLine((line) => /^[A-Za-z][A-Za-z .'-]{2,}$/.test(line) && !isLikelyHeading(line));
+  const titleCandidate = safeLines.find((line) => (
+    line !== nameCandidate
+    && !line.includes('@')
+    && !/(?:\+?\d[\d\s().-]{6,}\d)/.test(line)
+    && !isLikelyHeading(line)
+    && line.length <= 72
+  )) || '';
+
+  const sectionBuckets = {
+    summary: [],
+    skills: [],
+    experience: [],
+    education: [],
+    certifications: [],
+    languages: [],
+  };
+  let activeBucket = 'summary';
+
+  cleanedLines.forEach((line) => {
+    const alias = SECTION_HEADING_ALIASES[String(line).toLowerCase().trim()];
+    if (alias) {
+      if (alias === 'coreCompetencies' || alias === 'technicalSkills') activeBucket = 'skills';
+      else if (alias === 'professionalExperience') activeBucket = 'experience';
+      else if (alias === 'education') activeBucket = 'education';
+      else if (alias === 'certifications') activeBucket = 'certifications';
+      else if (alias === 'languages') activeBucket = 'languages';
+      else activeBucket = 'summary';
+      return;
+    }
+    if (line === nameCandidate || line === titleCandidate || line === email || line === phone || line === location) {
+      return;
+    }
+    sectionBuckets[activeBucket].push(line.replace(/^[-*•]\s*/, '').trim());
+  });
+
+  const listFromLines = (lines, limit = 8) => lines.filter(Boolean).slice(0, limit);
+  const summaryText = listFromLines(sectionBuckets.summary, 3).join(' ').trim()
     || 'Experienced professional with a strong track record of delivering results.';
-  const fallbackBullets = cleanedLines
-    .slice(0, 6)
-    .map((line) => line.replace(/^[-*•]\s*/, '').trim())
-    .filter(Boolean)
-    .map((line) => `- ${line}`);
+  const skillItems = listFromLines(sectionBuckets.skills, 10)
+    .flatMap((line) => line.split(/[|,]/g).map((item) => item.trim()).filter(Boolean))
+    .slice(0, 10);
+  const experienceBullets = listFromLines(sectionBuckets.experience.length ? sectionBuckets.experience : safeLines, 10);
+  const educationItems = listFromLines(sectionBuckets.education, 3);
+  const certificationItems = listFromLines(sectionBuckets.certifications, 5);
+  const languageItems = listFromLines(sectionBuckets.languages, 5);
 
-  const templateText = [
-    fallbackName,
-    '',
-    SECTION_TITLES.professionalSummary,
-    fallbackSummary,
-    '',
-    SECTION_TITLES.professionalExperience,
-    ...(fallbackBullets.length ? fallbackBullets : ['- Delivered measurable outcomes and supported cross-functional goals.']),
-  ].join('\n');
+  const lenientStructuredCv = {
+    fullName: nameCandidate || 'CV Candidate',
+    professionalTitle: titleCandidate,
+    contact: {
+      location,
+      phone,
+      email,
+    },
+    summary: summaryText,
+    skills: skillItems,
+    experience: [{
+      company: '',
+      jobTitle: '',
+      location: '',
+      dates: '',
+      bullets: experienceBullets.length ? experienceBullets : ['Delivered measurable outcomes in cross-functional environments.'],
+    }],
+    education: educationItems.length
+      ? educationItems.map((line) => ({ degree: line, institution: '', date: '' }))
+      : [],
+    certifications: certificationItems,
+    languages: languageItems,
+    technicalSkills: [],
+  };
 
-  return buildPdfBuffer(templateText);
+  try {
+    return buildPdfBufferFromStructuredCv(lenientStructuredCv);
+  } catch (error) {
+    const minimalTemplateText = [
+      lenientStructuredCv.fullName,
+      '',
+      SECTION_TITLES.professionalSummary,
+      lenientStructuredCv.summary,
+      '',
+      SECTION_TITLES.professionalExperience,
+      ...lenientStructuredCv.experience[0].bullets.map((bullet) => `- ${bullet}`),
+    ].join('\n');
+    return buildPdfBuffer(minimalTemplateText);
+  }
 }
 
 function pdfResponse(pdfBuffer, filename, inline = false) {
