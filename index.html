@@ -2259,25 +2259,44 @@
                 let response;
                 try {
                     if (hasActiveRunId && currentRunId) {
-                        const cachedResponse = await fetch(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(currentRunId)}`, { signal: pdfController.signal });
-                        if (cachedResponse.ok) {
-                            response = cachedResponse;
+                        try {
+                            const cachedResponse = await fetch(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(currentRunId)}`, { signal: pdfController.signal });
+                            if (cachedResponse.ok) {
+                                response = cachedResponse;
+                            }
+                        } catch (cachedFetchError) {
+                            if (cachedFetchError?.name !== 'AbortError') {
+                                console.warn('Cached generate-pdf request failed. Falling back to POST generation.', cachedFetchError);
+                            }
                         }
                     }
                     if (!response) {
-                        response = await fetch('/.netlify/functions/generate-pdf', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ cvText: resolvedCvText || undefined, cvAnalysis, runId: hasActiveRunId ? currentRunId : undefined }),
-                            signal: pdfController.signal,
-                        });
+                        try {
+                            response = await fetch('/.netlify/functions/generate-pdf', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ cvText: resolvedCvText || undefined, cvAnalysis, runId: hasActiveRunId ? currentRunId : undefined }),
+                                signal: pdfController.signal,
+                            });
+                        } catch (fetchError) {
+                            if (fetchError?.name === 'AbortError') {
+                                throw new Error('CV generation timed out. Please try again.');
+                            }
+                            if (currentRunId) {
+                                try {
+                                    const retryResponse = await fetch(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(currentRunId)}`);
+                                    if (retryResponse.ok) {
+                                        response = retryResponse;
+                                    }
+                                } catch (retryError) {
+                                    console.warn('Retry fetch for generate-pdf failed after POST network error.', retryError);
+                                }
+                            }
+                            if (!response) {
+                                throw new Error('Unable to connect to the CV generation service. Please try again.');
+                            }
+                        }
                     }
-                } catch (fetchError) {
-                    clearTimeout(pdfTimeout);
-                    if (fetchError?.name === 'AbortError') {
-                        throw new Error('CV generation timed out. Please try again.');
-                    }
-                    throw new Error('Unable to connect to the CV generation service. Please try again.');
                 } finally {
                     clearTimeout(pdfTimeout);
                 }
