@@ -380,7 +380,8 @@ Before returning, verify:
       usedFallbackText = true;
     }
     if (!revisedStructuredCv) {
-      revisedText = canonicalizeCvText(revisedText);
+      const canonicalRevisedText = tryCanonicalizeCvText(revisedText, 'Primary revised');
+      revisedText = canonicalRevisedText || normalizeRevisedCvText(revisedText);
     }
 
     let pdfBuffer;
@@ -394,7 +395,8 @@ Before returning, verify:
       console.warn('Structured/rewritten PDF validation failed. Falling back to canonicalized original CV text.', renderError?.message || renderError);
       usedFallbackText = true;
       revisedStructuredCv = null;
-      revisedText = canonicalizeCvText(resolvedCvText);
+      const fallbackCanonicalText = tryCanonicalizeCvText(resolvedCvText, 'Fallback original');
+      revisedText = fallbackCanonicalText || normalizeRevisedCvText(resolvedCvText);
 
       try {
         pdfBuffer = buildPdfBuffer(revisedText);
