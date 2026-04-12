@@ -1,6 +1,6 @@
 const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { LINKEDIN_UPSELL_STATUS, createRunId, getRun, upsertRun } = require('./run-store');
-const { buildPdfBuffer, buildPdfBufferFromStructuredCv, normalizeToCvTemplateText } = require('./pdf-builder');
+const { buildPdfBuffer, buildPdfBufferFromStructuredCv, buildPdfBufferLenient, normalizeToCvTemplateText } = require('./pdf-builder');
 const { structuredCvToTemplateText, tryExtractStructuredCv } = require('./cv-schema');
 
 const PDF_FILENAME = 'revised-cv.pdf';
@@ -39,6 +39,11 @@ function normalizeRevisedCvText(text) {
 function canonicalizeCvText(text) {
   const normalizedText = normalizeRevisedCvText(text);
   return normalizeToCvTemplateText(normalizedText);
+}
+
+function isPdfValidationError(error) {
+  const message = String(error?.message || '');
+  return message.startsWith('CV export validation failed:');
 }
 
 function resolveStructuredTemplateText(run) {
@@ -83,6 +88,36 @@ function pdfResponse(pdfBuffer, runId, inline = false) {
   };
 }
 
+function tryBuildPdfFromStructured(structuredCv, contextLabel) {
+  try {
+    return buildPdfBufferFromStructuredCv(structuredCv);
+  } catch (error) {
+    if (!isPdfValidationError(error)) throw error;
+    console.warn(`${contextLabel} structured CV failed validation.`, error?.message || error);
+    return null;
+  }
+}
+
+function tryBuildPdfFromText(text, contextLabel) {
+  try {
+    return buildPdfBuffer(text);
+  } catch (error) {
+    if (!isPdfValidationError(error)) throw error;
+    console.warn(`${contextLabel} text CV failed validation.`, error?.message || error);
+    return null;
+  }
+}
+
+function tryCanonicalizeCvText(text, contextLabel) {
+  try {
+    return canonicalizeCvText(text);
+  } catch (error) {
+    if (!isPdfValidationError(error)) throw error;
+    console.warn(`${contextLabel} canonicalization failed validation.`, error?.message || error);
+    return '';
+  }
+}
+
 exports.handler = async (event) => {
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
@@ -100,14 +135,20 @@ exports.handler = async (event) => {
       }
       const run = await getRun(runId);
       if (run?.revised_cv_structured) {
-        const pdfBuffer = buildPdfBufferFromStructuredCv(run.revised_cv_structured);
-        return pdfResponse(pdfBuffer, runId, true);
+        const pdfBuffer = tryBuildPdfFromStructured(run.revised_cv_structured, 'GET cached');
+        if (pdfBuffer) {
+          return pdfResponse(pdfBuffer, runId, true);
+        }
       }
       const cachedText = run?.revised_cv_text || '';
       if (cachedText) {
-        const canonicalText = canonicalizeCvText(cachedText);
-        const pdfBuffer = buildPdfBuffer(canonicalText);
-        return pdfResponse(pdfBuffer, runId, true);
+        const canonicalText = tryCanonicalizeCvText(cachedText, 'GET cached');
+        if (canonicalText) {
+          const pdfBuffer = tryBuildPdfFromText(canonicalText, 'GET cached');
+          if (pdfBuffer) {
+            return pdfResponse(pdfBuffer, runId, true);
+          }
+        }
       }
       if (!run?.original_cv_text) {
         return htmlErrorResponse(404, 'Your revised CV could not be found. The link may have expired. Please visit FreeCVAudit to generate a new one.', { showRetryHint: true });
@@ -139,15 +180,21 @@ exports.handler = async (event) => {
     const resolvedCvAnalysis = cvAnalysis || existingRun?.audit_result || '';
 
     if (existingRun?.revised_cv_structured && !forceRegenerate) {
-      const cachedPdfBuffer = buildPdfBufferFromStructuredCv(existingRun.revised_cv_structured);
-      return pdfResponse(cachedPdfBuffer, incomingRunId, isGetRequest);
+      const cachedPdfBuffer = tryBuildPdfFromStructured(existingRun.revised_cv_structured, 'POST cached');
+      if (cachedPdfBuffer) {
+        return pdfResponse(cachedPdfBuffer, incomingRunId, isGetRequest);
+      }
     }
 
     const cachedRevisedText = existingRun?.revised_cv_text || '';
     if (cachedRevisedText && !forceRegenerate) {
-      const canonicalText = canonicalizeCvText(cachedRevisedText);
-      const cachedPdfBuffer = buildPdfBuffer(canonicalText);
-      return pdfResponse(cachedPdfBuffer, incomingRunId, isGetRequest);
+      const canonicalText = tryCanonicalizeCvText(cachedRevisedText, 'POST cached');
+      if (canonicalText) {
+        const cachedPdfBuffer = tryBuildPdfFromText(canonicalText, 'POST cached');
+        if (cachedPdfBuffer) {
+          return pdfResponse(cachedPdfBuffer, incomingRunId, isGetRequest);
+        }
+      }
     }
     const candidateModels = getGoogleAiCandidateModels();
 
@@ -333,10 +380,43 @@ Before returning, verify:
       usedFallbackText = true;
     }
     if (!revisedStructuredCv) {
-      revisedText = canonicalizeCvText(revisedText);
+      const canonicalRevisedText = tryCanonicalizeCvText(revisedText, 'Primary revised');
+      revisedText = canonicalRevisedText || normalizeRevisedCvText(revisedText);
     }
 
-    const pdfBuffer = revisedStructuredCv ? buildPdfBufferFromStructuredCv(revisedStructuredCv) : buildPdfBuffer(revisedText);
+    let pdfBuffer;
+    try {
+      pdfBuffer = revisedStructuredCv ? buildPdfBufferFromStructuredCv(revisedStructuredCv) : buildPdfBuffer(revisedText);
+    } catch (renderError) {
+      if (!isPdfValidationError(renderError)) {
+        throw renderError;
+      }
+
+      console.warn('Structured/rewritten PDF validation failed. Falling back to canonicalized original CV text.', renderError?.message || renderError);
+      usedFallbackText = true;
+      revisedStructuredCv = null;
+      const fallbackCanonicalText = tryCanonicalizeCvText(resolvedCvText, 'Fallback original');
+      revisedText = fallbackCanonicalText || normalizeRevisedCvText(resolvedCvText);
+
+      try {
+        pdfBuffer = buildPdfBuffer(revisedText);
+      } catch (fallbackError) {
+        if (!isPdfValidationError(fallbackError)) {
+          throw fallbackError;
+        }
+        console.warn('Fallback canonical CV validation failed. Retrying with minimally-normalized original CV text.', fallbackError?.message || fallbackError);
+        revisedText = normalizeRevisedCvText(resolvedCvText);
+        try {
+          pdfBuffer = buildPdfBuffer(revisedText);
+        } catch (minimalFallbackError) {
+          if (!isPdfValidationError(minimalFallbackError)) {
+            throw minimalFallbackError;
+          }
+          console.warn('Minimal fallback CV validation failed. Retrying with lenient CV sanitization.', minimalFallbackError?.message || minimalFallbackError);
+          pdfBuffer = buildPdfBufferLenient(resolvedCvText || revisedText);
+        }
+      }
+    }
     let runId = incomingRunId || createRunId();
 
     if (
