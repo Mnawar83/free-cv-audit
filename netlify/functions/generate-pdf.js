@@ -188,6 +188,7 @@ exports.handler = async (event) => {
     const resolvedCvText = cvText || existingRun?.original_cv_text || '';
     const normalizedResolvedCvText = normalizeRevisedCvText(resolvedCvText);
     const resolvedCvAnalysis = cvAnalysis || existingRun?.audit_result || '';
+    const strictStyleMode = isStrictStyleModeEnabled();
 
     if (existingRun?.revised_cv_structured && !forceRegenerate) {
       const cachedPdfBuffer = tryBuildPdfFromStructured(existingRun.revised_cv_structured, 'POST cached');
@@ -420,6 +421,9 @@ Before returning, verify:
         } catch (minimalFallbackError) {
           if (!isPdfValidationError(minimalFallbackError)) {
             throw minimalFallbackError;
+          }
+          if (strictStyleMode) {
+            throw new Error('CV export validation failed: strict style mode blocked lenient fallback rendering.');
           }
           console.warn('Minimal fallback CV validation failed. Retrying with lenient CV sanitization.', minimalFallbackError?.message || minimalFallbackError);
           usedLenientFallback = true;
