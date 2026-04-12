@@ -27,6 +27,12 @@ async function run() {
   const realPdfBuilder = require('../netlify/functions/pdf-builder');
   require.cache[pdfBuilderPath].exports = {
     ...realPdfBuilder,
+    normalizeToCvTemplateText: (text) => {
+      if (String(text).includes('BROKENCACHED')) {
+        throw new Error('CV export validation failed: simulated canonicalization validation failure.');
+      }
+      return realPdfBuilder.normalizeToCvTemplateText(text);
+    },
     buildPdfBuffer: (text) => {
       if (String(text).includes('BROKENCACHED')) {
         throw new Error('CV export validation failed: simulated cached validation failure.');

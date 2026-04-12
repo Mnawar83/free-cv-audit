@@ -108,6 +108,16 @@ function tryBuildPdfFromText(text, contextLabel) {
   }
 }
 
+function tryCanonicalizeCvText(text, contextLabel) {
+  try {
+    return canonicalizeCvText(text);
+  } catch (error) {
+    if (!isPdfValidationError(error)) throw error;
+    console.warn(`${contextLabel} canonicalization failed validation.`, error?.message || error);
+    return '';
+  }
+}
+
 exports.handler = async (event) => {
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
@@ -132,10 +142,12 @@ exports.handler = async (event) => {
       }
       const cachedText = run?.revised_cv_text || '';
       if (cachedText) {
-        const canonicalText = canonicalizeCvText(cachedText);
-        const pdfBuffer = tryBuildPdfFromText(canonicalText, 'GET cached');
-        if (pdfBuffer) {
-          return pdfResponse(pdfBuffer, runId, true);
+        const canonicalText = tryCanonicalizeCvText(cachedText, 'GET cached');
+        if (canonicalText) {
+          const pdfBuffer = tryBuildPdfFromText(canonicalText, 'GET cached');
+          if (pdfBuffer) {
+            return pdfResponse(pdfBuffer, runId, true);
+          }
         }
       }
       if (!run?.original_cv_text) {
@@ -176,10 +188,12 @@ exports.handler = async (event) => {
 
     const cachedRevisedText = existingRun?.revised_cv_text || '';
     if (cachedRevisedText && !forceRegenerate) {
-      const canonicalText = canonicalizeCvText(cachedRevisedText);
-      const cachedPdfBuffer = tryBuildPdfFromText(canonicalText, 'POST cached');
-      if (cachedPdfBuffer) {
-        return pdfResponse(cachedPdfBuffer, incomingRunId, isGetRequest);
+      const canonicalText = tryCanonicalizeCvText(cachedRevisedText, 'POST cached');
+      if (canonicalText) {
+        const cachedPdfBuffer = tryBuildPdfFromText(canonicalText, 'POST cached');
+        if (cachedPdfBuffer) {
+          return pdfResponse(cachedPdfBuffer, incomingRunId, isGetRequest);
+        }
       }
     }
     const candidateModels = getGoogleAiCandidateModels();
