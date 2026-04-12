@@ -252,7 +252,7 @@ exports.handler = async (event) => {
     timing.buildStart = Date.now();
 
     let run = await getRun(runId);
-    if ((!run?.revised_cv_text || run?.revised_cv_fallback_generated_at) && run?.original_cv_text) {
+    if ((!run?.revised_cv_text || run?.revised_cv_fallback_generated_at || run?.revised_cv_lenient_fallback_generated_at) && run?.original_cv_text) {
       try {
         const generatePdfHandler = require('./generate-pdf').handler;
         await generatePdfHandler({

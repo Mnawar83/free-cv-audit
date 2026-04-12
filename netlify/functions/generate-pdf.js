@@ -4,6 +4,14 @@ const { buildPdfBuffer, buildPdfBufferFromStructuredCv, buildPdfBufferLenient, n
 const { structuredCvToTemplateText, tryExtractStructuredCv } = require('./cv-schema');
 
 const PDF_FILENAME = 'revised-cv.pdf';
+const STRICT_STYLE_DISABLED_VALUES = new Set(['0', 'false', 'off', 'no']);
+
+function isStrictStyleModeEnabled() {
+  const explicit = String(process.env.CV_STRICT_STYLE_MODE || '').trim().toLowerCase();
+  if (explicit) return !STRICT_STYLE_DISABLED_VALUES.has(explicit);
+  const context = String(process.env.CONTEXT || process.env.NODE_ENV || '').trim().toLowerCase();
+  return context === 'production' || context === 'prod';
+}
 
 function stableSeedFromText(text) {
   const value = String(text || '');
@@ -177,7 +185,9 @@ exports.handler = async (event) => {
       var cvAnalysis = body.cvAnalysis;
     }
     const resolvedCvText = cvText || existingRun?.original_cv_text || '';
+    const normalizedResolvedCvText = normalizeRevisedCvText(resolvedCvText);
     const resolvedCvAnalysis = cvAnalysis || existingRun?.audit_result || '';
+    const strictStyleMode = isStrictStyleModeEnabled();
 
     if (existingRun?.revised_cv_structured && !forceRegenerate) {
       const cachedPdfBuffer = tryBuildPdfFromStructured(existingRun.revised_cv_structured, 'POST cached');
@@ -205,10 +215,10 @@ exports.handler = async (event) => {
     const apiKey = process.env.GOOGLE_AI_API_KEY;
     const MODEL_TIMEOUT_MS = 25000;
 
-    let result;
     let revisedText = '';
     let revisedStructuredCv = null;
     let usedFallbackText = false;
+    let usedLenientFallback = false;
     let lastErrorMessage = 'AI request failed';
 
     if (!apiKey) {
@@ -280,16 +290,17 @@ Before returning, verify:
     const analysisNote = resolvedCvAnalysis
       ? `\n\nReference these audit notes when improving structure, wording, and keyword alignment (without inventing facts):\n${resolvedCvAnalysis}`
       : '';
+    const promptCvText = normalizedResolvedCvText || resolvedCvText;
     const payload = {
       systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ parts: [{ text: `Rewrite this CV into a polished ATS-optimized version:\n\n${resolvedCvText}${analysisNote}` }] }],
+      contents: [{ parts: [{ text: `Rewrite this CV into a polished ATS-optimized version:\n\n${promptCvText}${analysisNote}` }] }],
       generationConfig: {
         temperature: 0,
         topP: 0,
         topK: 1,
         candidateCount: 1,
         responseMimeType: 'application/json',
-        seed: stableSeedFromText(resolvedCvText),
+        seed: stableSeedFromText(promptCvText),
       },
     };
 
@@ -320,8 +331,17 @@ Before returning, verify:
       }
 
       if (fetchResponse.ok) {
-        result = await fetchResponse.json();
-        break;
+        const result = await fetchResponse.json();
+        const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+        const structuredCv = tryExtractStructuredCv(aiText);
+        if (structuredCv) {
+          revisedStructuredCv = structuredCv;
+          revisedText = structuredCvToTemplateText(structuredCv);
+          break;
+        }
+        lastErrorMessage = `${model}: structured parse failed`;
+        console.warn(`AI rewrite returned non-parseable structured JSON for model ${model}. Trying next model.`);
+        continue;
       }
 
       try {
@@ -356,21 +376,10 @@ Before returning, verify:
       }
     }
 
-    if (!result && !usedFallbackText) {
+    if (!revisedText && !usedFallbackText) {
       console.warn(`AI rewrite failed (${lastErrorMessage}). Falling back to original CV text.`);
       revisedText = resolvedCvText;
       usedFallbackText = true;
-    } else if (result) {
-      const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-      const structuredCv = tryExtractStructuredCv(aiText);
-      if (structuredCv) {
-        revisedStructuredCv = structuredCv;
-        revisedText = structuredCvToTemplateText(structuredCv);
-      } else {
-        console.warn('AI rewrite returned non-parseable structured JSON. Falling back to original CV text.');
-        revisedText = resolvedCvText;
-        usedFallbackText = true;
-      }
     }
     } // end of apiKey else block
 
@@ -412,7 +421,11 @@ Before returning, verify:
           if (!isPdfValidationError(minimalFallbackError)) {
             throw minimalFallbackError;
           }
+          if (strictStyleMode) {
+            throw new Error('CV export validation failed: strict style mode blocked lenient fallback rendering.');
+          }
           console.warn('Minimal fallback CV validation failed. Retrying with lenient CV sanitization.', minimalFallbackError?.message || minimalFallbackError);
+          usedLenientFallback = true;
           pdfBuffer = buildPdfBufferLenient(resolvedCvText || revisedText);
         }
       }
@@ -438,6 +451,11 @@ Before returning, verify:
       runUpdates.revised_cv_fallback_generated_at = new Date().toISOString();
     } else {
       runUpdates.revised_cv_fallback_generated_at = null;
+    }
+    if (usedLenientFallback) {
+      runUpdates.revised_cv_lenient_fallback_generated_at = new Date().toISOString();
+    } else {
+      runUpdates.revised_cv_lenient_fallback_generated_at = null;
     }
 
     let runStored = false;
