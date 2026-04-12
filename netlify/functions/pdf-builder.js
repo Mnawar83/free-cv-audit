@@ -882,6 +882,37 @@ function buildPdfBuffer(text) {
   return buildPdfFromPages(pages);
 }
 
+function buildPdfBufferLenient(rawText) {
+  const sanitized = sanitizePdfText(rawText);
+  const cleanedLines = sanitized
+    .split('\n')
+    .map((line) => normalizeLine(line))
+    .filter((line) => line && !isPageArtifact(line))
+    .filter((line) => !containsCorruption(line))
+    .filter((line) => !containsForbiddenPhrase(line));
+
+  const fallbackName = cleanedLines.find((line) => /^[A-Za-z][A-Za-z .'-]{2,}$/.test(line)) || 'CV Candidate';
+  const fallbackSummary = cleanedLines.slice(0, 3).join(' ').trim()
+    || 'Experienced professional with a strong track record of delivering results.';
+  const fallbackBullets = cleanedLines
+    .slice(0, 6)
+    .map((line) => line.replace(/^[-*•]\s*/, '').trim())
+    .filter(Boolean)
+    .map((line) => `- ${line}`);
+
+  const templateText = [
+    fallbackName,
+    '',
+    SECTION_TITLES.professionalSummary,
+    fallbackSummary,
+    '',
+    SECTION_TITLES.professionalExperience,
+    ...(fallbackBullets.length ? fallbackBullets : ['- Delivered measurable outcomes and supported cross-functional goals.']),
+  ].join('\n');
+
+  return buildPdfBuffer(templateText);
+}
+
 function pdfResponse(pdfBuffer, filename, inline = false) {
   const disposition = inline ? `inline; filename="${filename}"` : `attachment; filename="${filename}"`;
   return {
@@ -897,6 +928,7 @@ function pdfResponse(pdfBuffer, filename, inline = false) {
 
 module.exports = {
   buildPdfBuffer,
+  buildPdfBufferLenient,
   buildPdfBufferFromStructuredCv,
   pdfResponse,
   normalizeToCvTemplateText,

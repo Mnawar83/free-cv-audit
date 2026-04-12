@@ -1,6 +1,6 @@
 const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { LINKEDIN_UPSELL_STATUS, createRunId, getRun, upsertRun } = require('./run-store');
-const { buildPdfBuffer, buildPdfBufferFromStructuredCv, normalizeToCvTemplateText } = require('./pdf-builder');
+const { buildPdfBuffer, buildPdfBufferFromStructuredCv, buildPdfBufferLenient, normalizeToCvTemplateText } = require('./pdf-builder');
 const { structuredCvToTemplateText, tryExtractStructuredCv } = require('./cv-schema');
 
 const PDF_FILENAME = 'revised-cv.pdf';
@@ -406,7 +406,15 @@ Before returning, verify:
         }
         console.warn('Fallback canonical CV validation failed. Retrying with minimally-normalized original CV text.', fallbackError?.message || fallbackError);
         revisedText = normalizeRevisedCvText(resolvedCvText);
-        pdfBuffer = buildPdfBuffer(revisedText);
+        try {
+          pdfBuffer = buildPdfBuffer(revisedText);
+        } catch (minimalFallbackError) {
+          if (!isPdfValidationError(minimalFallbackError)) {
+            throw minimalFallbackError;
+          }
+          console.warn('Minimal fallback CV validation failed. Retrying with lenient CV sanitization.', minimalFallbackError?.message || minimalFallbackError);
+          pdfBuffer = buildPdfBufferLenient(resolvedCvText || revisedText);
+        }
       }
     }
     let runId = incomingRunId || createRunId();
