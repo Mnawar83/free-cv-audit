@@ -4,13 +4,12 @@ const { buildPdfBuffer, buildPdfBufferFromStructuredCv, buildPdfBufferLenient, n
 const { structuredCvToTemplateText, tryExtractStructuredCv } = require('./cv-schema');
 
 const PDF_FILENAME = 'revised-cv.pdf';
-const STRICT_STYLE_DISABLED_VALUES = new Set(['0', 'false', 'off', 'no']);
+const QUALITY_FLOOR_DISABLED_VALUES = new Set(['0', 'false', 'off', 'no']);
 
-function isStrictStyleModeEnabled() {
-  const explicit = String(process.env.CV_STRICT_STYLE_MODE || '').trim().toLowerCase();
-  if (explicit) return !STRICT_STYLE_DISABLED_VALUES.has(explicit);
-  const context = String(process.env.CONTEXT || process.env.NODE_ENV || '').trim().toLowerCase();
-  return context === 'production' || context === 'prod';
+function isQualityFloorEnabled() {
+  const explicit = String(process.env.CV_QUALITY_FLOOR_MODE || '').trim().toLowerCase();
+  if (explicit) return !QUALITY_FLOOR_DISABLED_VALUES.has(explicit);
+  return true;
 }
 
 function stableSeedFromText(text) {
@@ -136,6 +135,7 @@ exports.handler = async (event) => {
   try {
     let isGetRequest = false;
     let getRunData = null;
+    const qualityFloorMode = isQualityFloorEnabled();
     if (event.httpMethod === 'GET') {
       const runId = event.queryStringParameters?.runId;
       if (!runId) {
@@ -149,7 +149,8 @@ exports.handler = async (event) => {
         }
       }
       const cachedText = run?.revised_cv_text || '';
-      if (cachedText) {
+      const hasFallbackMarker = Boolean(run?.revised_cv_fallback_generated_at || run?.revised_cv_lenient_fallback_generated_at);
+      if (cachedText && !(qualityFloorMode && hasFallbackMarker)) {
         const canonicalText = tryCanonicalizeCvText(cachedText, 'GET cached');
         if (canonicalText) {
           const pdfBuffer = tryBuildPdfFromText(canonicalText, 'GET cached');
@@ -197,7 +198,8 @@ exports.handler = async (event) => {
     }
 
     const cachedRevisedText = existingRun?.revised_cv_text || '';
-    if (cachedRevisedText && !forceRegenerate) {
+    const hasExistingFallbackMarker = Boolean(existingRun?.revised_cv_fallback_generated_at || existingRun?.revised_cv_lenient_fallback_generated_at);
+    if (cachedRevisedText && !forceRegenerate && !(qualityFloorMode && hasExistingFallbackMarker)) {
       const canonicalText = tryCanonicalizeCvText(cachedRevisedText, 'POST cached');
       if (canonicalText) {
         const cachedPdfBuffer = tryBuildPdfFromText(canonicalText, 'POST cached');
@@ -400,7 +402,6 @@ Before returning, verify:
       if (!isPdfValidationError(renderError)) {
         throw renderError;
       }
-
       console.warn('Structured/rewritten PDF validation failed. Falling back to canonicalized original CV text.', renderError?.message || renderError);
       usedFallbackText = true;
       revisedStructuredCv = null;
@@ -470,6 +471,13 @@ Before returning, verify:
       } catch (retryError) {
         console.warn('Run store upsert retry failed; returning PDF without caching.', retryError?.message || retryError);
       }
+    }
+
+    if (isGetRequest && qualityFloorMode && (usedFallbackText || usedLenientFallback)) {
+      return htmlErrorResponse(
+        425,
+        'Your CV is being quality-checked and refined. Please retry this link in a moment for the highest-quality version.',
+      );
     }
 
     return pdfResponse(pdfBuffer, runStored ? runId : '', isGetRequest);

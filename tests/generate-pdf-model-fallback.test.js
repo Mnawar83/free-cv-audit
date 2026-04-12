@@ -8,6 +8,7 @@ function clearModule(modulePath) {
 
 async function run() {
   process.env.GOOGLE_AI_API_KEY = 'test-key';
+  process.env.CV_STRICT_STYLE_MODE = 'false';
   process.env.RUN_STORE_PATH = '/tmp/free-cv-audit-generate-pdf-fallback-test.json';
   delete process.env.GOOGLE_AI_MODEL;
   delete process.env.CONTEXT;
@@ -58,6 +59,7 @@ async function run() {
 }
 
 run().catch((error) => {
+  delete process.env.CV_STRICT_STYLE_MODE;
   console.error(error);
   process.exitCode = 1;
 });

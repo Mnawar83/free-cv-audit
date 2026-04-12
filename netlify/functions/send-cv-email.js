@@ -11,6 +11,13 @@ const { saveEmailDownloadSnapshot } = require('./email-download-store');
 const { buildPdfBuffer, normalizeToCvTemplateText } = require('./pdf-builder');
 const { triggerEmailQueueProcessing } = require('./queue-trigger');
 const crypto = require('crypto');
+const QUALITY_FLOOR_DISABLED_VALUES = new Set(['0', 'false', 'off', 'no']);
+
+function isQualityFloorEnabled() {
+  const explicit = String(process.env.CV_QUALITY_FLOOR_MODE || '').trim().toLowerCase();
+  if (explicit) return !QUALITY_FLOOR_DISABLED_VALUES.has(explicit);
+  return true;
+}
 
 function json(statusCode, payload) {
   return {
@@ -271,6 +278,9 @@ exports.handler = async (event) => {
           error: refreshError?.message || refreshError,
         });
       }
+    }
+    if (isQualityFloorEnabled() && (run?.revised_cv_fallback_generated_at || run?.revised_cv_lenient_fallback_generated_at)) {
+      return json(409, { error: 'Revised CV is still being refined for quality. Please retry shortly.' });
     }
     const revisedCvText = run?.revised_cv_text ? canonicalizeCvText(run.revised_cv_text) : '';
     if (!revisedCvText) {
