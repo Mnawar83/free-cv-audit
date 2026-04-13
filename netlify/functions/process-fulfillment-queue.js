@@ -26,6 +26,19 @@ function getRetryDelayMs(attempts) {
   return Math.min(60_000, Math.max(1_000, 1_000 * Math.pow(2, Math.max(0, (attempts || 1) - 1))));
 }
 
+function isRetryableEmailDeliveryStatus(statusCode) {
+  const code = Number(statusCode);
+  if (code === 409 || code === 423 || code === 425) return true;
+  return isTransientStatus(code);
+}
+
+function buildError(message, statusCode, options = {}) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  if (options.transient) error.transient = true;
+  return error;
+}
+
 function hasQueueAccess(headers = {}) {
   const expectedSecret = String(process.env.QUEUE_PROCESSOR_SECRET || '').trim();
   if (!expectedSecret) return true;
@@ -93,7 +106,7 @@ exports.handler = async (event) => {
       const runId = String(fulfillment.run_id || '').trim();
       const run = await getRun(runId);
       if (!run?.original_cv_text) {
-        throw new Error('Original CV text is missing for paid fulfillment.');
+        throw buildError('Original CV text is missing for paid fulfillment.', 422);
       }
 
       console.log('[full-audit] running', { runId, fulfillmentId });
@@ -113,10 +126,10 @@ exports.handler = async (event) => {
         body: JSON.stringify({ runId, cvText: run.original_cv_text, cvAnalysis: JSON.stringify(fullAudit), forceRegenerate: true }),
       });
       if (!(genResponse?.statusCode >= 200 && genResponse?.statusCode < 300)) {
-        throw new Error(`CV generation failed with status ${genResponse?.statusCode || 500}`);
+        throw buildError(`CV generation failed with status ${genResponse?.statusCode || 500}`, Number(genResponse?.statusCode) || 500, { transient: true });
       }
       if (!genResponse?.isBase64Encoded || !String(genResponse?.body || '').trim()) {
-        throw new Error('CV generation did not return a final PDF attachment payload.');
+        throw buildError('CV generation did not return a final PDF attachment payload.', 500, { transient: true });
       }
 
       const generatedRunIdHeader = String(
@@ -139,7 +152,7 @@ exports.handler = async (event) => {
       await upsertRun(effectiveRunId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
 
       const email = requestedEmail || String(fulfillment.email || '').trim();
-      if (!email) throw new Error('Email is required for fulfillment send.');
+      if (!email) throw buildError('Email is required for fulfillment send.', 400);
       const baseUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || 'https://freecvaudit.com';
       const normalizedBaseUrl = /^https?:\/\//i.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
       const cvUrl = new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(effectiveRunId)}`, normalizedBaseUrl).toString();
@@ -162,11 +175,14 @@ exports.handler = async (event) => {
         await completeFulfillmentJob(job.id, { status: 'COMPLETED', last_status_code: response.statusCode, last_response_body: response.body || '' });
         processed.push({ jobId: job.id, status: 'COMPLETED', fulfillmentId, runId: effectiveRunId });
       } else {
-        throw new Error(`Email delivery failed with status ${response.statusCode}`);
+        const responseStatus = Number(response.statusCode) || 500;
+        throw buildError(`Email delivery failed with status ${responseStatus}`, responseStatus, {
+          transient: isRetryableEmailDeliveryStatus(responseStatus),
+        });
       }
     } catch (error) {
       const statusCode = Number(error?.statusCode) || 500;
-      const retryable = shouldRetry(job, maxAttempts, statusCode, true);
+      const retryable = shouldRetry(job, maxAttempts, statusCode, Boolean(error?.transient));
       await completeFulfillmentJob(job.id, {
         status: retryable ? 'RETRY' : 'DEAD_LETTER',
         next_attempt_at: retryable ? new Date(Date.now() + getRetryDelayMs(job.attempts || 1)).toISOString() : null,
