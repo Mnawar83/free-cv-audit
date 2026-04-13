@@ -67,7 +67,7 @@ async function run() {
   assert.strictEqual(paypalPayloadRetry.fulfillmentId, paypalPayload.fulfillmentId);
 
   global.fetch = async (url) => {
-    if (String(url).includes('/payment/status')) {
+    if (String(url).includes('/payment/collect/status')) {
       return {
         ok: true,
         status: 200,
