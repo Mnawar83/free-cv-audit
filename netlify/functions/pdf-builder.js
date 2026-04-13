@@ -71,18 +71,26 @@ const SECTION_TITLES = {
 
 const SECTION_HEADING_ALIASES = {
   'professional summary': 'professionalSummary',
+  'executive summary': 'professionalSummary',
+  'career summary': 'professionalSummary',
+  'profile summary': 'professionalSummary',
   summary: 'professionalSummary',
   profile: 'professionalSummary',
   'core competencies': 'coreCompetencies',
+  'core strengths': 'coreCompetencies',
   competencies: 'coreCompetencies',
   'core skills': 'coreCompetencies',
+  'key skills': 'technicalSkills',
   'professional experience': 'professionalExperience',
+  'selected achievements': 'professionalExperience',
+  'training delivery & facilitation experience': 'professionalExperience',
   experience: 'professionalExperience',
   'employment history': 'professionalExperience',
   education: 'education',
   'technical skills': 'technicalSkills',
   skills: 'technicalSkills',
   certifications: 'certifications',
+  'professional certifications': 'certifications',
   training: 'certifications',
   'certifications / training': 'certifications',
   languages: 'languages',
@@ -190,10 +198,103 @@ function headingKey(line) {
   return SECTION_HEADING_ALIASES[clean] || null;
 }
 
+function hasTitleKeyword(text) {
+  return /(manager|engineer|specialist|consultant|director|lead|developer|analyst|officer|coordinator|architect|executive|administrator|leader|trainer|head|supervisor)/i.test(String(text || ''));
+}
+
+function looksLikeSentence(text) {
+  const clean = normalizeLine(text);
+  if (!clean) return false;
+  const words = clean.split(/\s+/);
+  return (/[.?!]/.test(clean) && words.length >= 8) || words.length >= 16;
+}
+
+function isLikelyNameLine(text) {
+  const clean = normalizeLine(text);
+  if (!clean) return false;
+  if (clean.length > 80 || /[@|]/.test(clean) || /\d/.test(clean)) return false;
+  if (looksLikeSentence(clean)) return false;
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length < 2 || words.length > 6) return false;
+  if (!/^[A-Za-z][A-Za-z .'-]+$/.test(clean)) return false;
+  return true;
+}
+
+function splitFirstLineNameAndTitle(line) {
+  const clean = normalizeLine(line);
+  if (!clean || clean.includes('@') || /\+?\d[\d\s().-]{6,}/.test(clean)) {
+    return { name: '', title: '' };
+  }
+
+  if (isLikelyNameLine(clean)) {
+    return { name: clean, title: '' };
+  }
+
+  const words = clean.split(/\s+/).filter(Boolean);
+  const uppercasePrefix = [];
+  for (const word of words) {
+    if (/^[A-Z][A-Z'.-]*$/.test(word)) {
+      uppercasePrefix.push(word);
+      continue;
+    }
+    break;
+  }
+  if (uppercasePrefix.length >= 2 && words.length > uppercasePrefix.length) {
+    const name = uppercasePrefix.join(' ');
+    const title = normalizeLine(words.slice(uppercasePrefix.length).join(' '));
+    if (isLikelyNameLine(name) && hasTitleKeyword(title) && title.length <= 90) {
+      return { name, title };
+    }
+  }
+
+  const pairedMatch = clean.match(/^([A-Z][A-Za-z'.-]+(?:\s+[A-Z][A-Za-z'.-]+){1,4})\s+(.+)$/);
+  if (pairedMatch) {
+    const name = normalizeLine(pairedMatch[1]);
+    const title = normalizeLine(pairedMatch[2]);
+    if (isLikelyNameLine(name) && hasTitleKeyword(title) && title.length <= 90) {
+      return { name, title };
+    }
+  }
+
+  return { name: '', title: '' };
+}
+
+function extractInlineContacts(line) {
+  let remaining = normalizeLine(line);
+  const contact = { email: '', phone: '' };
+  const fragments = [];
+
+  const emailMatch = remaining.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/ig);
+  if (emailMatch?.length) {
+    contact.email = emailMatch[0];
+    remaining = remaining.replace(emailMatch[0], ' ');
+  }
+
+  const phoneMatches = remaining.match(/(?:\+?\d[\d\s().-]{6,}\d)/g);
+  if (phoneMatches?.length) {
+    contact.phone = phoneMatches.slice(0, 2).join(' | ');
+    remaining = remaining.replace(/(?:\+?\d[\d\s().-]{6,}\d)/g, ' ');
+  }
+
+  remaining
+    .split(/\s*\|\s*/)
+    .map((part) => normalizeLine(part))
+    .filter(Boolean)
+    .forEach((part) => fragments.push(part));
+
+  return { contact, fragments };
+}
+
 function parseHeader(prefaceLines) {
   const clean = prefaceLines.map((line) => normalizeLine(line)).filter(Boolean);
-  const fullName = clean[0] || '';
+  const headerLines = [];
+  for (const line of clean) {
+    if (headingKey(line)) break;
+    headerLines.push(line);
+  }
 
+  const deferredSummaryLines = [];
+  let fullName = '';
   let professionalTitle = '';
   const contact = {
     location: '',
@@ -201,31 +302,47 @@ function parseHeader(prefaceLines) {
     email: '',
   };
 
-  const remaining = clean.slice(1);
-  for (const line of remaining) {
-    if (!contact.email && /\S+@\S+\.\S+/.test(line)) {
-      contact.email = line;
-      continue;
+  if (headerLines[0]) {
+    const firstLine = splitFirstLineNameAndTitle(headerLines[0]);
+    fullName = firstLine.name;
+    if (firstLine.title) professionalTitle = firstLine.title;
+  }
+
+  for (let i = 0; i < headerLines.length; i += 1) {
+    const line = headerLines[i];
+    const { contact: inlineContact, fragments } = extractInlineContacts(line);
+
+    if (!contact.email && inlineContact.email) contact.email = inlineContact.email;
+    if (!contact.phone && inlineContact.phone) contact.phone = inlineContact.phone;
+
+    for (const fragment of fragments) {
+      if (!fullName && isLikelyNameLine(fragment)) {
+        fullName = fragment;
+        continue;
+      }
+      if (!professionalTitle && hasTitleKeyword(fragment) && !looksLikeSentence(fragment)) {
+        professionalTitle = fragment;
+        continue;
+      }
+      if (!contact.location && !looksLikeSentence(fragment) && !hasTitleKeyword(fragment)) {
+        contact.location = fragment;
+        continue;
+      }
+      if (looksLikeSentence(fragment)) {
+        deferredSummaryLines.push(fragment);
+      }
     }
-    if (!contact.phone && /\+?\d[\d\s().-]{6,}/.test(line)) {
-      contact.phone = line;
-      continue;
+
+    if (!fragments.length && looksLikeSentence(line)) {
+      deferredSummaryLines.push(line);
     }
-    if (!professionalTitle && /(manager|engineer|specialist|consultant|director|lead|developer|analyst|officer|coordinator|architect|executive|administrator)/i.test(line)) {
-      professionalTitle = line;
-      continue;
-    }
-    if (!contact.location) {
-      contact.location = line;
-      continue;
-    }
-    if (!professionalTitle) professionalTitle = line;
   }
 
   return {
     fullName,
     professionalTitle,
     contact,
+    deferredSummaryLines,
   };
 }
 
@@ -398,10 +515,12 @@ function buildStructuredCvObject(inputText) {
   const lines = toLines(inputText);
   const sections = splitSections(lines);
   const header = parseHeader(sections.preface);
+  const fallbackSummary = header.deferredSummaryLines.join(' ');
+  const parsedSummary = sections.professionalSummary.join(' ');
 
   return {
     ...header,
-    professionalSummary: normalizeSummary(sections.professionalSummary.join(' ')),
+    professionalSummary: normalizeSummary(parsedSummary || fallbackSummary),
     coreCompetencies: dedupe(sections.coreCompetencies.flatMap((line) => line.split(/[|,]/g))),
     professionalExperience: parseExperience(sections.professionalExperience),
     education: parseEducation(sections.education),
@@ -414,13 +533,30 @@ function buildStructuredCvObject(inputText) {
 function validateAndAutoCorrect(cv) {
   const corrected = { ...cv };
 
+  const suspiciousName =
+    /\S+@\S+\.\S+/.test(corrected.fullName || '')
+    || /(?:\+?\d[\d\s().-]{6,}\d)/.test(corrected.fullName || '')
+    || /[|/]{2,}| \| /.test(corrected.fullName || '')
+    || looksLikeSentence(corrected.fullName || '')
+    || /\b(summary|objective|experience|responsible|results|delivering)\b/i.test(corrected.fullName || '')
+    || String(corrected.fullName || '').length > 80;
+
   if (!corrected.fullName || containsCorruption(corrected.fullName) || containsForbiddenPhrase(corrected.fullName)) {
     corrected.fullName = '';
   }
   corrected.fullName = normalizeLine(corrected.fullName);
+  if (suspiciousName || !isLikelyNameLine(corrected.fullName)) {
+    corrected.fullName = '';
+  }
 
   corrected.professionalTitle = normalizeLine(corrected.professionalTitle || '');
-  if (containsForbiddenPhrase(corrected.professionalTitle)) {
+  if (
+    containsForbiddenPhrase(corrected.professionalTitle)
+    || looksLikeSentence(corrected.professionalTitle)
+    || /\S+@\S+\.\S+/.test(corrected.professionalTitle)
+    || /(?:\+?\d[\d\s().-]{6,}\d)/.test(corrected.professionalTitle)
+    || headingKey(corrected.professionalTitle)
+  ) {
     corrected.professionalTitle = '';
   }
 
@@ -432,6 +568,13 @@ function validateAndAutoCorrect(cv) {
   corrected.professionalSummary = normalizeSummary(corrected.professionalSummary || '');
   if (containsForbiddenPhrase(corrected.professionalSummary)) {
     corrected.professionalSummary = '';
+  }
+  if (!corrected.professionalSummary && looksLikeSentence(cv?.fullName || '')) {
+    corrected.professionalSummary = normalizeSummary(cv.fullName);
+  }
+  if (!corrected.professionalSummary && looksLikeSentence(cv?.professionalTitle || '')) {
+    corrected.professionalSummary = normalizeSummary(cv.professionalTitle);
+    corrected.professionalTitle = '';
   }
 
   const filterForbidden = (items) => dedupe(items || []).filter((item) => !containsForbiddenPhrase(item));
