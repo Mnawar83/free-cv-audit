@@ -6,11 +6,28 @@ function clearModule(modulePath) {
   delete require.cache[resolved];
 }
 
+// Save and disable durable store env vars so the test uses local file store only.
+const savedDurableUrl = process.env.RUN_STORE_DURABLE_URL;
+const savedDurableToken = process.env.RUN_STORE_DURABLE_TOKEN;
+
+function cleanup() {
+  delete process.env.CV_QUALITY_FLOOR_MODE;
+  delete process.env.CV_STRICT_STYLE_MODE;
+  if (savedDurableUrl !== undefined) {
+    process.env.RUN_STORE_DURABLE_URL = savedDurableUrl;
+  }
+  if (savedDurableToken !== undefined) {
+    process.env.RUN_STORE_DURABLE_TOKEN = savedDurableToken;
+  }
+}
+
 async function run() {
   process.env.CV_QUALITY_FLOOR_MODE = 'true';
   process.env.CV_STRICT_STYLE_MODE = 'false';
   process.env.RUN_STORE_PATH = '/tmp/free-cv-audit-quality-floor-get-test.json';
   delete process.env.GOOGLE_AI_API_KEY;
+  delete process.env.RUN_STORE_DURABLE_URL;
+  delete process.env.RUN_STORE_DURABLE_TOKEN;
 
   try {
     fs.unlinkSync(process.env.RUN_STORE_PATH);
@@ -37,14 +54,12 @@ async function run() {
   assert.strictEqual(response.statusCode, 425);
   assert.ok(String(response.body || '').includes('quality-checked and refined'));
 
-  delete process.env.CV_QUALITY_FLOOR_MODE;
-  delete process.env.CV_STRICT_STYLE_MODE;
+  cleanup();
   console.log('Generate PDF quality floor GET test passed');
 }
 
 run().catch((error) => {
-  delete process.env.CV_QUALITY_FLOOR_MODE;
-  delete process.env.CV_STRICT_STYLE_MODE;
+  cleanup();
   console.error(error);
   process.exitCode = 1;
 });
