@@ -118,21 +118,39 @@ exports.handler = async (event) => {
       if (!genResponse?.isBase64Encoded || !String(genResponse?.body || '').trim()) {
         throw new Error('CV generation did not return a final PDF attachment payload.');
       }
-      await upsertRun(runId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
+
+      const generatedRunIdHeader = String(
+        genResponse?.headers?.['x-run-id']
+        || genResponse?.headers?.['X-Run-Id']
+        || (typeof genResponse?.headers?.get === 'function' ? genResponse.headers.get('x-run-id') : ''),
+      ).trim();
+      const effectiveRunId = generatedRunIdHeader || runId;
+      if (generatedRunIdHeader && generatedRunIdHeader !== runId) {
+        console.log('[cv-generation] runId rotated during regeneration', {
+          previousRunId: runId,
+          newRunId: generatedRunIdHeader,
+          fulfillmentId,
+        });
+        await updateFulfillment(fulfillmentId, {
+          run_id: generatedRunIdHeader,
+        });
+      }
+
+      await upsertRun(effectiveRunId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
 
       const email = requestedEmail || String(fulfillment.email || '').trim();
       if (!email) throw new Error('Email is required for fulfillment send.');
       const baseUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || 'https://freecvaudit.com';
       const normalizedBaseUrl = /^https?:\/\//i.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
-      const cvUrl = new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(runId)}`, normalizedBaseUrl).toString();
+      const cvUrl = new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(effectiveRunId)}`, normalizedBaseUrl).toString();
 
-      console.log('[email-delivery] sending', { runId, fulfillmentId });
+      console.log('[email-delivery] sending', { runId: effectiveRunId, fulfillmentId });
       await updateFulfillment(fulfillmentId, { processing_status: 'email_sending' });
-      await upsertRun(runId, { fulfillment_status: 'email_sending' });
+      await upsertRun(effectiveRunId, { fulfillment_status: 'email_sending' });
       const sendHandler = require('./send-cv-email').handler;
       const response = await sendHandler({
         httpMethod: 'POST',
-        body: JSON.stringify({ email, name, cvUrl, runId, fulfillmentId, resend: false, forceSync: true }),
+        body: JSON.stringify({ email, name, cvUrl, runId: effectiveRunId, fulfillmentId, resend: false, forceSync: true }),
       });
       if (response.statusCode >= 200 && response.statusCode < 300) {
         await updateFulfillment(fulfillmentId, {
@@ -140,9 +158,9 @@ exports.handler = async (event) => {
           email_sent_at: new Date().toISOString(),
           processing_status: 'email_sent',
         });
-        await upsertRun(runId, { fulfillment_status: 'email_sent', email_sent_at: new Date().toISOString() });
+        await upsertRun(effectiveRunId, { fulfillment_status: 'email_sent', email_sent_at: new Date().toISOString() });
         await completeFulfillmentJob(job.id, { status: 'COMPLETED', last_status_code: response.statusCode, last_response_body: response.body || '' });
-        processed.push({ jobId: job.id, status: 'COMPLETED', fulfillmentId });
+        processed.push({ jobId: job.id, status: 'COMPLETED', fulfillmentId, runId: effectiveRunId });
       } else {
         throw new Error(`Email delivery failed with status ${response.statusCode}`);
       }

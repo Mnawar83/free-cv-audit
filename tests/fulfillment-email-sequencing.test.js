@@ -39,10 +39,13 @@ async function run() {
   const runStore = require('../netlify/functions/run-store');
 
   let sendCount = 0;
+  const sentRunIds = [];
   clearModule('../netlify/functions/send-cv-email');
   const sendModule = require('../netlify/functions/send-cv-email');
-  sendModule.handler = async () => {
+  sendModule.handler = async (event) => {
     sendCount += 1;
+    const payload = JSON.parse(event.body || '{}');
+    sentRunIds.push(payload.runId || '');
     return { statusCode: 200, body: JSON.stringify({ ok: true }) };
   };
 
@@ -87,6 +90,29 @@ async function run() {
   const payload3 = JSON.parse(res3.body || '{}');
   assert.strictEqual(payload3.processed[0].status, 'COMPLETED');
   assert.strictEqual(sendCount, 1);
+
+
+  // case 4: generate-pdf rotates run id => queue must use new run id for send + status metadata
+  clearModule('../netlify/functions/generate-pdf');
+  const generateModule4 = require('../netlify/functions/generate-pdf');
+  generateModule4.handler = async () => ({
+    statusCode: 200,
+    isBase64Encoded: true,
+    body: Buffer.from('pdf').toString('base64'),
+    headers: { 'x-run-id': 'seq_run_rotated_new' },
+  });
+
+  const runId4 = 'seq_run_rotated_old';
+  const fulfillmentId4 = await setupPaidJob(runStore, runId4);
+  clearModule('../netlify/functions/process-fulfillment-queue');
+  handler = require('../netlify/functions/process-fulfillment-queue').handler;
+  const res4 = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
+  const payload4 = JSON.parse(res4.body || '{}');
+  assert.strictEqual(payload4.processed[0].status, 'COMPLETED');
+  assert.strictEqual(payload4.processed[0].runId, 'seq_run_rotated_new');
+  assert.strictEqual(sentRunIds[sentRunIds.length - 1], 'seq_run_rotated_new');
+  const rotatedFulfillment = await runStore.getFulfillment(fulfillmentId4);
+  assert.strictEqual(rotatedFulfillment.run_id, 'seq_run_rotated_new');
 
   console.log('fulfillment email sequencing test passed');
 }
