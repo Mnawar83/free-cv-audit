@@ -20,6 +20,7 @@
     "test:run-store-retry": "node tests/run-store-durable-retry.test.js",
     "test:cover-letter-flow": "node tests/cover-letter-flow.test.js",
     "test:audit-function": "node tests/audit-function.test.js",
+    "test:pdf-quality": "set -e; node tests/pdf-builder-formatting.test.js; node tests/generate-pdf-structured-parse-fallback.test.js; node tests/generate-pdf-render-fallback-canonicalization.test.js; node tests/generate-pdf-lenient-fallback.test.js; node tests/generate-pdf-model-fallback.test.js; node tests/generate-pdf-strict-style-mode.test.js; node tests/generate-pdf-strict-structured-required.test.js; node tests/generate-pdf-quality-floor-get.test.js; node tests/send-cv-email-quality-floor.test.js; node tests/send-cv-email-quality-floor-rebind-runid.test.js",
     "test:all": "set -e; for f in tests/*.test.js; do node \"$f\"; done",
     "test:ci": "npm run check:lock-sync && npm run test:all"
   }

@@ -10,6 +10,8 @@ async function run() {
   setupIsolatedRunStoreEnv('send-cv-email.test');
   process.env.RESEND_API_KEY = 'test-api-key';
   process.env.URL = 'https://app.freecvaudit.com';
+  process.env.CV_STRICT_STYLE_MODE = 'false';
+  process.env.CV_QUALITY_FLOOR_MODE = 'false';
   clearModule('../netlify/functions/run-store');
   const runStore = require('../netlify/functions/run-store');
 
@@ -228,10 +230,14 @@ async function run() {
   assert.strictEqual(retryResponse.statusCode, 200, 'Retryable provider errors should be retried and eventually succeed.');
   assert.strictEqual(retryAttempt, 2, 'Handler should retry after transient provider failure.');
 
+  delete process.env.CV_STRICT_STYLE_MODE;
+  delete process.env.CV_QUALITY_FLOOR_MODE;
   console.log('send-cv-email canonical link test passed');
 }
 
 run().catch((error) => {
+  delete process.env.CV_STRICT_STYLE_MODE;
+  delete process.env.CV_QUALITY_FLOOR_MODE;
   console.error(error);
   process.exitCode = 1;
 });

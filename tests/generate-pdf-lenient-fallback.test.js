@@ -7,6 +7,7 @@ function clearModule(modulePath) {
 
 async function run() {
   delete process.env.GOOGLE_AI_API_KEY;
+  process.env.CV_STRICT_STYLE_MODE = 'false';
 
   const pdfBuilderPath = require.resolve('../netlify/functions/pdf-builder');
   delete require.cache[pdfBuilderPath];
@@ -40,10 +41,12 @@ async function run() {
   assert.ok(response.body.length > 0);
   assert.ok(lenientCalled, 'Expected lenient PDF builder to be used after strict fallback failures.');
 
+  delete process.env.CV_STRICT_STYLE_MODE;
   console.log('Generate PDF lenient fallback test passed');
 }
 
 run().catch((error) => {
+  delete process.env.CV_STRICT_STYLE_MODE;
   console.error(error);
   process.exitCode = 1;
 });

@@ -7,26 +7,21 @@ function clearModule(modulePath) {
 
 async function run() {
   delete process.env.GOOGLE_AI_API_KEY;
-  process.env.CV_STRICT_STYLE_MODE = 'false';
+  process.env.CV_STRICT_STYLE_MODE = 'true';
 
   const pdfBuilderPath = require.resolve('../netlify/functions/pdf-builder');
   delete require.cache[pdfBuilderPath];
   const realPdfBuilder = require('../netlify/functions/pdf-builder');
-  let canonicalizeCallCount = 0;
+  let lenientCalled = false;
+
   require.cache[pdfBuilderPath].exports = {
     ...realPdfBuilder,
-    normalizeToCvTemplateText: (text) => {
-      canonicalizeCallCount += 1;
-      if (canonicalizeCallCount === 2) {
-        throw new Error('CV export validation failed: simulated fallback canonicalization failure.');
-      }
-      return `${realPdfBuilder.normalizeToCvTemplateText(text)}\nCANONICALIZED_MARKER`;
+    buildPdfBuffer: () => {
+      throw new Error('CV export validation failed: simulated strict builder failure.');
     },
-    buildPdfBuffer: (text) => {
-      if (String(text).includes('CANONICALIZED_MARKER')) {
-        throw new Error('CV export validation failed: simulated primary render validation failure.');
-      }
-      return realPdfBuilder.buildPdfBuffer(text);
+    buildPdfBufferLenient: (text) => {
+      lenientCalled = true;
+      return realPdfBuilder.buildPdfBufferLenient(text);
     },
   };
 
@@ -36,18 +31,18 @@ async function run() {
   const response = await handler({
     httpMethod: 'POST',
     body: JSON.stringify({
-      cvText: 'Jane Example\nPROFESSIONAL EXPERIENCE\n- Led implementation improvements across teams',
-      cvAnalysis: 'Improve ATS readability',
+      cvText: 'Page 1 of 1\nProfessional Title\nJane Example\n- Led delivery',
+      cvAnalysis: 'Improve formatting',
     }),
   });
 
   assert.strictEqual(response.statusCode, 200);
   assert.strictEqual(response.headers['Content-Type'], 'application/pdf');
   assert.ok(response.body.length > 0);
-  assert.ok(canonicalizeCallCount >= 2, 'Expected canonicalization to be attempted in both primary and fallback paths.');
+  assert.strictEqual(lenientCalled, true, 'Lenient fallback should be used as a final no-fail safeguard.');
 
   delete process.env.CV_STRICT_STYLE_MODE;
-  console.log('Generate PDF render fallback canonicalization test passed');
+  console.log('Generate PDF strict style mode test passed');
 }
 
 run().catch((error) => {
