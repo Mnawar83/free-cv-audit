@@ -39,7 +39,8 @@ function normalizeRevisedCvText(text) {
 
   normalized = normalized
     .replace(/^\s*professional summary\s*:?\s*$/gim, 'PROFESSIONAL SUMMARY')
-    .replace(/^\s*core skills\s*:?\s*$/gim, 'CORE SKILLS')
+    .replace(/^\s*core skills\s*:?\s*$/gim, 'CORE COMPETENCIES')
+    .replace(/^\s*core competencies\s*:?\s*$/gim, 'CORE COMPETENCIES')
     .replace(/^\s*professional experience\s*:?\s*$/gim, 'PROFESSIONAL EXPERIENCE')
     .replace(/^\s*education\s*:?\s*$/gim, 'EDUCATION')
     .replace(/^\s*certifications?\s*:?\s*$/gim, 'CERTIFICATIONS')

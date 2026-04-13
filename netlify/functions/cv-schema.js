@@ -1,6 +1,6 @@
 const SECTION_TITLES = {
   summary: 'PROFESSIONAL SUMMARY',
-  skills: 'CORE SKILLS',
+  skills: 'CORE COMPETENCIES',
   experience: 'PROFESSIONAL EXPERIENCE',
   education: 'EDUCATION',
   certifications: 'CERTIFICATIONS',
