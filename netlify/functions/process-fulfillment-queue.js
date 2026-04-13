@@ -148,6 +148,10 @@ exports.handler = async (event) => {
           run_id: generatedRunIdHeader,
         });
       }
+      if (!genResponse?.isBase64Encoded || !String(genResponse?.body || '').trim()) {
+        throw new Error('CV generation did not return a final PDF attachment payload.');
+      }
+      await upsertRun(runId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
 
       await upsertRun(effectiveRunId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
 
