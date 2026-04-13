@@ -6,6 +6,11 @@ const { structuredCvToTemplateText, tryExtractStructuredCv } = require('./cv-sch
 const PDF_FILENAME = 'revised-cv.pdf';
 const QUALITY_FLOOR_DISABLED_VALUES = new Set(['0', 'false', 'off', 'no']);
 
+function isStrictStyleModeEnabled() {
+  const value = String(process.env.STRICT_STYLE_MODE || '').trim().toLowerCase();
+  return value === 'true' || value === '1' || value === 'yes';
+}
+
 function isQualityFloorEnabled() {
   const explicit = String(process.env.CV_QUALITY_FLOOR_MODE || '').trim().toLowerCase();
   if (explicit) return !QUALITY_FLOOR_DISABLED_VALUES.has(explicit);
