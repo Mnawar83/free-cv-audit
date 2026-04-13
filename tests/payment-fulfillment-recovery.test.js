@@ -53,6 +53,8 @@ async function run() {
   assert.strictEqual(paypalFulfillment.payment_status, 'PAID');
   assert.strictEqual(paypalFulfillment.provider_order_id, 'ORDER_RECOVERY_1');
   assert.strictEqual(paypalFulfillment.email, 'recover-paypal@example.com');
+  const statsAfterPaypal = await runStore.getOperationalStats();
+  assert.ok(statsAfterPaypal.fulfillmentQueue.pending >= 1 || statsAfterPaypal.fulfillmentQueue.total >= 1);
 
   const paypalResponseRetry = await paypalCaptureOrder({
     httpMethod: 'POST',
@@ -98,6 +100,8 @@ async function run() {
   assert.strictEqual(whishFulfillment.payment_status, 'PAID');
   assert.strictEqual(whishFulfillment.provider_order_id, 'WHISH_RECOVERY_1');
   assert.strictEqual(whishFulfillment.email, 'recover-whish@example.com');
+  const statsAfterWhish = await runStore.getOperationalStats();
+  assert.ok(statsAfterWhish.fulfillmentQueue.total >= 1);
 
   const whishResponseRetry = await whishpayCheckStatus({
     httpMethod: 'POST',
