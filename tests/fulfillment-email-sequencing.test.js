@@ -1,4 +1,5 @@
 const assert = require('assert');
+const fs = require('fs');
 const { setupIsolatedRunStoreEnv } = require('./helpers/test-env');
 
 function clearModule(modulePath) {
@@ -39,10 +40,19 @@ async function run() {
   const runStore = require('../netlify/functions/run-store');
 
   let sendCount = 0;
+  const sentRunIds = [];
   clearModule('../netlify/functions/send-cv-email');
   const sendModule = require('../netlify/functions/send-cv-email');
-  sendModule.handler = async () => {
+  let forcedSendStatusByRunId = {};
+  sendModule.handler = async (event) => {
     sendCount += 1;
+    const payload = JSON.parse(event.body || '{}');
+    const runId = payload.runId || '';
+    sentRunIds.push(runId);
+    const forcedStatus = forcedSendStatusByRunId[runId];
+    if (forcedStatus) {
+      return { statusCode: forcedStatus, body: JSON.stringify({ error: 'forced send status' }) };
+    }
     return { statusCode: 200, body: JSON.stringify({ ok: true }) };
   };
 
@@ -87,6 +97,48 @@ async function run() {
   const payload3 = JSON.parse(res3.body || '{}');
   assert.strictEqual(payload3.processed[0].status, 'COMPLETED');
   assert.strictEqual(sendCount, 1);
+
+
+  // case 3b: non-retryable email 4xx should dead-letter immediately
+  forcedSendStatusByRunId = { seq_run_send_400: 400 };
+  clearModule('../netlify/functions/generate-pdf');
+  const generateModule3b = require('../netlify/functions/generate-pdf');
+  generateModule3b.handler = async () => ({ statusCode: 200, isBase64Encoded: true, body: Buffer.from('pdf').toString('base64') });
+
+  const runId3b = 'seq_run_send_400';
+  const fulfillmentId3b = await setupPaidJob(runStore, runId3b);
+  clearModule('../netlify/functions/process-fulfillment-queue');
+  handler = require('../netlify/functions/process-fulfillment-queue').handler;
+  const res3b = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
+  const payload3b = JSON.parse(res3b.body || '{}');
+  assert.strictEqual(payload3b.processed[0].status, 'DEAD_LETTER');
+  const state = JSON.parse(fs.readFileSync(process.env.RUN_STORE_PATH, 'utf8'));
+  const failedJob = (state.fulfillmentQueue || []).find((job) => job?.payload?.fulfillmentId === fulfillmentId3b && job?.status === 'DEAD_LETTER');
+  assert.ok(failedJob, 'Expected dead-letter queue job to be persisted.');
+  assert.strictEqual(failedJob.last_status_code, 400);
+  forcedSendStatusByRunId = {};
+
+  // case 4: generate-pdf rotates run id => queue must use new run id for send + status metadata
+  clearModule('../netlify/functions/generate-pdf');
+  const generateModule4 = require('../netlify/functions/generate-pdf');
+  generateModule4.handler = async () => ({
+    statusCode: 200,
+    isBase64Encoded: true,
+    body: Buffer.from('pdf').toString('base64'),
+    headers: { 'x-run-id': 'seq_run_rotated_new' },
+  });
+
+  const runId4 = 'seq_run_rotated_old';
+  const fulfillmentId4 = await setupPaidJob(runStore, runId4);
+  clearModule('../netlify/functions/process-fulfillment-queue');
+  handler = require('../netlify/functions/process-fulfillment-queue').handler;
+  const res4 = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
+  const payload4 = JSON.parse(res4.body || '{}');
+  assert.strictEqual(payload4.processed[0].status, 'COMPLETED');
+  assert.strictEqual(payload4.processed[0].runId, 'seq_run_rotated_new');
+  assert.strictEqual(sentRunIds[sentRunIds.length - 1], 'seq_run_rotated_new');
+  const rotatedFulfillment = await runStore.getFulfillment(fulfillmentId4);
+  assert.strictEqual(rotatedFulfillment.run_id, 'seq_run_rotated_new');
 
   console.log('fulfillment email sequencing test passed');
 }

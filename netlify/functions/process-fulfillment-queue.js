@@ -26,6 +26,19 @@ function getRetryDelayMs(attempts) {
   return Math.min(60_000, Math.max(1_000, 1_000 * Math.pow(2, Math.max(0, (attempts || 1) - 1))));
 }
 
+function isRetryableEmailDeliveryStatus(statusCode) {
+  const code = Number(statusCode);
+  if (code === 409 || code === 423 || code === 425) return true;
+  return isTransientStatus(code);
+}
+
+function buildError(message, statusCode, options = {}) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  if (options.transient) error.transient = true;
+  return error;
+}
+
 function hasQueueAccess(headers = {}) {
   const expectedSecret = String(process.env.QUEUE_PROCESSOR_SECRET || '').trim();
   if (!expectedSecret) return true;
@@ -93,7 +106,7 @@ exports.handler = async (event) => {
       const runId = String(fulfillment.run_id || '').trim();
       const run = await getRun(runId);
       if (!run?.original_cv_text) {
-        throw new Error('Original CV text is missing for paid fulfillment.');
+        throw buildError('Original CV text is missing for paid fulfillment.', 422);
       }
 
       console.log('[full-audit] running', { runId, fulfillmentId });
@@ -113,26 +126,48 @@ exports.handler = async (event) => {
         body: JSON.stringify({ runId, cvText: run.original_cv_text, cvAnalysis: JSON.stringify(fullAudit), forceRegenerate: true }),
       });
       if (!(genResponse?.statusCode >= 200 && genResponse?.statusCode < 300)) {
-        throw new Error(`CV generation failed with status ${genResponse?.statusCode || 500}`);
+        throw buildError(`CV generation failed with status ${genResponse?.statusCode || 500}`, Number(genResponse?.statusCode) || 500, { transient: true });
+      }
+      if (!genResponse?.isBase64Encoded || !String(genResponse?.body || '').trim()) {
+        throw buildError('CV generation did not return a final PDF attachment payload.', 500, { transient: true });
+      }
+
+      const generatedRunIdHeader = String(
+        genResponse?.headers?.['x-run-id']
+        || genResponse?.headers?.['X-Run-Id']
+        || (typeof genResponse?.headers?.get === 'function' ? genResponse.headers.get('x-run-id') : ''),
+      ).trim();
+      const effectiveRunId = generatedRunIdHeader || runId;
+      if (generatedRunIdHeader && generatedRunIdHeader !== runId) {
+        console.log('[cv-generation] runId rotated during regeneration', {
+          previousRunId: runId,
+          newRunId: generatedRunIdHeader,
+          fulfillmentId,
+        });
+        await updateFulfillment(fulfillmentId, {
+          run_id: generatedRunIdHeader,
+        });
       }
       if (!genResponse?.isBase64Encoded || !String(genResponse?.body || '').trim()) {
         throw new Error('CV generation did not return a final PDF attachment payload.');
       }
       await upsertRun(runId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
 
+      await upsertRun(effectiveRunId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
+
       const email = requestedEmail || String(fulfillment.email || '').trim();
-      if (!email) throw new Error('Email is required for fulfillment send.');
+      if (!email) throw buildError('Email is required for fulfillment send.', 400);
       const baseUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || 'https://freecvaudit.com';
       const normalizedBaseUrl = /^https?:\/\//i.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
-      const cvUrl = new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(runId)}`, normalizedBaseUrl).toString();
+      const cvUrl = new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(effectiveRunId)}`, normalizedBaseUrl).toString();
 
-      console.log('[email-delivery] sending', { runId, fulfillmentId });
+      console.log('[email-delivery] sending', { runId: effectiveRunId, fulfillmentId });
       await updateFulfillment(fulfillmentId, { processing_status: 'email_sending' });
-      await upsertRun(runId, { fulfillment_status: 'email_sending' });
+      await upsertRun(effectiveRunId, { fulfillment_status: 'email_sending' });
       const sendHandler = require('./send-cv-email').handler;
       const response = await sendHandler({
         httpMethod: 'POST',
-        body: JSON.stringify({ email, name, cvUrl, runId, fulfillmentId, resend: false, forceSync: true }),
+        body: JSON.stringify({ email, name, cvUrl, runId: effectiveRunId, fulfillmentId, resend: false, forceSync: true }),
       });
       if (response.statusCode >= 200 && response.statusCode < 300) {
         await updateFulfillment(fulfillmentId, {
@@ -140,15 +175,18 @@ exports.handler = async (event) => {
           email_sent_at: new Date().toISOString(),
           processing_status: 'email_sent',
         });
-        await upsertRun(runId, { fulfillment_status: 'email_sent', email_sent_at: new Date().toISOString() });
+        await upsertRun(effectiveRunId, { fulfillment_status: 'email_sent', email_sent_at: new Date().toISOString() });
         await completeFulfillmentJob(job.id, { status: 'COMPLETED', last_status_code: response.statusCode, last_response_body: response.body || '' });
-        processed.push({ jobId: job.id, status: 'COMPLETED', fulfillmentId });
+        processed.push({ jobId: job.id, status: 'COMPLETED', fulfillmentId, runId: effectiveRunId });
       } else {
-        throw new Error(`Email delivery failed with status ${response.statusCode}`);
+        const responseStatus = Number(response.statusCode) || 500;
+        throw buildError(`Email delivery failed with status ${responseStatus}`, responseStatus, {
+          transient: isRetryableEmailDeliveryStatus(responseStatus),
+        });
       }
     } catch (error) {
       const statusCode = Number(error?.statusCode) || 500;
-      const retryable = shouldRetry(job, maxAttempts, statusCode, true);
+      const retryable = shouldRetry(job, maxAttempts, statusCode, Boolean(error?.transient));
       await completeFulfillmentJob(job.id, {
         status: retryable ? 'RETRY' : 'DEAD_LETTER',
         next_attempt_at: retryable ? new Date(Date.now() + getRetryDelayMs(job.attempts || 1)).toISOString() : null,
