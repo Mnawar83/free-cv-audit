@@ -106,7 +106,7 @@ exports.handler = async (event) => {
       const runId = String(fulfillment.run_id || '').trim();
       const run = await getRun(runId);
       if (!run?.original_cv_text) {
-        throw buildError('Original CV text is missing for paid fulfillment.', 422);
+        throw buildError('Original CV text is missing for paid fulfillment.', 409, { transient: true });
       }
 
       console.log('[full-audit] running', { runId, fulfillmentId });
