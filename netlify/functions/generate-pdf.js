@@ -6,11 +6,6 @@ const { structuredCvToTemplateText, tryExtractStructuredCv } = require('./cv-sch
 const PDF_FILENAME = 'revised-cv.pdf';
 const QUALITY_FLOOR_DISABLED_VALUES = new Set(['0', 'false', 'off', 'no']);
 
-function isStrictStyleModeEnabled() {
-  const value = String(process.env.STRICT_STYLE_MODE || '').trim().toLowerCase();
-  return value === 'true' || value === '1' || value === 'yes';
-}
-
 function isQualityFloorEnabled() {
   const explicit = String(process.env.CV_QUALITY_FLOOR_MODE || '').trim().toLowerCase();
   if (explicit) return !QUALITY_FLOOR_DISABLED_VALUES.has(explicit);
@@ -159,6 +154,10 @@ function tryBuildPdfFromText(text, contextLabel) {
   }
 }
 
+function logStageFailure(stage, error) {
+  console.warn(`[generate-pdf][stage:${stage}] ${error?.message || error}`);
+}
+
 function tryCanonicalizeCvText(text, contextLabel) {
   try {
     return canonicalizeCvText(text);
@@ -247,7 +246,6 @@ exports.handler = async (event) => {
     const resolvedCvText = cvText || existingRun?.original_cv_text || '';
     const normalizedResolvedCvText = normalizeRevisedCvText(resolvedCvText);
     const resolvedCvAnalysis = cvAnalysis || existingRun?.audit_result || '';
-    const strictStyleMode = isStrictStyleModeEnabled();
 
     if (existingRun?.revised_cv_structured && !forceRegenerate) {
       const cachedPdfBuffer = tryBuildPdfFromStructured(existingRun.revised_cv_structured, 'POST cached');
@@ -454,42 +452,49 @@ Before returning, verify:
       revisedText = canonicalRevisedText || normalizeRevisedCvText(revisedText);
     }
 
-    let pdfBuffer;
-    try {
-      pdfBuffer = revisedStructuredCv ? buildPdfBufferFromStructuredCv(revisedStructuredCv) : buildPdfBuffer(revisedText);
-    } catch (renderError) {
-      if (!isPdfValidationError(renderError)) {
-        throw renderError;
+    let pdfBuffer = null;
+    const renderAttempts = [];
+    const tryStage = (stageName, fn) => {
+      try {
+        const result = fn();
+        if (result) {
+          renderAttempts.push({ stage: stageName, ok: true });
+          return result;
+        }
+      } catch (error) {
+        renderAttempts.push({ stage: stageName, ok: false, message: error?.message || String(error) });
+        logStageFailure(stageName, error);
       }
-      console.warn('Structured/rewritten PDF validation failed. Falling back to canonicalized original CV text.', renderError?.message || renderError);
+      return null;
+    };
+
+    const primaryStageName = revisedStructuredCv ? 'structured_render' : 'canonical_render';
+    pdfBuffer = tryStage(primaryStageName, () => (
+      revisedStructuredCv ? buildPdfBufferFromStructuredCv(revisedStructuredCv) : buildPdfBuffer(revisedText)
+    ));
+
+    if (!pdfBuffer) {
       usedFallbackText = true;
       revisedStructuredCv = null;
       const fallbackCanonicalText = tryCanonicalizeCvTextSafely(resolvedCvText, 'Fallback original');
       revisedText = fallbackCanonicalText || normalizeRevisedCvText(resolvedCvText);
+      pdfBuffer = tryStage('fallback_canonical_render', () => buildPdfBuffer(revisedText));
+    }
 
-      try {
-        pdfBuffer = buildPdfBuffer(revisedText);
-      } catch (fallbackError) {
-        if (!isPdfValidationError(fallbackError)) {
-          throw fallbackError;
-        }
-        console.warn('Fallback canonical CV validation failed. Retrying with minimally-normalized original CV text.', fallbackError?.message || fallbackError);
-        const guardedFallbackCanonicalText = tryCanonicalizeCvTextSafely(stripSuspiciousHeaderLines(resolvedCvText), 'Fallback original guarded retry');
-        revisedText = guardedFallbackCanonicalText || normalizeRevisedCvText(resolvedCvText);
-        try {
-          pdfBuffer = buildPdfBuffer(revisedText);
-        } catch (minimalFallbackError) {
-          if (!isPdfValidationError(minimalFallbackError)) {
-            throw minimalFallbackError;
-          }
-          if (strictStyleMode) {
-            throw new Error('CV export validation failed: strict style mode blocked lenient fallback rendering.');
-          }
-          console.warn('Minimal fallback CV validation failed. Retrying with lenient CV sanitization.', minimalFallbackError?.message || minimalFallbackError);
-          usedLenientFallback = true;
-          pdfBuffer = buildPdfBufferLenient(resolvedCvText || revisedText);
-        }
-      }
+    if (!pdfBuffer) {
+      const guardedFallbackCanonicalText = tryCanonicalizeCvTextSafely(stripSuspiciousHeaderLines(resolvedCvText), 'Fallback original guarded retry');
+      revisedText = guardedFallbackCanonicalText || normalizeRevisedCvText(resolvedCvText);
+      pdfBuffer = tryStage('guarded_canonical_render', () => buildPdfBuffer(revisedText));
+    }
+
+    if (!pdfBuffer) {
+      usedLenientFallback = true;
+      pdfBuffer = tryStage('lenient_safe_render', () => buildPdfBufferLenient(resolvedCvText || revisedText));
+    }
+
+    if (!pdfBuffer) {
+      const failureTrail = renderAttempts.map((attempt) => `${attempt.stage}:${attempt.ok ? 'ok' : attempt.message}`).join(' | ');
+      throw new Error(`CV export validation failed: all render stages failed. ${failureTrail}`);
     }
     let runId = incomingRunId || createRunId();
 
