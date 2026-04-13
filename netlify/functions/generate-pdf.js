@@ -150,7 +150,13 @@ exports.handler = async (event) => {
       }
       const cachedText = run?.revised_cv_text || '';
       const hasFallbackMarker = Boolean(run?.revised_cv_fallback_generated_at || run?.revised_cv_lenient_fallback_generated_at);
-      if (cachedText && !(qualityFloorMode && hasFallbackMarker)) {
+      if (qualityFloorMode && hasFallbackMarker) {
+        return htmlErrorResponse(
+          425,
+          'Your CV is being quality-checked and refined. Please retry this link in a moment for the highest-quality version.',
+        );
+      }
+      if (cachedText) {
         const canonicalText = tryCanonicalizeCvText(cachedText, 'GET cached');
         if (canonicalText) {
           const pdfBuffer = tryBuildPdfFromText(canonicalText, 'GET cached');

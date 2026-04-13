@@ -223,7 +223,7 @@ exports.handler = async (event) => {
     const email = toSafeText(payload.email).toLowerCase();
     const cvUrl = toSafeText(payload.cvUrl);
     const name = toSafeText(payload.name);
-    const runId = resolveRunId(payload.runId, cvUrl);
+    let runId = resolveRunId(payload.runId, cvUrl);
     const isResend = Boolean(payload.resend);
     const forceSync = Boolean(payload.forceSync);
     const fulfillmentId = toSafeText(payload.fulfillmentId);
@@ -262,7 +262,7 @@ exports.handler = async (event) => {
     if ((!run?.revised_cv_text || run?.revised_cv_fallback_generated_at || run?.revised_cv_lenient_fallback_generated_at) && run?.original_cv_text) {
       try {
         const generatePdfHandler = require('./generate-pdf').handler;
-        await generatePdfHandler({
+        const refreshResponse = await generatePdfHandler({
           httpMethod: 'POST',
           body: JSON.stringify({
             runId,
@@ -271,6 +271,12 @@ exports.handler = async (event) => {
             forceRegenerate: true,
           }),
         });
+        const refreshedRunId = toSafeText(
+          refreshResponse?.headers?.['x-run-id'] || refreshResponse?.headers?.['X-Run-Id'],
+        );
+        if (refreshedRunId) {
+          runId = refreshedRunId;
+        }
         run = await getRun(runId);
       } catch (refreshError) {
         console.warn('Unable to refresh fallback revised CV before sending email.', {
