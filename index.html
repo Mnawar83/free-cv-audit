@@ -1182,6 +1182,9 @@
                     }
                 }
                 if (!response.ok || !payload.ok) {
+                    if (response.status === 409) {
+                        throw new Error('Your revised CV is still being prepared. Please wait a moment and try again.');
+                    }
                     throw new Error(getApiErrorMessage(payload, 'Unable to send CV email right now.'));
                 }
                 if (payload.fulfillmentId) {
