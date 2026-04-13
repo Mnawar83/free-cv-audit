@@ -54,6 +54,39 @@ function canonicalizeCvText(text) {
   return normalizeToCvTemplateText(normalizedText);
 }
 
+function hasSuspiciousHeaderInTemplateText(text) {
+  const lines = String(text || '').split('\n').map((line) => line.trim());
+  const preface = [];
+  for (const line of lines) {
+    if (!line) continue;
+    if (/^[A-Z][A-Z /&]+$/.test(line)) break;
+    preface.push(line);
+    if (preface.length >= 6) break;
+  }
+  return preface.some((line) => line.length > 100 || /[.?!]/.test(line) || line.split(/\s+/).length > 14);
+}
+
+function stripSuspiciousHeaderLines(text) {
+  const normalized = normalizeRevisedCvText(text);
+  const lines = normalized.split('\n');
+  const cleaned = [];
+  let dropped = 0;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (
+      dropped < 3
+      && trimmed
+      && !/^[A-Z][A-Z /&]+$/.test(trimmed)
+      && (trimmed.length > 100 || /[.?!]/.test(trimmed) || trimmed.split(/\s+/).length > 14)
+    ) {
+      dropped += 1;
+      continue;
+    }
+    cleaned.push(line);
+  }
+  return cleaned.join('\n');
+}
+
 function isPdfValidationError(error) {
   const message = String(error?.message || '');
   return message.startsWith('CV export validation failed:');
@@ -129,6 +162,15 @@ function tryCanonicalizeCvText(text, contextLabel) {
     console.warn(`${contextLabel} canonicalization failed validation.`, error?.message || error);
     return '';
   }
+}
+
+function tryCanonicalizeCvTextSafely(text, contextLabel) {
+  const canonical = tryCanonicalizeCvText(text, contextLabel);
+  if (!canonical) return '';
+  if (!hasSuspiciousHeaderInTemplateText(canonical)) return canonical;
+  console.warn(`${contextLabel} produced suspicious header content. Retrying with guarded canonicalization.`);
+  const stripped = stripSuspiciousHeaderLines(text);
+  return tryCanonicalizeCvText(stripped, `${contextLabel} guarded`) || canonical;
 }
 
 exports.handler = async (event) => {
@@ -403,7 +445,7 @@ Before returning, verify:
       usedFallbackText = true;
     }
     if (!revisedStructuredCv) {
-      const canonicalRevisedText = tryCanonicalizeCvText(revisedText, 'Primary revised');
+      const canonicalRevisedText = tryCanonicalizeCvTextSafely(revisedText, 'Primary revised');
       revisedText = canonicalRevisedText || normalizeRevisedCvText(revisedText);
     }
 
@@ -417,7 +459,7 @@ Before returning, verify:
       console.warn('Structured/rewritten PDF validation failed. Falling back to canonicalized original CV text.', renderError?.message || renderError);
       usedFallbackText = true;
       revisedStructuredCv = null;
-      const fallbackCanonicalText = tryCanonicalizeCvText(resolvedCvText, 'Fallback original');
+      const fallbackCanonicalText = tryCanonicalizeCvTextSafely(resolvedCvText, 'Fallback original');
       revisedText = fallbackCanonicalText || normalizeRevisedCvText(resolvedCvText);
 
       try {
@@ -427,7 +469,8 @@ Before returning, verify:
           throw fallbackError;
         }
         console.warn('Fallback canonical CV validation failed. Retrying with minimally-normalized original CV text.', fallbackError?.message || fallbackError);
-        revisedText = normalizeRevisedCvText(resolvedCvText);
+        const guardedFallbackCanonicalText = tryCanonicalizeCvTextSafely(stripSuspiciousHeaderLines(resolvedCvText), 'Fallback original guarded retry');
+        revisedText = guardedFallbackCanonicalText || normalizeRevisedCvText(resolvedCvText);
         try {
           pdfBuffer = buildPdfBuffer(revisedText);
         } catch (minimalFallbackError) {

@@ -134,6 +134,40 @@ async function run() {
   assert.strictEqual(parsedWithBlankBulletSpacing.length, 1, 'Blank lines between bullets must not split a role.');
   assert.strictEqual(parsedWithBlankBulletSpacing[0].bullets.length, 2, 'Bullets separated by blank lines must remain in the same role.');
 
+  const executiveSummaryCv = [
+    'ALI RAZA ZAIDI Learning & Organization Development Leader',
+    'Al Khobar, Saudi Arabia Transferable Iqama +966 55 555 5555 | +92 300 0000000 | ali.zaidi@gmail.com',
+    '',
+    'EXECUTIVE SUMMARY',
+    'Learning leader with 15+ years delivering enterprise L&D strategy across GCC.',
+    '',
+    'SELECTED ACHIEVEMENTS',
+    '- Built leadership academy serving 500+ managers.',
+    '',
+    'PROFESSIONAL EXPERIENCE',
+    'Head of Learning | Example Group | Al Khobar | 2021 - Present',
+    '- Led enterprise learning roadmap.',
+  ].join('\n');
+
+  const executiveStructured = __test.validateAndAutoCorrect(__test.buildStructuredCvObject(executiveSummaryCv));
+  assert.strictEqual(executiveStructured.fullName, 'ALI RAZA ZAIDI', 'First line with name and title should split correctly.');
+  assert.strictEqual(executiveStructured.professionalTitle, 'Learning & Organization Development Leader', 'Title should be extracted from dense first line.');
+  assert.ok(executiveStructured.contact.location.includes('Al Khobar, Saudi Arabia'), 'Location should be parsed from mixed contact line.');
+  assert.ok(executiveStructured.contact.phone.includes('+966 55 555 5555'), 'Phone should be parsed from mixed contact line.');
+  assert.strictEqual(executiveStructured.contact.email, 'ali.zaidi@gmail.com', 'Email should be parsed from mixed contact line.');
+  assert.ok(executiveStructured.professionalSummary.includes('Learning leader'), 'EXECUTIVE SUMMARY must map to professional summary.');
+  assert.ok(executiveStructured.professionalExperience.some((role) => role.bullets.some((b) => b.includes('Built leadership academy'))), 'SELECTED ACHIEVEMENTS should flow to experience safely.');
+
+  const malformedHeaderCv = [
+    'Ali Raza Zaidi Learning leader with 15+ years driving transformation across businesses. Executive summary and profile details.',
+    'PROFESSIONAL EXPERIENCE',
+    'Learning Director | Example Co | 2020 - Present',
+    '- Delivered strategic initiatives.',
+  ].join('\n');
+  const malformedStructured = __test.validateAndAutoCorrect(__test.buildStructuredCvObject(malformedHeaderCv));
+  assert.ok(!malformedStructured.fullName, 'Summary-like content must never be accepted as fullName.');
+  assert.ok(!malformedStructured.professionalTitle || malformedStructured.professionalTitle.length < 80, 'Summary-like content must never render as title.');
+
   console.log('pdf builder formatting test passed');
 }
 
