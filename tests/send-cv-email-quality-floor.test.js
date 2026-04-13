@@ -1,6 +1,8 @@
 const assert = require('assert');
 const { setupIsolatedRunStoreEnv } = require('./helpers/test-env');
 
+const savedGoogleAiKey = process.env.GOOGLE_AI_API_KEY;
+
 function clearModule(modulePath) {
   const resolved = require.resolve(modulePath);
   delete require.cache[resolved];
@@ -8,6 +10,7 @@ function clearModule(modulePath) {
 
 async function run() {
   setupIsolatedRunStoreEnv('send-cv-email-quality-floor.test');
+  delete process.env.GOOGLE_AI_API_KEY;
   process.env.RESEND_API_KEY = 'test-api-key';
   process.env.URL = 'https://app.freecvaudit.com';
   process.env.CV_STRICT_STYLE_MODE = 'false';
@@ -23,6 +26,8 @@ async function run() {
   });
 
   clearModule('../netlify/functions/send-cv-email');
+  clearModule('../netlify/functions/generate-pdf');
+  clearModule('../netlify/functions/google-ai');
   const { handler } = require('../netlify/functions/send-cv-email');
   const response = await handler({
     httpMethod: 'POST',
@@ -41,12 +46,14 @@ async function run() {
 
   delete process.env.CV_QUALITY_FLOOR_MODE;
   delete process.env.CV_STRICT_STYLE_MODE;
+  if (savedGoogleAiKey) process.env.GOOGLE_AI_API_KEY = savedGoogleAiKey;
   console.log('send-cv-email quality floor test passed');
 }
 
 run().catch((error) => {
   delete process.env.CV_QUALITY_FLOOR_MODE;
   delete process.env.CV_STRICT_STYLE_MODE;
+  if (savedGoogleAiKey) process.env.GOOGLE_AI_API_KEY = savedGoogleAiKey;
   console.error(error);
   process.exitCode = 1;
 });
