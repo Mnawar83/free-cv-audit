@@ -76,23 +76,48 @@ const SECTION_HEADING_ALIASES = {
   'profile summary': 'professionalSummary',
   summary: 'professionalSummary',
   profile: 'professionalSummary',
+  'about me': 'professionalSummary',
+  objective: 'professionalSummary',
+  'career objective': 'professionalSummary',
+  overview: 'professionalSummary',
+  'professional overview': 'professionalSummary',
+  'executive profile': 'professionalSummary',
   'core competencies': 'coreCompetencies',
   'core strengths': 'coreCompetencies',
   competencies: 'coreCompetencies',
   'core skills': 'coreCompetencies',
   'key skills': 'technicalSkills',
+  'areas of expertise': 'coreCompetencies',
+  expertise: 'coreCompetencies',
   'professional experience': 'professionalExperience',
   'selected achievements': 'professionalExperience',
   'training delivery & facilitation experience': 'professionalExperience',
   experience: 'professionalExperience',
   'employment history': 'professionalExperience',
+  'work experience': 'professionalExperience',
+  'work history': 'professionalExperience',
+  'career history': 'professionalExperience',
+  'career experience': 'professionalExperience',
+  'professional background': 'professionalExperience',
+  'key achievements': 'professionalExperience',
+  achievements: 'professionalExperience',
+  'relevant experience': 'professionalExperience',
   education: 'education',
+  'academic qualifications': 'education',
+  'academic background': 'education',
+  qualifications: 'education',
   'technical skills': 'technicalSkills',
   skills: 'technicalSkills',
   certifications: 'certifications',
   'professional certifications': 'certifications',
   training: 'certifications',
   'certifications / training': 'certifications',
+  'professional development': 'certifications',
+  'honors and awards': 'certifications',
+  awards: 'certifications',
+  'professional affiliations': 'certifications',
+  affiliations: 'certifications',
+  memberships: 'certifications',
   languages: 'languages',
   'additional information': 'languages',
 };
@@ -219,11 +244,35 @@ function headingMatch(line) {
       };
     }
   }
+
+  // Handle inline headings: ALL-CAPS multi-word heading followed by content on the same line
+  // e.g. "EXECUTIVE SUMMARY Learning and Organization Development leader..."
+  for (const alias of aliases) {
+    if (alias.split(' ').length < 2) continue; // only multi-word headings to avoid false positives
+    const upperAlias = alias.toUpperCase();
+    if (value.length > upperAlias.length && value.substring(0, upperAlias.length) === upperAlias) {
+      const nextChar = value[upperAlias.length];
+      if (/[\s:,\-]/.test(nextChar)) {
+        const trailing = normalizeLine(value.substring(upperAlias.length).replace(/^[\s:,\-]+/, ''));
+        if (trailing) {
+          return {
+            key: SECTION_HEADING_ALIASES[alias],
+            trailingText: trailing,
+          };
+        }
+      }
+    }
+  }
+
   return null;
 }
 
 function hasTitleKeyword(text) {
   return /(manager|engineer|specialist|consultant|director|lead|developer|analyst|officer|coordinator|architect|executive|administrator|leader|trainer|head|supervisor)/i.test(String(text || ''));
+}
+
+function looksLikeProfessionalTerm(text) {
+  return /\b(management|development|marketing|operations|consulting|advisory|engineering|analytics|strategy|governance|compliance|procurement|logistics|planning|recruitment|communications|finance|accounting|transformation|leadership|innovation|digital|technology|human resources|change management|project management|program management|talent|learning|organization)\b/i.test(String(text || ''));
 }
 
 function looksLikeSentence(text) {
@@ -238,7 +287,7 @@ function isLikelyNameLine(text) {
   if (!clean) return false;
   if (clean.length > 80 || /[@|]/.test(clean) || /\d/.test(clean)) return false;
   if (looksLikeSentence(clean)) return false;
-  if (/\b(confidential|draft|internal|review|generated|export|copy|profile|summary)\b/i.test(clean)) return false;
+  if (/\b(confidential|draft|internal|review|generated|export|copy|profile|summary|management|development|marketing|operations|consulting|advisory|administration|analytics|engineering|strategy|governance|compliance|procurement|logistics|planning|recruitment|communications|finance|accounting|transformation)\b/i.test(clean)) return false;
   const words = clean.split(/\s+/).filter(Boolean);
   if (words.length < 2 || words.length > 6) return false;
   if (!/^[A-Za-z][A-Za-z .'-]+$/.test(clean)) return false;
@@ -367,7 +416,7 @@ function parseHeader(prefaceLines) {
         professionalTitle = fragment;
         continue;
       }
-      if (!contact.location && !looksLikeSentence(fragment) && !hasTitleKeyword(fragment)) {
+      if (!contact.location && !looksLikeSentence(fragment) && !hasTitleKeyword(fragment) && !looksLikeProfessionalTerm(fragment)) {
         contact.location = fragment;
         continue;
       }
@@ -553,8 +602,12 @@ function parseEducation(lines) {
 function normalizeSummary(summaryText) {
   const clean = normalizeLine(summaryText);
   if (!clean) return '';
-  const withoutObjective = clean.replace(/\bobjective\b\s*:?/gi, '').trim();
-  return withoutObjective;
+  // Strip leading heading-like text (e.g. "EXECUTIVE SUMMARY ...", "PROFESSIONAL SUMMARY ...")
+  const withoutLeadingHeading = clean
+    .replace(/^(?:executive|professional|career|profile)\s+summary\s*:?\s*/i, '')
+    .replace(/\bobjective\b\s*:?/gi, '')
+    .trim();
+  return withoutLeadingHeading;
 }
 
 function buildStructuredCvObject(inputText) {
@@ -567,12 +620,12 @@ function buildStructuredCvObject(inputText) {
   return {
     ...header,
     professionalSummary: normalizeSummary(parsedSummary || fallbackSummary),
-    coreCompetencies: dedupe(sections.coreCompetencies.flatMap((line) => line.split(/[|,]/g))),
+    coreCompetencies: dedupe(sections.coreCompetencies.flatMap((line) => line.replace(/^[-*]\s*/, '').split(/[|,]/g))),
     professionalExperience: parseExperience(sections.professionalExperience),
     education: parseEducation(sections.education),
-    technicalSkills: dedupe(sections.technicalSkills.flatMap((line) => line.split(/[|,]/g))),
-    certifications: dedupe(sections.certifications),
-    languages: dedupe(sections.languages),
+    technicalSkills: dedupe(sections.technicalSkills.flatMap((line) => line.replace(/^[-*]\s*/, '').split(/[|,]/g))),
+    certifications: dedupe(sections.certifications.map((line) => line.replace(/^[-*]\s*/, ''))),
+    languages: dedupe(sections.languages.map((line) => line.replace(/^[-*]\s*/, ''))),
   };
 }
 
