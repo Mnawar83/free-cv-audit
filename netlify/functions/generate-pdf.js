@@ -34,9 +34,17 @@ function normalizeRevisedCvText(text) {
 
   normalized = normalized
     .replace(/^\s*professional summary\s*:?\s*$/gim, 'PROFESSIONAL SUMMARY')
+    .replace(/^\s*executive summary\s*:?\s*$/gim, 'PROFESSIONAL SUMMARY')
+    .replace(/^\s*career summary\s*:?\s*$/gim, 'PROFESSIONAL SUMMARY')
+    .replace(/^\s*profile summary\s*:?\s*$/gim, 'PROFESSIONAL SUMMARY')
     .replace(/^\s*core skills\s*:?\s*$/gim, 'CORE COMPETENCIES')
     .replace(/^\s*core competencies\s*:?\s*$/gim, 'CORE COMPETENCIES')
+    .replace(/^\s*areas of expertise\s*:?\s*$/gim, 'CORE COMPETENCIES')
     .replace(/^\s*professional experience\s*:?\s*$/gim, 'PROFESSIONAL EXPERIENCE')
+    .replace(/^\s*work experience\s*:?\s*$/gim, 'PROFESSIONAL EXPERIENCE')
+    .replace(/^\s*work history\s*:?\s*$/gim, 'PROFESSIONAL EXPERIENCE')
+    .replace(/^\s*career history\s*:?\s*$/gim, 'PROFESSIONAL EXPERIENCE')
+    .replace(/^\s*employment history\s*:?\s*$/gim, 'PROFESSIONAL EXPERIENCE')
     .replace(/^\s*education\s*:?\s*$/gim, 'EDUCATION')
     .replace(/^\s*certifications?\s*:?\s*$/gim, 'CERTIFICATIONS')
     .replace(/^\s*additional information\s*:?\s*$/gim, 'ADDITIONAL INFORMATION');
