@@ -517,8 +517,8 @@ function buildRenderBlocks(cv) {
   const headingStyle = { font: 'F2', size: HEADING_FONT_SIZE };
 
   const addHeading = (key) => {
-    blocks.push({ type: 'rule', before: 14, after: 0 });
-    blocks.push({ type: 'heading', text: SECTION_TITLES[key], ...headingStyle, before: 7, after: 6, keepWithNext: true });
+    blocks.push({ type: 'rule', before: 16, after: 0 });
+    blocks.push({ type: 'heading', text: SECTION_TITLES[key], ...headingStyle, before: 7, after: 8, keepWithNext: true });
   };
 
   const addCentered = (text, size, bold = false, after = 4) => {
@@ -538,7 +538,7 @@ function buildRenderBlocks(cv) {
   if (contactLine) {
     addCentered(contactLine, BODY_FONT_SIZE - 0.5, false, 6);
   }
-  blocks.push({ type: 'accentRule', before: 4, after: 8 });
+  blocks.push({ type: 'accentRule', before: 6, after: 10 });
 
   if (cv.professionalSummary) {
     addHeading('professionalSummary');
@@ -554,10 +554,14 @@ function buildRenderBlocks(cv) {
     addHeading('professionalExperience');
     cv.professionalExperience.forEach((role, roleIndex) => {
       blocks.push({ type: 'groupStart' });
-      if (roleIndex > 0) blocks.push({ type: 'spacer', height: 8 });
-      if (role.company) blocks.push({ type: 'line', text: role.company, font: 'F2', size: BODY_FONT_SIZE + 0.5, after: 2 });
-      if (role.jobTitle) blocks.push({ type: 'line', text: role.jobTitle, font: 'F1', size: BODY_FONT_SIZE, after: 1, italic: true });
-      if (role.dateRange) blocks.push({ type: 'line', text: role.dateRange, font: 'F1', size: BODY_FONT_SIZE - 0.5, after: 4 });
+      if (roleIndex > 0) blocks.push({ type: 'spacer', height: 10 });
+      if (role.jobTitle) blocks.push({ type: 'line', text: role.jobTitle, font: 'F2', size: BODY_FONT_SIZE + 0.5, after: 2 });
+      if (role.company && role.dateRange) {
+        blocks.push({ type: 'companyDateLine', company: role.company, dateRange: role.dateRange, font: 'F1', size: BODY_FONT_SIZE, after: 4 });
+      } else {
+        if (role.company) blocks.push({ type: 'line', text: role.company, font: 'F1', size: BODY_FONT_SIZE, after: 2 });
+        if (role.dateRange) blocks.push({ type: 'line', text: role.dateRange, font: 'F1', size: BODY_FONT_SIZE - 0.5, after: 4 });
+      }
       (role.bullets || []).forEach((bullet) => blocks.push({ type: 'bullet', text: bullet, font: 'F1', size: BODY_FONT_SIZE, after: 3 }));
       blocks.push({ type: 'spacer', height: 2 });
       blocks.push({ type: 'groupEnd' });
@@ -567,10 +571,14 @@ function buildRenderBlocks(cv) {
   if (cv.education.length) {
     addHeading('education');
     cv.education.forEach((item, idx) => {
-      if (idx > 0) blocks.push({ type: 'spacer', height: 4 });
+      if (idx > 0) blocks.push({ type: 'spacer', height: 6 });
       if (item.degree) blocks.push({ type: 'line', text: item.degree, font: 'F2', size: BODY_FONT_SIZE, after: 2 });
-      if (item.institution) blocks.push({ type: 'line', text: item.institution, font: 'F1', size: BODY_FONT_SIZE, after: 1 });
-      if (item.dateRange) blocks.push({ type: 'line', text: item.dateRange, font: 'F1', size: BODY_FONT_SIZE - 0.5, after: 4 });
+      if (item.institution && item.dateRange) {
+        blocks.push({ type: 'companyDateLine', company: item.institution, dateRange: item.dateRange, font: 'F1', size: BODY_FONT_SIZE, after: 4 });
+      } else {
+        if (item.institution) blocks.push({ type: 'line', text: item.institution, font: 'F1', size: BODY_FONT_SIZE, after: 1 });
+        if (item.dateRange) blocks.push({ type: 'line', text: item.dateRange, font: 'F1', size: BODY_FONT_SIZE - 0.5, after: 4 });
+      }
     });
   }
 
@@ -595,6 +603,10 @@ function buildRenderBlocks(cv) {
 function blockHeight(block) {
   if (block.type === 'spacer') return block.height || 0;
   if (block.type === 'rule' || block.type === 'accentRule') return (block.before || 0) + 1 + (block.after || 0);
+  if (block.type === 'companyDateLine') {
+    const lines = wrapLine(block.company || '', block.size || BODY_FONT_SIZE, CONTENT_WIDTH * 0.65, false);
+    return (block.before || 0) + lines.length * lineHeight(block.size || BODY_FONT_SIZE) + (block.after || 0);
+  }
   const isBold = block.font === 'F2';
   const indent = block.type === 'bullet' ? BULLET_INDENT : 0;
   const lines = wrapLine(block.text || '', block.size || BODY_FONT_SIZE, CONTENT_WIDTH - indent, isBold);
@@ -651,6 +663,26 @@ function renderPages(blocks) {
       return;
     }
 
+    if (block.type === 'companyDateLine') {
+      y -= block.before || 0;
+      const fontSize = block.size || BODY_FONT_SIZE;
+      const lh = lineHeight(fontSize);
+      const dateWidth = measureTextWidth(block.dateRange || '', fontSize, false);
+      const companyMaxWidth = CONTENT_WIDTH - dateWidth - 10;
+      const companyLines = wrapLine(block.company || '', fontSize, companyMaxWidth, false);
+      companyLines.forEach((line, index) => {
+        if (y - lh < minY) pushPage();
+        commands.push(`1 0 0 1 ${MARGIN} ${y} Tm\n/F1 ${fontSize} Tf\n(${encodePdfText(line)}) Tj`);
+        if (index === 0 && block.dateRange) {
+          const dateX = A4_WIDTH - MARGIN - dateWidth;
+          commands.push(`1 0 0 1 ${dateX} ${y} Tm\n/F1 ${fontSize} Tf\n(${encodePdfText(block.dateRange)}) Tj`);
+        }
+        y -= lh;
+      });
+      y -= block.after || 0;
+      return;
+    }
+
     y -= block.before || 0;
     const isBold = block.font === 'F2';
     const indent = block.type === 'bullet' ? BULLET_INDENT : 0;
@@ -677,8 +709,8 @@ function renderPages(blocks) {
           `${bulletX} ${bulletY + r} m ` +
           `${bulletX + k} ${bulletY + r} ${bulletX + r} ${bulletY + k} ${bulletX + r} ${bulletY} c ` +
           `${bulletX + r} ${bulletY - k} ${bulletX + k} ${bulletY - r} ${bulletX} ${bulletY - r} c ` +
-          `${bulletX - r} ${bulletY - r} ${bulletX - k} ${bulletY - k} ${bulletX - k} ${bulletY} c ` +
-          `${bulletX - k} ${bulletY + k} ${bulletX - r} ${bulletY + k} ${bulletX} ${bulletY + r} c ` +
+          `${bulletX - k} ${bulletY - r} ${bulletX - r} ${bulletY - k} ${bulletX - r} ${bulletY} c ` +
+          `${bulletX - r} ${bulletY + k} ${bulletX - k} ${bulletY + r} ${bulletX} ${bulletY + r} c ` +
           `f\nQ`
         );
       }
@@ -782,7 +814,9 @@ function validateRenderBlocks(blocks) {
     if (!nameBlock && block.type === 'line' && block.font === 'F2' && block.align === 'center') {
       nameBlock = block;
     }
-    const text = String(block.text || '');
+    const text = block.type === 'companyDateLine'
+      ? [block.company || '', block.dateRange || ''].filter(Boolean).join(' ')
+      : String(block.text || '');
     if (text) {
       hasContent = true;
       if (containsCorruption(text) || /page\s+\d+(?:\s+of\s+\d+)?/i.test(text)) {
