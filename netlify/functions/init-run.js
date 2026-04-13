@@ -24,7 +24,10 @@ exports.handler = async (event) => {
     const runId = createRunId();
     await upsertRun(runId, {
       original_cv_text: String(cvText),
+      teaser_audit_status: 'teaser_audit_ready',
+      fulfillment_status: 'payment_pending',
       audit_preview_initialized_at: new Date().toISOString(),
+      teaser_audit_ready_at: new Date().toISOString(),
     });
 
     return {

@@ -10,11 +10,13 @@ async function run() {
   setupIsolatedRunStoreEnv('fulfillment-queue.test');
   process.env.RESEND_API_KEY = 'fulfillment-queue-key';
   process.env.URL = 'https://app.freecvaudit.com';
+  process.env.CV_QUALITY_FLOOR_MODE = 'off';
 
   clearModule('../netlify/functions/run-store');
   const runStore = require('../netlify/functions/run-store');
   const runId = 'fulfillment_queue_run';
   await runStore.upsertRun(runId, {
+    original_cv_text: 'Queue Candidate CV text with enough detail to support paid rewrite and fulfillment flow.',
     revised_cv_text: 'Queue Candidate\nEXPERIENCE\n- Reliable delivery',
   });
 
