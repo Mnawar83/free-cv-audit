@@ -6,9 +6,48 @@ const CONTENT_WIDTH = A4_WIDTH - MARGIN * 2;
 const BODY_FONT_SIZE = 10;
 const NAME_FONT_SIZE = 16;
 const HEADING_FONT_SIZE = 11;
-const BULLET_INDENT = 16;
-const LINE_HEIGHT_MULTIPLIER = 1.45;
+const BULLET_INDENT = 14;
+const LINE_HEIGHT_MULTIPLIER = 1.5;
 const ACCENT_COLOR = '0.153 0.376 0.678'; // professional blue (RGB 39 96 173)
+
+// Helvetica character widths (per 1000 units of font size) from the AFM specification.
+// This gives accurate proportional text measurement instead of a flat average.
+const HELVETICA_WIDTHS = {
+  ' ':278,'!':278,'"':355,'#':556,'$':556,'%':889,'&':667,'\'':191,'(':333,')':333,
+  '*':389,'+':584,',':278,'-':333,'.':278,'/':278,'0':556,'1':556,'2':556,'3':556,
+  '4':556,'5':556,'6':556,'7':556,'8':556,'9':556,':':278,';':278,'<':584,'=':584,
+  '>':584,'?':556,'@':1015,'A':667,'B':667,'C':722,'D':722,'E':667,'F':611,'G':778,
+  'H':722,'I':278,'J':500,'K':667,'L':556,'M':833,'N':722,'O':778,'P':667,'Q':778,
+  'R':722,'S':667,'T':611,'U':722,'V':667,'W':944,'X':667,'Y':667,'Z':611,'[':278,
+  '\\':278,']':278,'^':469,'_':556,'`':333,'a':556,'b':556,'c':500,'d':556,'e':556,
+  'f':278,'g':556,'h':556,'i':222,'j':222,'k':500,'l':222,'m':833,'n':556,'o':556,
+  'p':556,'q':556,'r':333,'s':500,'t':278,'u':556,'v':500,'w':722,'x':500,'y':500,
+  'z':500,'{':334,'|':260,'}':334,'~':584,
+};
+const HELVETICA_BOLD_WIDTHS = {
+  ' ':278,'!':333,'"':474,'#':556,'$':556,'%':889,'&':722,'\'':238,'(':333,')':333,
+  '*':389,'+':584,',':278,'-':333,'.':278,'/':278,'0':556,'1':556,'2':556,'3':556,
+  '4':556,'5':556,'6':556,'7':556,'8':556,'9':556,':':333,';':333,'<':584,'=':584,
+  '>':584,'?':611,'@':975,'A':722,'B':722,'C':722,'D':722,'E':667,'F':611,'G':778,
+  'H':722,'I':278,'J':556,'K':722,'L':611,'M':833,'N':722,'O':778,'P':667,'Q':778,
+  'R':722,'S':667,'T':611,'U':722,'V':667,'W':944,'X':667,'Y':667,'Z':611,'[':333,
+  '\\':278,']':333,'^':584,'_':556,'`':333,'a':556,'b':611,'c':556,'d':611,'e':556,
+  'f':333,'g':611,'h':611,'i':278,'j':278,'k':556,'l':278,'m':889,'n':611,'o':611,
+  'p':611,'q':611,'r':389,'s':556,'t':333,'u':611,'v':556,'w':778,'x':556,'y':556,
+  'z':500,'{':389,'|':280,'}':389,'~':584,
+};
+const HELVETICA_DEFAULT_WIDTH = 556;
+const HELVETICA_BOLD_DEFAULT_WIDTH = 611;
+
+function measureTextWidth(text, fontSize, bold) {
+  const widths = bold ? HELVETICA_BOLD_WIDTHS : HELVETICA_WIDTHS;
+  const defaultW = bold ? HELVETICA_BOLD_DEFAULT_WIDTH : HELVETICA_DEFAULT_WIDTH;
+  let total = 0;
+  for (let i = 0; i < text.length; i++) {
+    total += widths[text[i]] || defaultW;
+  }
+  return (total / 1000) * fontSize;
+}
 
 const SECTION_ORDER = [
   'professionalSummary',
@@ -442,13 +481,8 @@ function validateAndAutoCorrect(cv) {
   return corrected;
 }
 
-function wrapLine(text, fontSize, width) {
+function wrapLine(text, fontSize, width, bold) {
   const clean = normalizeLine(text);
-  // Improved character width estimation using average Helvetica character width.
-  // Helvetica average char width is ~0.50em; use 0.48 for regular and account for
-  // narrow chars (i,l,t ~0.28em) and wide chars (m,w ~0.72em) via averaging.
-  const avgCharWidth = fontSize * 0.48;
-  const maxChars = Math.max(12, Math.floor(width / avgCharWidth));
   const words = clean.split(/\s+/).filter(Boolean);
   if (!words.length) return [''];
 
@@ -456,7 +490,7 @@ function wrapLine(text, fontSize, width) {
   let current = words[0];
   for (let i = 1; i < words.length; i += 1) {
     const candidate = `${current} ${words[i]}`;
-    if (candidate.length > maxChars) {
+    if (measureTextWidth(candidate, fontSize, bold) > width) {
       lines.push(current);
       current = words[i];
     } else {
@@ -473,7 +507,7 @@ function lineHeight(size) {
 
 
 function limitSummaryToFiveLines(summary) {
-  const lines = wrapLine(summary, BODY_FONT_SIZE, CONTENT_WIDTH);
+  const lines = wrapLine(summary, BODY_FONT_SIZE, CONTENT_WIDTH, false);
   if (lines.length <= 5) return lines.join(' ');
   return lines.slice(0, 5).join(' ');
 }
@@ -483,8 +517,8 @@ function buildRenderBlocks(cv) {
   const headingStyle = { font: 'F2', size: HEADING_FONT_SIZE };
 
   const addHeading = (key) => {
-    blocks.push({ type: 'rule', before: 10, after: 0 });
-    blocks.push({ type: 'heading', text: SECTION_TITLES[key], ...headingStyle, before: 6, after: 5, keepWithNext: true });
+    blocks.push({ type: 'rule', before: 14, after: 0 });
+    blocks.push({ type: 'heading', text: SECTION_TITLES[key], ...headingStyle, before: 7, after: 6, keepWithNext: true });
   };
 
   const addCentered = (text, size, bold = false, after = 4) => {
@@ -496,35 +530,35 @@ function buildRenderBlocks(cv) {
   const contactLine = contactParts.join('  |  ');
 
   if (cv.fullName) {
-    addCentered(cv.fullName, NAME_FONT_SIZE, true, 3);
+    addCentered(cv.fullName, NAME_FONT_SIZE, true, 4);
   }
   if (cv.professionalTitle) {
-    addCentered(cv.professionalTitle, BODY_FONT_SIZE + 1, false, 3);
+    addCentered(cv.professionalTitle, BODY_FONT_SIZE + 1, false, 4);
   }
   if (contactLine) {
-    addCentered(contactLine, BODY_FONT_SIZE - 0.5, false, 4);
+    addCentered(contactLine, BODY_FONT_SIZE - 0.5, false, 6);
   }
-  blocks.push({ type: 'accentRule', before: 4, after: 6 });
+  blocks.push({ type: 'accentRule', before: 4, after: 8 });
 
   if (cv.professionalSummary) {
     addHeading('professionalSummary');
-    blocks.push({ type: 'paragraph', text: cv.professionalSummary, font: 'F1', size: BODY_FONT_SIZE, after: 6 });
+    blocks.push({ type: 'paragraph', text: cv.professionalSummary, font: 'F1', size: BODY_FONT_SIZE, after: 8 });
   }
 
   if (cv.coreCompetencies.length) {
     addHeading('coreCompetencies');
-    blocks.push({ type: 'paragraph', text: cv.coreCompetencies.join('  |  '), font: 'F1', size: BODY_FONT_SIZE, after: 5 });
+    blocks.push({ type: 'paragraph', text: cv.coreCompetencies.join('  |  '), font: 'F1', size: BODY_FONT_SIZE, after: 6 });
   }
 
   if (cv.professionalExperience.length) {
     addHeading('professionalExperience');
     cv.professionalExperience.forEach((role, roleIndex) => {
       blocks.push({ type: 'groupStart' });
-      if (roleIndex > 0) blocks.push({ type: 'spacer', height: 3 });
-      if (role.company) blocks.push({ type: 'line', text: role.company, font: 'F2', size: BODY_FONT_SIZE + 0.5, after: 1 });
-      if (role.jobTitle) blocks.push({ type: 'line', text: role.jobTitle, font: 'F1', size: BODY_FONT_SIZE, after: 1 });
-      if (role.dateRange) blocks.push({ type: 'line', text: role.dateRange, font: 'F1', size: BODY_FONT_SIZE - 0.5, after: 3 });
-      (role.bullets || []).forEach((bullet) => blocks.push({ type: 'bullet', text: bullet, font: 'F1', size: BODY_FONT_SIZE, after: 2 }));
+      if (roleIndex > 0) blocks.push({ type: 'spacer', height: 8 });
+      if (role.company) blocks.push({ type: 'line', text: role.company, font: 'F2', size: BODY_FONT_SIZE + 0.5, after: 2 });
+      if (role.jobTitle) blocks.push({ type: 'line', text: role.jobTitle, font: 'F1', size: BODY_FONT_SIZE, after: 1, italic: true });
+      if (role.dateRange) blocks.push({ type: 'line', text: role.dateRange, font: 'F1', size: BODY_FONT_SIZE - 0.5, after: 4 });
+      (role.bullets || []).forEach((bullet) => blocks.push({ type: 'bullet', text: bullet, font: 'F1', size: BODY_FONT_SIZE, after: 3 }));
       blocks.push({ type: 'spacer', height: 2 });
       blocks.push({ type: 'groupEnd' });
     });
@@ -532,8 +566,9 @@ function buildRenderBlocks(cv) {
 
   if (cv.education.length) {
     addHeading('education');
-    cv.education.forEach((item) => {
-      if (item.degree) blocks.push({ type: 'line', text: item.degree, font: 'F2', size: BODY_FONT_SIZE, after: 1 });
+    cv.education.forEach((item, idx) => {
+      if (idx > 0) blocks.push({ type: 'spacer', height: 4 });
+      if (item.degree) blocks.push({ type: 'line', text: item.degree, font: 'F2', size: BODY_FONT_SIZE, after: 2 });
       if (item.institution) blocks.push({ type: 'line', text: item.institution, font: 'F1', size: BODY_FONT_SIZE, after: 1 });
       if (item.dateRange) blocks.push({ type: 'line', text: item.dateRange, font: 'F1', size: BODY_FONT_SIZE - 0.5, after: 4 });
     });
@@ -541,12 +576,12 @@ function buildRenderBlocks(cv) {
 
   if (cv.technicalSkills.length) {
     addHeading('technicalSkills');
-    blocks.push({ type: 'paragraph', text: cv.technicalSkills.join('  |  '), font: 'F1', size: BODY_FONT_SIZE, after: 4 });
+    blocks.push({ type: 'paragraph', text: cv.technicalSkills.join('  |  '), font: 'F1', size: BODY_FONT_SIZE, after: 6 });
   }
 
   if (cv.certifications.length) {
     addHeading('certifications');
-    cv.certifications.forEach((cert) => blocks.push({ type: 'bullet', text: cert, font: 'F1', size: BODY_FONT_SIZE, after: 2 }));
+    cv.certifications.forEach((cert) => blocks.push({ type: 'bullet', text: cert, font: 'F1', size: BODY_FONT_SIZE, after: 3 }));
   }
 
   if (cv.languages.length) {
@@ -560,18 +595,19 @@ function buildRenderBlocks(cv) {
 function blockHeight(block) {
   if (block.type === 'spacer') return block.height || 0;
   if (block.type === 'rule' || block.type === 'accentRule') return (block.before || 0) + 1 + (block.after || 0);
+  const isBold = block.font === 'F2';
   const indent = block.type === 'bullet' ? BULLET_INDENT : 0;
-  const lines = wrapLine(block.text || '', block.size || BODY_FONT_SIZE, CONTENT_WIDTH - indent);
+  const lines = wrapLine(block.text || '', block.size || BODY_FONT_SIZE, CONTENT_WIDTH - indent, isBold);
   return (block.before || 0) + lines.length * lineHeight(block.size || BODY_FONT_SIZE) + (block.after || 0);
 }
 
-function estimateCenteredX(text, size) {
-  const width = String(text || '').length * (size * 0.5);
+function computeCenteredX(text, size, bold) {
+  const width = measureTextWidth(String(text || ''), size, bold);
   return Math.max(MARGIN, Math.min(A4_WIDTH - MARGIN, (A4_WIDTH - width) / 2));
 }
 
-function estimateRightX(text, size) {
-  const width = String(text || '').length * (size * 0.5);
+function computeRightX(text, size, bold) {
+  const width = measureTextWidth(String(text || ''), size, bold);
   return Math.max(MARGIN, A4_WIDTH - MARGIN - width);
 }
 
@@ -603,7 +639,7 @@ function renderPages(blocks) {
 
     if (block.type === 'rule') {
       y -= block.before || 0;
-      graphicsCommands.push(`q\n0.78 0.8 0.82 RG\n0.5 w\n${MARGIN} ${y} m ${A4_WIDTH - MARGIN} ${y} l S\nQ`);
+      graphicsCommands.push(`q\n0.82 0.84 0.86 RG\n0.5 w\n${MARGIN} ${y} m ${A4_WIDTH - MARGIN} ${y} l S\nQ`);
       y -= 1 + (block.after || 0);
       return;
     }
@@ -616,21 +652,35 @@ function renderPages(blocks) {
     }
 
     y -= block.before || 0;
+    const isBold = block.font === 'F2';
     const indent = block.type === 'bullet' ? BULLET_INDENT : 0;
-    const wrapped = wrapLine(block.text || '', block.size || BODY_FONT_SIZE, CONTENT_WIDTH - indent);
+    const wrapped = wrapLine(block.text || '', block.size || BODY_FONT_SIZE, CONTENT_WIDTH - indent, isBold);
     const lh = lineHeight(block.size || BODY_FONT_SIZE);
 
     wrapped.forEach((line, index) => {
       if (y - lh < minY) pushPage();
       let x = MARGIN + indent;
       if (block.align === 'center') {
-        x = estimateCenteredX(line, block.size || BODY_FONT_SIZE);
+        x = computeCenteredX(line, block.size || BODY_FONT_SIZE, isBold);
       } else if (block.align === 'right') {
-        x = estimateRightX(line, block.size || BODY_FONT_SIZE);
+        x = computeRightX(line, block.size || BODY_FONT_SIZE, isBold);
       }
       if (block.type === 'bullet' && index === 0) {
-        // Render bullet marker aligned with text
-        graphicsCommands.push(`q\n0.25 0.25 0.25 rg\n${MARGIN + 4} ${y - 3.5} 3 3 re f\nQ`);
+        // Render a filled circle bullet point (more professional than a square)
+        const bulletX = MARGIN + 4;
+        const bulletY = y - 3;
+        const r = 1.8;
+        // Approximate circle with 4 Bezier curves
+        const k = r * 0.5523;
+        graphicsCommands.push(
+          `q\n0.30 0.30 0.30 rg\n` +
+          `${bulletX} ${bulletY + r} m ` +
+          `${bulletX + k} ${bulletY + r} ${bulletX + r} ${bulletY + k} ${bulletX + r} ${bulletY} c ` +
+          `${bulletX + r} ${bulletY - k} ${bulletX + k} ${bulletY - r} ${bulletX} ${bulletY - r} c ` +
+          `${bulletX - r} ${bulletY - r} ${bulletX - k} ${bulletY - k} ${bulletX - k} ${bulletY} c ` +
+          `${bulletX - k} ${bulletY + k} ${bulletX - r} ${bulletY + k} ${bulletX} ${bulletY + r} c ` +
+          `f\nQ`
+        );
       }
       // Use accent color for headings
       if (block.type === 'heading') {
