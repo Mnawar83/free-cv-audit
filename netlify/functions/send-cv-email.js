@@ -104,7 +104,7 @@ function canonicalizeCvText(text) {
 
 async function fetchPdfBase64FromUrl(cvUrl) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Math.max(500, Number(process.env.CV_EMAIL_SNAPSHOT_FETCH_TIMEOUT_MS || 2000)));
+  const timeout = setTimeout(() => controller.abort(), Math.max(500, Number(process.env.CV_EMAIL_SNAPSHOT_FETCH_TIMEOUT_MS || 8000)));
   try {
     const response = await fetch(cvUrl, { method: 'GET', signal: controller.signal });
     if (!response.ok) return '';
@@ -315,10 +315,10 @@ exports.handler = async (event) => {
     }
     const effectiveRevisedText = revisedCvText;
     if (!effectiveRevisedText && !snapshotPdfBase64) {
+      console.warn('No CV attachment or revised text available. Sending email with download link only so the user is not left without any email.', { runId });
       canonicalCvUrl = buildRunCvUrl(runId, cvUrl);
-      console.warn('Sending CV email without attachment snapshot; using run URL for fast delivery.', { runId });
     }
-    if (effectiveRevisedText || snapshotPdfBase64) {
+    if ((effectiveRevisedText || snapshotPdfBase64) && !canonicalCvUrl) {
       const token = createEmailDownloadToken();
       const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
       const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
@@ -408,6 +408,26 @@ exports.handler = async (event) => {
           console.warn('Email sent but fulfillment record could not be updated.', {
             fulfillmentId,
             error: fulfillmentUpdateError?.message || fulfillmentUpdateError,
+          });
+        })
+      );
+    }
+
+    // If the email was sent without an attachment, queue a follow-up re-send
+    // so the user eventually receives the CV as a PDF attachment.
+    if (!snapshotPdfBase64 && !isResend) {
+      bookkeepingPromises.push(
+        enqueueEmailJob({
+          email,
+          name,
+          cvUrl,
+          runId,
+          resend: true,
+          ...(fulfillmentId ? { fulfillmentId } : {}),
+        }).then(() => triggerEmailQueueProcessing()).catch((queueError) => {
+          console.warn('Unable to queue follow-up re-send with attachment.', {
+            runId,
+            error: queueError?.message || queueError,
           });
         })
       );
