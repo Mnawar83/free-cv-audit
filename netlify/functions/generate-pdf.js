@@ -63,7 +63,12 @@ function hasSuspiciousHeaderInTemplateText(text) {
     preface.push(line);
     if (preface.length >= 6) break;
   }
-  return preface.some((line) => line.length > 100 || /[.?!]/.test(line) || line.split(/\s+/).length > 14);
+  const [nameLine = '', titleLine = '', contactLine = ''] = preface;
+  const pollutedName = nameLine.length > 80 || /[@|]|(?:\+?\d[\d\s().-]{6,}\d)|[.?!]/.test(nameLine) || nameLine.split(/\s+/).length > 7;
+  const pollutedTitle = titleLine.length > 100 || /[@]|(?:\+?\d[\d\s().-]{6,}\d)/.test(titleLine) || titleLine.split(/\s+/).length > 14 || /[.?!]/.test(titleLine);
+  const pollutedContact = contactLine && !(/[|]|@|(?:\+?\d[\d\s().-]{6,}\d)/.test(contactLine));
+  const longProseInPreface = preface.some((line) => line.length > 100 || /[.?!]/.test(line) || line.split(/\s+/).length > 14);
+  return pollutedName || pollutedTitle || pollutedContact || longProseInPreface;
 }
 
 function stripSuspiciousHeaderLines(text) {
