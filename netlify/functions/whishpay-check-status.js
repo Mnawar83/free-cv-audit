@@ -96,27 +96,30 @@ exports.handler = async (event) => {
         const fulfillmentEmail = String(fulfillment.email || email || '').trim().toLowerCase();
         const eventKey = `whishpay-status:${externalId}:${normalizedCollectStatus}`;
         const eventState = await markPaymentEventProcessed('whishpay', eventKey, JSON.stringify({ externalId, collectStatus }));
-        if (!eventState?.duplicate) {
-          await updateFulfillment(fulfillment.fulfillment_id, {
-            payment_status: 'PAID',
-            email: fulfillmentEmail || null,
-            paid_at: fulfillment.paid_at || new Date().toISOString(),
+        if (eventState?.duplicate) {
+          console.info('[payment-confirmation] whishpay duplicate payment event observed; ensuring fulfillment remains queued.', {
+            fulfillmentId: fulfillment.fulfillment_id,
           });
-          if (fulfillmentEmail) {
-            console.log('[payment-confirmation] whishpay payment confirmed; queueing paid fulfillment', {
-              fulfillmentId: fulfillment.fulfillment_id,
-            });
-            await updateFulfillment(fulfillment.fulfillment_id, {
-              processing_status: 'full_audit_queued',
-            });
-            await enqueueFulfillmentJob({
-              fulfillmentId: fulfillment.fulfillment_id,
-              email: fulfillmentEmail,
-              name: '',
-              forceSync: true,
-            });
-            await triggerFulfillmentQueueProcessing();
-          }
+        }
+        await updateFulfillment(fulfillment.fulfillment_id, {
+          payment_status: 'PAID',
+          email: fulfillmentEmail || null,
+          paid_at: fulfillment.paid_at || new Date().toISOString(),
+        });
+        if (fulfillmentEmail) {
+          console.log('[payment-confirmation] whishpay payment confirmed; queueing paid fulfillment', {
+            fulfillmentId: fulfillment.fulfillment_id,
+          });
+          await updateFulfillment(fulfillment.fulfillment_id, {
+            processing_status: 'full_audit_queued',
+          });
+          await enqueueFulfillmentJob({
+            fulfillmentId: fulfillment.fulfillment_id,
+            email: fulfillmentEmail,
+            name: '',
+            forceSync: true,
+          });
+          await triggerFulfillmentQueueProcessing();
         }
       }
     }

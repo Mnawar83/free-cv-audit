@@ -40,6 +40,7 @@ async function run() {
   const runStore = require('../netlify/functions/run-store');
 
   let sendCount = 0;
+  let handler;
   const sentRunIds = [];
   clearModule('../netlify/functions/send-cv-email');
   const sendModule = require('../netlify/functions/send-cv-email');
@@ -56,6 +57,55 @@ async function run() {
     return { statusCode: 200, body: JSON.stringify({ ok: true }) };
   };
 
+
+  // case 0: temporarily missing original CV text should retry (not dead-letter)
+  const missingCvFulfillment = await runStore.createFulfillment({
+    run_id: 'seq_run_missing_cv',
+    email: 'sequence@example.com',
+    provider: 'paypal',
+    provider_order_id: `order_missing_cv_${Date.now()}`,
+    payment_status: 'PAID',
+  });
+  await runStore.upsertRun('seq_run_missing_cv', {
+    teaser_audit_status: 'teaser_audit_ready',
+  });
+  await runStore.enqueueFulfillmentJob({
+    fulfillmentId: missingCvFulfillment.fulfillment_id,
+    email: 'sequence@example.com',
+    name: 'Seq User',
+    forceSync: true,
+  });
+  clearModule('../netlify/functions/process-fulfillment-queue');
+  handler = require('../netlify/functions/process-fulfillment-queue').handler;
+  const res0 = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
+  const payload0 = JSON.parse(res0.body || '{}');
+  assert.strictEqual(payload0.processed[0].status, 'RETRY');
+
+
+  // case 0b: legacy paid run without original text but with revised content should still deliver
+  const legacyFulfillment = await runStore.createFulfillment({
+    run_id: 'seq_run_legacy_revised_only',
+    email: 'sequence@example.com',
+    provider: 'paypal',
+    provider_order_id: `order_legacy_${Date.now()}`,
+    payment_status: 'PAID',
+  });
+  await runStore.upsertRun('seq_run_legacy_revised_only', {
+    revised_cv_text: 'Legacy Candidate\nPROFESSIONAL EXPERIENCE\n- Delivered stable systems',
+  });
+  await runStore.enqueueFulfillmentJob({
+    fulfillmentId: legacyFulfillment.fulfillment_id,
+    email: 'sequence@example.com',
+    name: 'Seq User',
+    forceSync: true,
+  });
+  clearModule('../netlify/functions/process-fulfillment-queue');
+  handler = require('../netlify/functions/process-fulfillment-queue').handler;
+  const res0b = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
+  const payload0b = JSON.parse(res0b.body || '{}');
+  assert.strictEqual(payload0b.processed[0].status, 'COMPLETED');
+  const sendCountAfterLegacyDelivery = sendCount;
+
   // case 1: generation hard-fails => no email
   clearModule('../netlify/functions/generate-pdf');
   const generateModule1 = require('../netlify/functions/generate-pdf');
@@ -64,11 +114,11 @@ async function run() {
   const runId1 = 'seq_run_fail';
   await setupPaidJob(runStore, runId1);
   clearModule('../netlify/functions/process-fulfillment-queue');
-  let handler = require('../netlify/functions/process-fulfillment-queue').handler;
+  handler = require('../netlify/functions/process-fulfillment-queue').handler;
   const res1 = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
   const payload1 = JSON.parse(res1.body || '{}');
   assert.strictEqual(payload1.processed[0].status, 'RETRY');
-  assert.strictEqual(sendCount, 0);
+  assert.strictEqual(sendCount, sendCountAfterLegacyDelivery);
 
   // case 2: generation returns no final attachment payload => no email
   clearModule('../netlify/functions/generate-pdf');
@@ -82,7 +132,7 @@ async function run() {
   const res2 = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
   const payload2 = JSON.parse(res2.body || '{}');
   assert.strictEqual(payload2.processed[0].status, 'RETRY');
-  assert.strictEqual(sendCount, 0);
+  assert.strictEqual(sendCount, sendCountAfterLegacyDelivery);
 
   // case 3: generation succeeds with final attachment payload => email sends
   clearModule('../netlify/functions/generate-pdf');
@@ -96,7 +146,7 @@ async function run() {
   const res3 = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
   const payload3 = JSON.parse(res3.body || '{}');
   assert.strictEqual(payload3.processed[0].status, 'COMPLETED');
-  assert.strictEqual(sendCount, 1);
+  assert.strictEqual(sendCount, sendCountAfterLegacyDelivery + 1);
 
 
   // case 3b: non-retryable email 4xx should dead-letter immediately

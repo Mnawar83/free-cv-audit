@@ -99,27 +99,28 @@ exports.handler = async (event) => {
       if (fulfillmentId) {
         const eventKey = data?.id || `${orderID}:${captureStatus}`;
         const eventState = await markPaymentEventProcessed('paypal', eventKey, JSON.stringify({ orderID, status: captureStatus }));
-        if (!eventState?.duplicate) {
-          const deliveryEmail = String(fulfillment?.email || email || '').trim().toLowerCase();
+        if (eventState?.duplicate) {
+          console.info('[payment-confirmation] paypal duplicate payment event observed; ensuring fulfillment remains queued.', { fulfillmentId });
+        }
+        const deliveryEmail = String(fulfillment?.email || email || '').trim().toLowerCase();
+        await updateFulfillment(fulfillmentId, {
+          payment_status: 'PAID',
+          email: deliveryEmail || fulfillment?.email || null,
+          provider_capture_id: data?.purchase_units?.[0]?.payments?.captures?.[0]?.id || data?.id || null,
+          paid_at: new Date().toISOString(),
+        });
+        if (deliveryEmail) {
+          console.log('[payment-confirmation] paypal payment confirmed; queueing paid fulfillment', { fulfillmentId });
           await updateFulfillment(fulfillmentId, {
-            payment_status: 'PAID',
-            email: deliveryEmail || fulfillment?.email || null,
-            provider_capture_id: data?.purchase_units?.[0]?.payments?.captures?.[0]?.id || data?.id || null,
-            paid_at: new Date().toISOString(),
+            processing_status: 'full_audit_queued',
           });
-          if (deliveryEmail) {
-            console.log('[payment-confirmation] paypal payment confirmed; queueing paid fulfillment', { fulfillmentId });
-            await updateFulfillment(fulfillmentId, {
-              processing_status: 'full_audit_queued',
-            });
-            await enqueueFulfillmentJob({
-              fulfillmentId,
-              email: deliveryEmail,
-              name: '',
-              forceSync: true,
-            });
-            await triggerFulfillmentQueueProcessing();
-          }
+          await enqueueFulfillmentJob({
+            fulfillmentId,
+            email: deliveryEmail,
+            name: '',
+            forceSync: true,
+          });
+          await triggerFulfillmentQueueProcessing();
         }
       }
     }

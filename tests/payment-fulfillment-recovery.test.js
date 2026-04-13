@@ -56,6 +56,7 @@ async function run() {
   const statsAfterPaypal = await runStore.getOperationalStats();
   assert.ok(statsAfterPaypal.fulfillmentQueue.pending >= 1 || statsAfterPaypal.fulfillmentQueue.total >= 1);
 
+  const queueBeforePaypalRetry = (await runStore.getOperationalStats()).fulfillmentQueue.total;
   const paypalResponseRetry = await paypalCaptureOrder({
     httpMethod: 'POST',
     body: JSON.stringify({
@@ -67,6 +68,8 @@ async function run() {
   assert.strictEqual(paypalResponseRetry.statusCode, 200);
   const paypalPayloadRetry = JSON.parse(paypalResponseRetry.body || '{}');
   assert.strictEqual(paypalPayloadRetry.fulfillmentId, paypalPayload.fulfillmentId);
+  const queueAfterPaypalRetry = (await runStore.getOperationalStats()).fulfillmentQueue.total;
+  assert.ok(queueAfterPaypalRetry >= queueBeforePaypalRetry + 1, 'Duplicate PayPal events should still enqueue fulfillment when needed.');
 
   global.fetch = async (url) => {
     if (String(url).includes('/payment/collect/status')) {
@@ -103,6 +106,7 @@ async function run() {
   const statsAfterWhish = await runStore.getOperationalStats();
   assert.ok(statsAfterWhish.fulfillmentQueue.total >= 1);
 
+  const queueBeforeWhishRetry = (await runStore.getOperationalStats()).fulfillmentQueue.total;
   const whishResponseRetry = await whishpayCheckStatus({
     httpMethod: 'POST',
     body: JSON.stringify({
@@ -114,6 +118,8 @@ async function run() {
   assert.strictEqual(whishResponseRetry.statusCode, 200);
   const whishPayloadRetry = JSON.parse(whishResponseRetry.body || '{}');
   assert.strictEqual(whishPayloadRetry.fulfillmentId, whishPayload.fulfillmentId);
+  const queueAfterWhishRetry = (await runStore.getOperationalStats()).fulfillmentQueue.total;
+  assert.ok(queueAfterWhishRetry >= queueBeforeWhishRetry + 1, 'Duplicate Whish events should still enqueue fulfillment when needed.');
 
   console.log('payment fulfillment recovery test passed');
 }

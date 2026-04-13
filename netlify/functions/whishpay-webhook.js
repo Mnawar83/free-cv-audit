@@ -68,7 +68,7 @@ exports.handler = async (event) => {
 
     const dedupe = await markPaymentEventProcessed('whishpay-webhook', eventId, String(payload?.status || ''));
     if (dedupe?.duplicate) {
-      return json(200, { ok: true, duplicate: true });
+      console.info('[payment-confirmation] whishpay webhook duplicate event observed; continuing to ensure fulfillment queueing.', { eventId });
     }
 
     const orderId = resolveProviderOrderId(payload);
