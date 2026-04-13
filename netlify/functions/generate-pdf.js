@@ -6,11 +6,6 @@ const { structuredCvToTemplateText, tryExtractStructuredCv } = require('./cv-sch
 const PDF_FILENAME = 'revised-cv.pdf';
 const QUALITY_FLOOR_DISABLED_VALUES = new Set(['0', 'false', 'off', 'no']);
 
-function isStrictStyleModeEnabled() {
-  const value = String(process.env.STRICT_STYLE_MODE || '').trim().toLowerCase();
-  return value === 'true' || value === '1' || value === 'yes';
-}
-
 function isQualityFloorEnabled() {
   const explicit = String(process.env.CV_QUALITY_FLOOR_MODE || '').trim().toLowerCase();
   if (explicit) return !QUALITY_FLOOR_DISABLED_VALUES.has(explicit);
@@ -52,6 +47,44 @@ function normalizeRevisedCvText(text) {
 function canonicalizeCvText(text) {
   const normalizedText = normalizeRevisedCvText(text);
   return normalizeToCvTemplateText(normalizedText);
+}
+
+function hasSuspiciousHeaderInTemplateText(text) {
+  const lines = String(text || '').split('\n').map((line) => line.trim());
+  const preface = [];
+  for (const line of lines) {
+    if (!line) continue;
+    if (/^[A-Z][A-Z /&]+$/.test(line)) break;
+    preface.push(line);
+    if (preface.length >= 6) break;
+  }
+  const [nameLine = '', titleLine = '', contactLine = ''] = preface;
+  const pollutedName = nameLine.length > 80 || /[@|]|(?:\+?\d[\d\s().-]{6,}\d)|[.?!]/.test(nameLine) || nameLine.split(/\s+/).length > 7;
+  const pollutedTitle = titleLine.length > 100 || /[@]|(?:\+?\d[\d\s().-]{6,}\d)/.test(titleLine) || titleLine.split(/\s+/).length > 14 || /[.?!]/.test(titleLine);
+  const pollutedContact = contactLine && !(/[|]|@|(?:\+?\d[\d\s().-]{6,}\d)/.test(contactLine));
+  const longProseInPreface = preface.some((line) => line.length > 100 || /[.?!]/.test(line) || line.split(/\s+/).length > 14);
+  return pollutedName || pollutedTitle || pollutedContact || longProseInPreface;
+}
+
+function stripSuspiciousHeaderLines(text) {
+  const normalized = normalizeRevisedCvText(text);
+  const lines = normalized.split('\n');
+  const cleaned = [];
+  let dropped = 0;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (
+      dropped < 3
+      && trimmed
+      && !/^[A-Z][A-Z /&]+$/.test(trimmed)
+      && (trimmed.length > 100 || /[.?!]/.test(trimmed) || trimmed.split(/\s+/).length > 14)
+    ) {
+      dropped += 1;
+      continue;
+    }
+    cleaned.push(line);
+  }
+  return cleaned.join('\n');
 }
 
 function isPdfValidationError(error) {
@@ -121,6 +154,10 @@ function tryBuildPdfFromText(text, contextLabel) {
   }
 }
 
+function logStageFailure(stage, error) {
+  console.warn(`[generate-pdf][stage:${stage}] ${error?.message || error}`);
+}
+
 function tryCanonicalizeCvText(text, contextLabel) {
   try {
     return canonicalizeCvText(text);
@@ -129,6 +166,15 @@ function tryCanonicalizeCvText(text, contextLabel) {
     console.warn(`${contextLabel} canonicalization failed validation.`, error?.message || error);
     return '';
   }
+}
+
+function tryCanonicalizeCvTextSafely(text, contextLabel) {
+  const canonical = tryCanonicalizeCvText(text, contextLabel);
+  if (!canonical) return '';
+  if (!hasSuspiciousHeaderInTemplateText(canonical)) return canonical;
+  console.warn(`${contextLabel} produced suspicious header content. Retrying with guarded canonicalization.`);
+  const stripped = stripSuspiciousHeaderLines(text);
+  return tryCanonicalizeCvText(stripped, `${contextLabel} guarded`) || canonical;
 }
 
 exports.handler = async (event) => {
@@ -200,7 +246,6 @@ exports.handler = async (event) => {
     const resolvedCvText = cvText || existingRun?.original_cv_text || '';
     const normalizedResolvedCvText = normalizeRevisedCvText(resolvedCvText);
     const resolvedCvAnalysis = cvAnalysis || existingRun?.audit_result || '';
-    const strictStyleMode = isStrictStyleModeEnabled();
 
     if (existingRun?.revised_cv_structured && !forceRegenerate) {
       const cachedPdfBuffer = tryBuildPdfFromStructured(existingRun.revised_cv_structured, 'POST cached');
@@ -403,45 +448,53 @@ Before returning, verify:
       usedFallbackText = true;
     }
     if (!revisedStructuredCv) {
-      const canonicalRevisedText = tryCanonicalizeCvText(revisedText, 'Primary revised');
+      const canonicalRevisedText = tryCanonicalizeCvTextSafely(revisedText, 'Primary revised');
       revisedText = canonicalRevisedText || normalizeRevisedCvText(revisedText);
     }
 
-    let pdfBuffer;
-    try {
-      pdfBuffer = revisedStructuredCv ? buildPdfBufferFromStructuredCv(revisedStructuredCv) : buildPdfBuffer(revisedText);
-    } catch (renderError) {
-      if (!isPdfValidationError(renderError)) {
-        throw renderError;
+    let pdfBuffer = null;
+    const renderAttempts = [];
+    const tryStage = (stageName, fn) => {
+      try {
+        const result = fn();
+        if (result) {
+          renderAttempts.push({ stage: stageName, ok: true });
+          return result;
+        }
+      } catch (error) {
+        renderAttempts.push({ stage: stageName, ok: false, message: error?.message || String(error) });
+        logStageFailure(stageName, error);
       }
-      console.warn('Structured/rewritten PDF validation failed. Falling back to canonicalized original CV text.', renderError?.message || renderError);
+      return null;
+    };
+
+    const primaryStageName = revisedStructuredCv ? 'structured_render' : 'canonical_render';
+    pdfBuffer = tryStage(primaryStageName, () => (
+      revisedStructuredCv ? buildPdfBufferFromStructuredCv(revisedStructuredCv) : buildPdfBuffer(revisedText)
+    ));
+
+    if (!pdfBuffer) {
       usedFallbackText = true;
       revisedStructuredCv = null;
-      const fallbackCanonicalText = tryCanonicalizeCvText(resolvedCvText, 'Fallback original');
+      const fallbackCanonicalText = tryCanonicalizeCvTextSafely(resolvedCvText, 'Fallback original');
       revisedText = fallbackCanonicalText || normalizeRevisedCvText(resolvedCvText);
+      pdfBuffer = tryStage('fallback_canonical_render', () => buildPdfBuffer(revisedText));
+    }
 
-      try {
-        pdfBuffer = buildPdfBuffer(revisedText);
-      } catch (fallbackError) {
-        if (!isPdfValidationError(fallbackError)) {
-          throw fallbackError;
-        }
-        console.warn('Fallback canonical CV validation failed. Retrying with minimally-normalized original CV text.', fallbackError?.message || fallbackError);
-        revisedText = normalizeRevisedCvText(resolvedCvText);
-        try {
-          pdfBuffer = buildPdfBuffer(revisedText);
-        } catch (minimalFallbackError) {
-          if (!isPdfValidationError(minimalFallbackError)) {
-            throw minimalFallbackError;
-          }
-          if (strictStyleMode) {
-            throw new Error('CV export validation failed: strict style mode blocked lenient fallback rendering.');
-          }
-          console.warn('Minimal fallback CV validation failed. Retrying with lenient CV sanitization.', minimalFallbackError?.message || minimalFallbackError);
-          usedLenientFallback = true;
-          pdfBuffer = buildPdfBufferLenient(resolvedCvText || revisedText);
-        }
-      }
+    if (!pdfBuffer) {
+      const guardedFallbackCanonicalText = tryCanonicalizeCvTextSafely(stripSuspiciousHeaderLines(resolvedCvText), 'Fallback original guarded retry');
+      revisedText = guardedFallbackCanonicalText || normalizeRevisedCvText(resolvedCvText);
+      pdfBuffer = tryStage('guarded_canonical_render', () => buildPdfBuffer(revisedText));
+    }
+
+    if (!pdfBuffer) {
+      usedLenientFallback = true;
+      pdfBuffer = tryStage('lenient_safe_render', () => buildPdfBufferLenient(resolvedCvText || revisedText));
+    }
+
+    if (!pdfBuffer) {
+      const failureTrail = renderAttempts.map((attempt) => `${attempt.stage}:${attempt.ok ? 'ok' : attempt.message}`).join(' | ');
+      throw new Error(`CV export validation failed: all render stages failed. ${failureTrail}`);
     }
     let runId = incomingRunId || createRunId();
 
