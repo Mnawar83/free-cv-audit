@@ -293,14 +293,19 @@ exports.handler = async (event) => {
       console.warn('Run is missing revised CV text; attempting to resolve final attachment from generated PDF.', { runId });
     }
     let snapshotPdfBase64 = '';
-    try {
-      if (run?.revised_cv_structured) {
+    if (run?.revised_cv_structured) {
+      try {
         snapshotPdfBase64 = buildPdfBufferFromStructuredCv(run.revised_cv_structured).toString('base64');
-      } else if (revisedCvText) {
-        snapshotPdfBase64 = buildPdfBuffer(revisedCvText).toString('base64');
+      } catch (attachmentError) {
+        console.warn('Unable to build CV PDF snapshot from structured revised source.', attachmentError?.message || attachmentError);
       }
-    } catch (attachmentError) {
-      console.warn('Unable to build CV PDF snapshot from revised source.', attachmentError?.message || attachmentError);
+    }
+    if (!snapshotPdfBase64 && revisedCvText) {
+      try {
+        snapshotPdfBase64 = buildPdfBuffer(revisedCvText).toString('base64');
+      } catch (attachmentError) {
+        console.warn('Unable to build CV PDF snapshot from revised text source.', attachmentError?.message || attachmentError);
+      }
     }
     let canonicalCvUrl = '';
     if (!snapshotPdfBase64 && clientPdfBase64) {

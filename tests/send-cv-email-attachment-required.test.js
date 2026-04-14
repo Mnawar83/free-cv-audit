@@ -42,6 +42,34 @@ async function run() {
   const payload = JSON.parse(response.body || '{}');
   assert.ok(String(payload.error || '').includes('attachment is not ready'));
 
+  await runStore.upsertRun('structured_fallback_run', {
+    revised_cv_structured: {
+      fullName: 'Alex Rivera',
+      sections: [{ heading: 'Experience', bullets: 'invalid-should-be-array' }],
+    },
+    revised_cv_text: 'Alex Rivera\nExperience\n- Delivered critical systems\n- Improved reliability',
+  });
+  global.fetch = async (url) => {
+    if (String(url).includes('api.resend.com/emails')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ id: 'email_123' }),
+      };
+    }
+    throw new Error(`Unexpected fetch URL in test: ${url}`);
+  };
+  const fallbackResponse = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      email: 'candidate@example.com',
+      cvUrl: 'https://freecvaudit.com/.netlify/functions/generate-pdf?runId=structured_fallback_run',
+      runId: 'structured_fallback_run',
+      forceSync: true,
+    }),
+  });
+  assert.strictEqual(fallbackResponse.statusCode, 200, 'Should fall back to revised text PDF when structured render fails.');
+
   console.log('send cv email attachment required test passed');
 }
 
