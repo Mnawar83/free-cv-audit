@@ -42,6 +42,7 @@ exports.handler = async (event) => {
         await upsertRun(runId, {
           checkout_initialized_at: new Date().toISOString(),
           checkout_provider_hint: 'paypal',
+          fulfillment_status: 'payment_pending',
         });
         run = await getRun(runId);
         if (!run) {
