@@ -46,9 +46,12 @@ function fallbackAudit(cvText = '') {
 async function runFullAudit(runId, cvText, teaserHints = '') {
   const apiKey = process.env.GOOGLE_AI_API_KEY;
   if (!apiKey) return fallbackAudit(cvText);
+  const modelTimeoutMs = Math.max(1_000, Number(process.env.FULL_AUDIT_MODEL_TIMEOUT_MS || 12_000));
 
   const candidateModels = getGoogleAiCandidateModels();
   for (const model of candidateModels) {
+    const requestController = new AbortController();
+    const timeoutHandle = setTimeout(() => requestController.abort(), modelTimeoutMs);
     try {
       const apiUrl = buildGoogleAiUrl(apiKey, model);
       const response = await fetch(apiUrl, {
@@ -58,13 +61,20 @@ async function runFullAudit(runId, cvText, teaserHints = '') {
           systemInstruction: { parts: [{ text: FULL_AUDIT_PROMPT }] },
           contents: [{ parts: [{ text: `CV:\n${cvText}\n\nTeaser hints (optional):\n${teaserHints}` }] }],
         }),
+        signal: requestController.signal,
       });
       if (!response.ok) continue;
       const data = await response.json();
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
       const parsed = parseAuditJson(text);
       if (parsed) return parsed;
-    } catch (_error) {}
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        console.warn('[full-audit] model request timed out; trying next model', { model, modelTimeoutMs });
+      }
+    } finally {
+      clearTimeout(timeoutHandle);
+    }
   }
   return fallbackAudit(cvText);
 }

@@ -180,6 +180,10 @@ async function run() {
 
   const runId4 = 'seq_run_rotated_old';
   const fulfillmentId4 = await setupPaidJob(runStore, runId4);
+  await runStore.upsertRun('seq_run_rotated_new', {
+    revised_cv_text: 'Rotated run revised CV text for sync test',
+    revised_cv_structured: { fullName: 'Rotated Candidate' },
+  });
   clearModule('../netlify/functions/process-fulfillment-queue');
   handler = require('../netlify/functions/process-fulfillment-queue').handler;
   const res4 = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
@@ -189,6 +193,9 @@ async function run() {
   assert.strictEqual(sentRunIds[sentRunIds.length - 1], 'seq_run_rotated_new');
   const rotatedFulfillment = await runStore.getFulfillment(fulfillmentId4);
   assert.strictEqual(rotatedFulfillment.run_id, 'seq_run_rotated_new');
+  const originalRunAfterRotation = await runStore.getRun(runId4);
+  assert.ok(originalRunAfterRotation?.revised_cv_text, 'Original run should retain revised CV text for client-visible run id flows.');
+  assert.strictEqual(originalRunAfterRotation?.fulfillment_rotated_run_id, 'seq_run_rotated_new');
 
   console.log('fulfillment email sequencing test passed');
 }

@@ -157,13 +157,31 @@ exports.handler = async (event) => {
           await updateFulfillment(fulfillmentId, {
             run_id: generatedRunIdHeader,
           });
+          try {
+            const rotatedRun = await getRun(generatedRunIdHeader);
+            if (rotatedRun?.revised_cv_text || rotatedRun?.revised_cv_structured) {
+              await upsertRun(runId, {
+                revised_cv_text: rotatedRun.revised_cv_text || null,
+                revised_cv_structured: rotatedRun.revised_cv_structured || null,
+                revised_cv_generated_at: rotatedRun.revised_cv_generated_at || new Date().toISOString(),
+                full_audit_result: rotatedRun.full_audit_result || null,
+                full_audit_completed_at: rotatedRun.full_audit_completed_at || null,
+                fulfillment_status: 'cv_ready',
+                fulfillment_rotated_run_id: generatedRunIdHeader,
+              });
+            }
+          } catch (rotationSyncError) {
+            console.warn('[cv-generation] failed to sync rotated run artifacts back to original run id', {
+              previousRunId: runId,
+              newRunId: generatedRunIdHeader,
+              error: rotationSyncError?.message || rotationSyncError,
+            });
+          }
         }
 
         await upsertRun(effectiveRunId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
       }
       await upsertRun(runId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
-
-      await upsertRun(effectiveRunId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
 
       const email = requestedEmail || String(fulfillment.email || '').trim();
       if (!email) throw buildError('Email is required for fulfillment send.', 400);
