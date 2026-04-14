@@ -1,9 +1,12 @@
 const {
+  createArtifactToken,
+  createEmailDownloadToken,
   enqueueEmailJob,
   getFulfillment,
   getArtifactToken,
   getRun,
   updateFulfillment,
+  upsertRun,
   upsertEmailDelivery,
 } = require('./run-store');
 const { triggerEmailQueueProcessing } = require('./queue-trigger');
@@ -93,6 +96,16 @@ function normalizeBase64Pdf(value) {
   if (!raw) return '';
   if (!/^[A-Za-z0-9+/=]+$/.test(raw)) return '';
   return raw;
+}
+
+function isArtifactTokenUsable(tokenRecord) {
+  if (!tokenRecord) return false;
+  const expiresAtMs = tokenRecord.expires_at ? new Date(tokenRecord.expires_at).getTime() : null;
+  if (Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now()) return false;
+  const maxDownloads = Math.max(0, Number(tokenRecord.max_downloads || 0));
+  const downloadCount = Math.max(0, Number(tokenRecord.download_count || 0));
+  if (maxDownloads > 0 && downloadCount >= maxDownloads) return false;
+  return true;
 }
 
 function shouldRetryStatus(statusCode) {
@@ -236,12 +249,34 @@ exports.handler = async (event) => {
       return json(409, { error: 'Revised CV is still being refined for quality. Please retry shortly.' });
     }
     const snapshotPdfBase64 = normalizeBase64Pdf(clientPdfBase64) || normalizeBase64Pdf(run?.final_cv_pdf_base64);
-    const artifactToken = toSafeText(payload.artifactToken) || toSafeText(run?.final_cv_artifact_token);
+    let artifactToken = toSafeText(payload.artifactToken) || toSafeText(run?.final_cv_artifact_token);
     let canonicalCvUrl = '';
     if (artifactToken) {
       const tokenRecord = await getArtifactToken(artifactToken);
-      if (tokenRecord) {
+      if (isArtifactTokenUsable(tokenRecord)) {
         canonicalCvUrl = buildCanonicalCvUrl(artifactToken, cvUrl, runId);
+      }
+    }
+    if (!canonicalCvUrl && snapshotPdfBase64) {
+      const mintedToken = createEmailDownloadToken();
+      const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
+      const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
+      const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
+      await createArtifactToken({
+        token: mintedToken,
+        runId,
+        fulfillmentId: fulfillmentId || null,
+        pdf_base64: snapshotPdfBase64,
+        revised_cv_text: String(run?.revised_cv_text || '').trim() || null,
+        expires_at: expiresAt,
+      });
+      artifactToken = mintedToken;
+      canonicalCvUrl = buildCanonicalCvUrl(artifactToken, cvUrl, runId);
+      if (runId) {
+        await upsertRun(runId, {
+          final_cv_artifact_token: mintedToken,
+          final_cv_artifact_ready_at: run?.final_cv_artifact_ready_at || new Date().toISOString(),
+        }).catch(() => null);
       }
     }
     if (!snapshotPdfBase64 || !canonicalCvUrl) {

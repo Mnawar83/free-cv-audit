@@ -55,7 +55,14 @@ function prepareFinalPdfArtifact(run = {}, generatedPdfBase64 = '') {
   const existingFinal = normalizeBase64Pdf(run?.final_cv_pdf_base64);
   if (existingFinal) return existingFinal;
   if (run?.revised_cv_structured) {
-    return buildPdfBufferFromStructuredCv(run.revised_cv_structured).toString('base64');
+    try {
+      return buildPdfBufferFromStructuredCv(run.revised_cv_structured).toString('base64');
+    } catch (error) {
+      console.warn('[artifact-prep] structured CV render failed; falling back to revised text render', {
+        runId: run?.runId || null,
+        error: error?.message || error,
+      });
+    }
   }
   const revisedText = String(run?.revised_cv_text || '').trim();
   if (revisedText) {

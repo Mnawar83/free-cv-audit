@@ -102,6 +102,43 @@ async function run() {
   const updatedFulfillment = await runStore.getFulfillment(paidFulfillment.fulfillment_id);
   assert.strictEqual(updatedFulfillment.email_status, 'SENT', 'Paid fulfillment email status should be updated after send.');
 
+  // Expired artifact token should be refreshed before composing resend link
+  const expiredFinalToken = runStore.createEmailDownloadToken();
+  await runStore.createArtifactToken({
+    token: expiredFinalToken,
+    runId,
+    pdf_base64: preparedPdfBase64,
+    expires_at: new Date(Date.now() - 60_000).toISOString(),
+  });
+  await runStore.upsertRun(runId, {
+    final_cv_artifact_token: expiredFinalToken,
+  });
+  let refreshedPayload = null;
+  global.fetch = async (_url, options = {}) => {
+    refreshedPayload = JSON.parse(options.body || '{}');
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'email_refresh_token' }),
+    };
+  };
+  const refreshedTokenResponse = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      email: 'user@example.com',
+      name: 'Jane',
+      cvUrl: `/.netlify/functions/generate-pdf?runId=${runId}`,
+      runId,
+      resend: true,
+    }),
+  });
+  assert.strictEqual(refreshedTokenResponse.statusCode, 200, 'Resend should mint a fresh artifact token when stored token expired.');
+  const refreshedTokenMatch = String(refreshedPayload?.html || '').match(/cv-email-download\?token=([a-z0-9-]+)/i);
+  assert.ok(refreshedTokenMatch, 'Resend should still include tokenized link.');
+  assert.notStrictEqual(refreshedTokenMatch[1], expiredFinalToken, 'Resend should not reuse an expired artifact token.');
+  const refreshedRun = await runStore.getRun(runId);
+  assert.strictEqual(refreshedRun.final_cv_artifact_token, refreshedTokenMatch[1], 'Run should track refreshed final artifact token.');
+
   process.env.CV_DOWNLOAD_RATE_LIMIT_MAX = '3';
   process.env.CV_DOWNLOAD_RATE_LIMIT_WINDOW_MS = '60000';
   clearModule('../netlify/functions/cv-email-download');
