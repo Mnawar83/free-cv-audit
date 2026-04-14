@@ -53,7 +53,10 @@ async function run() {
   assert.strictEqual(paypalFulfillment.payment_status, 'PAID');
   assert.strictEqual(paypalFulfillment.provider_order_id, 'ORDER_RECOVERY_1');
   assert.strictEqual(paypalFulfillment.email, 'recover-paypal@example.com');
+  const statsAfterPaypal = await runStore.getOperationalStats();
+  assert.ok(statsAfterPaypal.fulfillmentQueue.pending >= 1 || statsAfterPaypal.fulfillmentQueue.total >= 1);
 
+  const queueBeforePaypalRetry = (await runStore.getOperationalStats()).fulfillmentQueue.total;
   const paypalResponseRetry = await paypalCaptureOrder({
     httpMethod: 'POST',
     body: JSON.stringify({
@@ -65,6 +68,23 @@ async function run() {
   assert.strictEqual(paypalResponseRetry.statusCode, 200);
   const paypalPayloadRetry = JSON.parse(paypalResponseRetry.body || '{}');
   assert.strictEqual(paypalPayloadRetry.fulfillmentId, paypalPayload.fulfillmentId);
+  const queueAfterPaypalRetry = (await runStore.getOperationalStats()).fulfillmentQueue.total;
+  assert.ok(queueAfterPaypalRetry >= queueBeforePaypalRetry + 1, 'Duplicate PayPal events should still enqueue fulfillment when needed.');
+
+  await runStore.updateFulfillment(paypalPayload.fulfillmentId, { email_status: 'SENT' });
+  const queueBeforePaypalSentDuplicate = (await runStore.getOperationalStats()).fulfillmentQueue.total;
+  const paypalSentDuplicateResponse = await paypalCaptureOrder({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      orderID: 'ORDER_RECOVERY_1',
+      runId: 'recovery_run',
+      email: 'recover-paypal@example.com',
+    }),
+  });
+  assert.strictEqual(paypalSentDuplicateResponse.statusCode, 200);
+  const queueAfterPaypalSentDuplicate = (await runStore.getOperationalStats()).fulfillmentQueue.total;
+  assert.strictEqual(queueAfterPaypalSentDuplicate, queueBeforePaypalSentDuplicate, 'Duplicate PayPal callbacks should be ignored once email is sent.');
+
 
   global.fetch = async (url) => {
     if (String(url).includes('/payment/collect/status')) {
@@ -98,7 +118,10 @@ async function run() {
   assert.strictEqual(whishFulfillment.payment_status, 'PAID');
   assert.strictEqual(whishFulfillment.provider_order_id, 'WHISH_RECOVERY_1');
   assert.strictEqual(whishFulfillment.email, 'recover-whish@example.com');
+  const statsAfterWhish = await runStore.getOperationalStats();
+  assert.ok(statsAfterWhish.fulfillmentQueue.total >= 1);
 
+  const queueBeforeWhishRetry = (await runStore.getOperationalStats()).fulfillmentQueue.total;
   const whishResponseRetry = await whishpayCheckStatus({
     httpMethod: 'POST',
     body: JSON.stringify({
@@ -110,6 +133,23 @@ async function run() {
   assert.strictEqual(whishResponseRetry.statusCode, 200);
   const whishPayloadRetry = JSON.parse(whishResponseRetry.body || '{}');
   assert.strictEqual(whishPayloadRetry.fulfillmentId, whishPayload.fulfillmentId);
+  const queueAfterWhishRetry = (await runStore.getOperationalStats()).fulfillmentQueue.total;
+  assert.ok(queueAfterWhishRetry >= queueBeforeWhishRetry + 1, 'Duplicate Whish events should still enqueue fulfillment when needed.');
+
+  await runStore.updateFulfillment(whishPayload.fulfillmentId, { email_status: 'SENT' });
+  const queueBeforeWhishSentDuplicate = (await runStore.getOperationalStats()).fulfillmentQueue.total;
+  const whishSentDuplicateResponse = await whishpayCheckStatus({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      externalId: 'WHISH_RECOVERY_1',
+      runId: 'recovery_run',
+      email: 'recover-whish@example.com',
+    }),
+  });
+  assert.strictEqual(whishSentDuplicateResponse.statusCode, 200);
+  const queueAfterWhishSentDuplicate = (await runStore.getOperationalStats()).fulfillmentQueue.total;
+  assert.strictEqual(queueAfterWhishSentDuplicate, queueBeforeWhishSentDuplicate, 'Duplicate Whish callbacks should be ignored once email is sent.');
+
 
   console.log('payment fulfillment recovery test passed');
 }
