@@ -192,6 +192,7 @@ exports.handler = async (event) => {
           await upsertRun(effectiveRunId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
         }
       }
+      await upsertRun(runId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
 
       const email = requestedEmail || String(fulfillment.email || '').trim();
       if (!email) throw buildError('Email is required for fulfillment send.', 400);
