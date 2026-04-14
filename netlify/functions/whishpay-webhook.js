@@ -80,6 +80,9 @@ exports.handler = async (event) => {
     if (!fulfillment) {
       return json(200, { ok: true, ignored: true, reason: 'FULFILLMENT_NOT_FOUND', orderId });
     }
+    if (dedupe?.duplicate && String(fulfillment.email_status || '').toUpperCase() === 'SENT') {
+      return json(200, { ok: true, duplicate: true, ignored: true, reason: 'EMAIL_ALREADY_SENT' });
+    }
 
     const paid = isPaidStatus(payload);
     if (paid) {

@@ -96,10 +96,28 @@ exports.handler = async (event) => {
         const fulfillmentEmail = String(fulfillment.email || email || '').trim().toLowerCase();
         const eventKey = `whishpay-status:${externalId}:${normalizedCollectStatus}`;
         const eventState = await markPaymentEventProcessed('whishpay', eventKey, JSON.stringify({ externalId, collectStatus }));
+        const alreadySent = String(fulfillment?.email_status || '').toUpperCase() === 'SENT';
         if (eventState?.duplicate) {
           console.info('[payment-confirmation] whishpay duplicate payment event observed; ensuring fulfillment remains queued.', {
             fulfillmentId: fulfillment.fulfillment_id,
           });
+          if (alreadySent) {
+            console.info('[payment-confirmation] whishpay duplicate event ignored because fulfillment email is already sent.', {
+              fulfillmentId: fulfillment.fulfillment_id,
+            });
+            return {
+              statusCode: 200,
+              headers: {
+                ...(setCookie ? { 'Set-Cookie': setCookie } : {}),
+              },
+              body: JSON.stringify({
+                status: true,
+                collectStatus,
+                isPaidStatus,
+                fulfillmentId: fulfillment?.fulfillment_id || requestedFulfillmentId || null,
+              }),
+            };
+          }
         }
         await updateFulfillment(fulfillment.fulfillment_id, {
           payment_status: 'PAID',

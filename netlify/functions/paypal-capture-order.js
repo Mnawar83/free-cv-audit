@@ -99,8 +99,25 @@ exports.handler = async (event) => {
       if (fulfillmentId) {
         const eventKey = data?.id || `${orderID}:${captureStatus}`;
         const eventState = await markPaymentEventProcessed('paypal', eventKey, JSON.stringify({ orderID, status: captureStatus }));
+        const latestFulfillment = await getFulfillment(fulfillmentId);
+        const alreadySent = String(latestFulfillment?.email_status || '').toUpperCase() === 'SENT';
         if (eventState?.duplicate) {
           console.info('[payment-confirmation] paypal duplicate payment event observed; ensuring fulfillment remains queued.', { fulfillmentId });
+          if (alreadySent) {
+            console.info('[payment-confirmation] paypal duplicate event ignored because fulfillment email is already sent.', { fulfillmentId });
+            const updated = await getFulfillmentByProviderOrderId('paypal', orderID);
+            return {
+              statusCode: 200,
+              headers: {
+                ...(setCookie ? { 'Set-Cookie': setCookie } : {}),
+              },
+              body: JSON.stringify({
+                status: data.status,
+                paid: updated?.payment_status === 'PAID',
+                fulfillmentId: updated?.fulfillment_id || fulfillmentId || null,
+              }),
+            };
+          }
         }
         const deliveryEmail = String(fulfillment?.email || email || '').trim().toLowerCase();
         await updateFulfillment(fulfillmentId, {

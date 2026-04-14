@@ -16,7 +16,18 @@ Use only CV facts from the input. No markdown. No prose outside JSON.`;
 function parseAuditJson(text) {
   if (!text) return null;
   try {
-    const parsed = JSON.parse(text);
+    const raw = String(text || '').trim();
+    let normalized = raw;
+    const fencedMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    if (fencedMatch?.[1]) {
+      normalized = fencedMatch[1].trim();
+    }
+    const firstObjectStart = normalized.indexOf('{');
+    const lastObjectEnd = normalized.lastIndexOf('}');
+    if (firstObjectStart >= 0 && lastObjectEnd > firstObjectStart) {
+      normalized = normalized.slice(firstObjectStart, lastObjectEnd + 1);
+    }
+    const parsed = JSON.parse(normalized);
     const ensure = (key) => Array.isArray(parsed?.[key]) ? parsed[key].map((v) => String(v || '').trim()).filter(Boolean) : [];
     return {
       auditFindings: ensure('auditFindings'),
@@ -60,6 +71,10 @@ async function runFullAudit(runId, cvText, teaserHints = '') {
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: FULL_AUDIT_PROMPT }] },
           contents: [{ parts: [{ text: `CV:\n${cvText}\n\nTeaser hints (optional):\n${teaserHints}` }] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0,
+          },
         }),
         signal: requestController.signal,
       });
