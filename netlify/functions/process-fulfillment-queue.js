@@ -2,11 +2,14 @@ const crypto = require('crypto');
 const {
   claimFulfillmentJob,
   completeFulfillmentJob,
+  createArtifactToken,
+  createEmailDownloadToken,
   getFulfillment,
   getRun,
   updateFulfillment,
   upsertRun,
 } = require('./run-store');
+const { buildPdfBuffer, buildPdfBufferFromStructuredCv } = require('./pdf-builder');
 const { runFullAudit } = require('./full-audit');
 
 function isTransientStatus(statusCode) {
@@ -37,6 +40,35 @@ function buildError(message, statusCode, options = {}) {
   error.statusCode = statusCode;
   if (options.transient) error.transient = true;
   return error;
+}
+
+function normalizeBase64Pdf(value) {
+  const raw = String(value || '').trim().replace(/\s+/g, '');
+  if (!raw) return '';
+  if (!/^[A-Za-z0-9+/=]+$/.test(raw)) return '';
+  return raw;
+}
+
+function prepareFinalPdfArtifact(run = {}, generatedPdfBase64 = '') {
+  const generated = normalizeBase64Pdf(generatedPdfBase64);
+  if (generated) return generated;
+  const existingFinal = normalizeBase64Pdf(run?.final_cv_pdf_base64);
+  if (existingFinal) return existingFinal;
+  if (run?.revised_cv_structured) {
+    try {
+      return buildPdfBufferFromStructuredCv(run.revised_cv_structured).toString('base64');
+    } catch (error) {
+      console.warn('[artifact-prep] structured CV render failed; falling back to revised text render', {
+        runId: run?.runId || null,
+        error: error?.message || error,
+      });
+    }
+  }
+  const revisedText = String(run?.revised_cv_text || '').trim();
+  if (revisedText) {
+    return buildPdfBuffer(revisedText).toString('base64');
+  }
+  return '';
 }
 
 function hasQueueAccess(headers = {}) {
@@ -115,6 +147,7 @@ exports.handler = async (event) => {
       );
       let effectiveRunId = runId;
 
+      let generatedPdfBase64 = '';
       if (!hasOriginalCvText) {
         if (!hasLegacyDeliverable) {
           throw buildError('Original CV text is missing for paid fulfillment.', 409, { transient: true });
@@ -150,6 +183,10 @@ exports.handler = async (event) => {
           }
           if (!genResponse?.isBase64Encoded || !String(genResponse?.body || '').trim()) {
             throw buildError('CV generation did not return a final PDF attachment payload.', 500, { transient: true });
+          }
+          generatedPdfBase64 = normalizeBase64Pdf(genResponse.body);
+          if (!generatedPdfBase64) {
+            throw buildError('CV generation returned an invalid final PDF payload.', 500, { transient: true });
           }
 
           const generatedRunIdHeader = String(
@@ -194,6 +231,30 @@ exports.handler = async (event) => {
       }
       await upsertRun(runId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
 
+      const artifactRun = await getRun(effectiveRunId);
+      const finalPdfBase64 = prepareFinalPdfArtifact(artifactRun, generatedPdfBase64);
+      if (!finalPdfBase64) {
+        throw buildError('Final PDF artifact is missing and must be prepared before email delivery.', 425, { transient: true });
+      }
+      const artifactToken = String(artifactRun?.final_cv_artifact_token || '').trim() || createEmailDownloadToken();
+      const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
+      const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
+      const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
+      await createArtifactToken({
+        token: artifactToken,
+        runId: effectiveRunId,
+        fulfillmentId,
+        pdf_base64: finalPdfBase64,
+        revised_cv_text: String(artifactRun?.revised_cv_text || '').trim() || null,
+        expires_at: expiresAt,
+      });
+      await upsertRun(effectiveRunId, {
+        final_cv_pdf_base64: finalPdfBase64,
+        final_cv_artifact_token: artifactToken,
+        final_cv_artifact_ready_at: new Date().toISOString(),
+        fulfillment_status: 'artifact_persisted',
+      });
+
       const email = requestedEmail || String(fulfillment.email || '').trim();
       if (!email) throw buildError('Email is required for fulfillment send.', 400);
       const baseUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || 'https://freecvaudit.com';
@@ -206,7 +267,17 @@ exports.handler = async (event) => {
       const sendHandler = require('./send-cv-email').handler;
       const response = await sendHandler({
         httpMethod: 'POST',
-        body: JSON.stringify({ email, name, cvUrl, runId: effectiveRunId, fulfillmentId, resend: false, forceSync: true }),
+        body: JSON.stringify({
+          email,
+          name,
+          cvUrl,
+          runId: effectiveRunId,
+          fulfillmentId,
+          resend: false,
+          forceSync: true,
+          artifactToken,
+          pdfBase64: finalPdfBase64,
+        }),
       });
       if (response.statusCode >= 200 && response.statusCode < 300) {
         await updateFulfillment(fulfillmentId, {

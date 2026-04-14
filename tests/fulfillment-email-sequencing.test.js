@@ -112,6 +112,35 @@ async function run() {
   assert.strictEqual(payload0b.processed[0].status, 'COMPLETED');
   const sendCountAfterLegacyDelivery = sendCount;
 
+  // case 0c: malformed structured artifact should fall back to revised text artifact prep and still deliver
+  const malformedStructuredFulfillment = await runStore.createFulfillment({
+    run_id: 'seq_run_malformed_structured',
+    email: 'sequence@example.com',
+    provider: 'paypal',
+    provider_order_id: `order_malformed_${Date.now()}`,
+    payment_status: 'PAID',
+  });
+  await runStore.upsertRun('seq_run_malformed_structured', {
+    revised_cv_structured: {
+      fullName: 'Broken Structured Candidate',
+      sections: [{ heading: 'Experience', bullets: 'this-should-be-array' }],
+    },
+    revised_cv_text: 'Broken Structured Candidate\nEXPERIENCE\n- Reliable plain-text fallback should still deliver',
+  });
+  await runStore.enqueueFulfillmentJob({
+    fulfillmentId: malformedStructuredFulfillment.fulfillment_id,
+    email: 'sequence@example.com',
+    name: 'Seq User',
+    forceSync: true,
+  });
+  clearModule('../netlify/functions/process-fulfillment-queue');
+  handler = require('../netlify/functions/process-fulfillment-queue').handler;
+  const res0c = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
+  const payload0c = JSON.parse(res0c.body || '{}');
+  assert.strictEqual(payload0c.processed[0].status, 'COMPLETED');
+  assert.strictEqual(sendCount, sendCountAfterLegacyDelivery + 1, 'Malformed structured payload should still send via text fallback.');
+  const sendCountAfterStructuredFallbackDelivery = sendCount;
+
   // case 1: generation hard-fails => no email
   clearModule('../netlify/functions/generate-pdf');
   const generateModule1 = require('../netlify/functions/generate-pdf');
@@ -124,7 +153,7 @@ async function run() {
   const res1 = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
   const payload1 = JSON.parse(res1.body || '{}');
   assert.strictEqual(payload1.processed[0].status, 'RETRY');
-  assert.strictEqual(sendCount, sendCountAfterLegacyDelivery);
+  assert.strictEqual(sendCount, sendCountAfterStructuredFallbackDelivery);
 
   // case 2: generation returns no final attachment payload => no email
   clearModule('../netlify/functions/generate-pdf');
@@ -138,7 +167,7 @@ async function run() {
   const res2 = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
   const payload2 = JSON.parse(res2.body || '{}');
   assert.strictEqual(payload2.processed[0].status, 'RETRY');
-  assert.strictEqual(sendCount, sendCountAfterLegacyDelivery);
+  assert.strictEqual(sendCount, sendCountAfterStructuredFallbackDelivery);
 
   // case 3: generation succeeds with final attachment payload => email sends
   clearModule('../netlify/functions/generate-pdf');
@@ -152,7 +181,7 @@ async function run() {
   const res3 = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
   const payload3 = JSON.parse(res3.body || '{}');
   assert.strictEqual(payload3.processed[0].status, 'COMPLETED');
-  assert.strictEqual(sendCount, sendCountAfterLegacyDelivery + 1);
+  assert.strictEqual(sendCount, sendCountAfterStructuredFallbackDelivery + 1);
 
 
 
