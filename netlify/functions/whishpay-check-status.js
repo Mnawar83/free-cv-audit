@@ -15,12 +15,6 @@ const {
 const { triggerFulfillmentQueueProcessing } = require('./queue-trigger');
 const { hasSessionSecretConfigured, createFulfillmentSessionCookie } = require('./fulfillment-auth');
 
-function buildCvUrlForRun(runId) {
-  const baseUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || 'https://freecvaudit.com';
-  const normalizedBaseUrl = /^https?:\/\//i.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
-  return new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(runId)}`, normalizedBaseUrl).toString();
-}
-
 exports.handler = async (event) => {
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
@@ -102,48 +96,48 @@ exports.handler = async (event) => {
         const fulfillmentEmail = String(fulfillment.email || email || '').trim().toLowerCase();
         const eventKey = `whishpay-status:${externalId}:${normalizedCollectStatus}`;
         const eventState = await markPaymentEventProcessed('whishpay', eventKey, JSON.stringify({ externalId, collectStatus }));
-        if (!eventState?.duplicate) {
-          await updateFulfillment(fulfillment.fulfillment_id, {
-            payment_status: 'PAID',
-            email: fulfillmentEmail || null,
-            paid_at: fulfillment.paid_at || new Date().toISOString(),
+        const alreadySent = String(fulfillment?.email_status || '').toUpperCase() === 'SENT';
+        if (eventState?.duplicate) {
+          console.info('[payment-confirmation] whishpay duplicate payment event observed; ensuring fulfillment remains queued.', {
+            fulfillmentId: fulfillment.fulfillment_id,
           });
-          if (fulfillmentEmail) {
-            const runIdForDelivery = String(fulfillment.run_id || runId || '').trim();
-            let delivered = false;
-            if (runIdForDelivery) {
-              try {
-                const sendHandler = require('./send-cv-email').handler;
-                const sendResponse = await sendHandler({
-                  httpMethod: 'POST',
-                  body: JSON.stringify({
-                    email: fulfillmentEmail,
-                    name: '',
-                    cvUrl: buildCvUrlForRun(runIdForDelivery),
-                    runId: runIdForDelivery,
-                    fulfillmentId: fulfillment.fulfillment_id,
-                    forceSync: true,
-                    resend: false,
-                  }),
-                });
-                delivered = sendResponse?.statusCode >= 200 && sendResponse?.statusCode < 300;
-              } catch (deliveryError) {
-                console.warn('WhishPay check-status immediate CV email delivery failed; falling back to queue.', {
-                  fulfillmentId: fulfillment.fulfillment_id,
-                  error: deliveryError?.message || deliveryError,
-                });
-              }
-            }
-            if (!delivered) {
-              await enqueueFulfillmentJob({
-                fulfillmentId: fulfillment.fulfillment_id,
-                email: fulfillmentEmail,
-                name: '',
-                forceSync: true,
-              });
-              await triggerFulfillmentQueueProcessing();
-            }
+          if (alreadySent) {
+            console.info('[payment-confirmation] whishpay duplicate event ignored because fulfillment email is already sent.', {
+              fulfillmentId: fulfillment.fulfillment_id,
+            });
+            return {
+              statusCode: 200,
+              headers: {
+                ...(setCookie ? { 'Set-Cookie': setCookie } : {}),
+              },
+              body: JSON.stringify({
+                status: true,
+                collectStatus,
+                isPaidStatus,
+                fulfillmentId: fulfillment?.fulfillment_id || requestedFulfillmentId || null,
+              }),
+            };
           }
+        }
+        await updateFulfillment(fulfillment.fulfillment_id, {
+          payment_status: 'PAID',
+          email: fulfillmentEmail || null,
+          paid_at: fulfillment.paid_at || new Date().toISOString(),
+        });
+        if (fulfillmentEmail) {
+          console.log('[payment-confirmation] whishpay payment confirmed; queueing paid fulfillment', {
+            fulfillmentId: fulfillment.fulfillment_id,
+          });
+          await updateFulfillment(fulfillment.fulfillment_id, {
+            processing_status: 'full_audit_queued',
+          });
+          await enqueueFulfillmentJob({
+            fulfillmentId: fulfillment.fulfillment_id,
+            email: fulfillmentEmail,
+            name: '',
+            forceSync: true,
+          });
+          await triggerFulfillmentQueueProcessing();
         }
       }
     }

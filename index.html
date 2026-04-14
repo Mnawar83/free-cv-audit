@@ -251,7 +251,7 @@
                             via PayPal, Whish or card.
                         </p>
                         <p class="mt-2 text-slate-400 text-sm">
-                            Pay securely through PayPal, debit/credit card, or Whish to unlock instant email delivery.
+                            Pay securely through PayPal, debit/credit card, or Whish to unlock the full AI-powered audit and polished CV delivery by email.
                         </p>
                         <div class="mx-auto mt-4 w-full max-w-md">
                             <input id="payment-email-input" type="email" class="w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-400 focus:border-blue-400 focus:outline-none" placeholder="Enter your email address" />
@@ -273,17 +273,17 @@
                             <p id="whishpay-status" class="text-xs text-slate-500"></p>
                         </div>
                         <a id="download-link" href="#" class="hidden mt-4 inline-flex items-center justify-center bg-emerald-600 text-white font-bold py-3 px-8 rounded-lg opacity-50 pointer-events-none transition-colors" aria-disabled="true">
-                            Download Revised CV (PDF)
+                            Final CV will be emailed
                         </a>
-                        <p id="download-note" class="mt-2 text-xs text-slate-500">Complete payment to unlock email delivery.</p>
+                        <p id="download-note" class="mt-2 text-xs text-slate-500">Complete payment to start the full AI-powered audit and delivery workflow.</p>
                     </div>
 
                     <div id="revised-download-only" class="hidden mt-8 rounded-lg border border-emerald-500/50 bg-emerald-950/30 p-8 text-center">
                         <h3 class="text-2xl font-semibold text-white">Your CV is ready</h3>
-                        <p class="mt-2 text-sm text-slate-300">Your revised CV is being delivered automatically to your checkout email.</p>
+                        <p class="mt-2 text-sm text-slate-300">Your payment is confirmed. Our full AI-powered audit and CV rewrite are now in progress.</p>
                         <p id="cv-email-display" class="mt-1 text-xs text-slate-400"></p>
                         <p id="cv-email-status" class="mt-3 min-h-[20px] text-xs text-slate-300"></p>
-                        <p class="mt-2 text-xs text-slate-400">Your revised CV will be emailed to your checkout address.</p>
+                        <p class="mt-2 text-xs text-slate-400">We will email your final revised CV once processing is complete.</p>
 
                         <a id="primary-download-link" href="#" class="hidden mt-5 inline-flex w-full max-w-md items-center justify-center rounded-lg bg-emerald-700/70 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-600/70" aria-disabled="true">
                             Download Linked Product
@@ -299,7 +299,7 @@
                             <ul class="mt-2 space-y-1 text-sm text-gray-700">
                                 <li>✅ ATS-ready headline + About section tailored to your revised CV</li>
                                 <li>✅ Recruiter-friendly profile summary to improve discovery</li>
-                                <li>✅ Fast delivery and instant PDF download after payment</li>
+                                <li>✅ Fast delivery via secure email after payment</li>
                             </ul>
                             <p class="mt-2 text-xs text-gray-600">Trusted by 2,000+ job seekers this year.</p>
                             <div id="linkedin-checkout-section" class="upsell-checkout mt-4">
@@ -342,7 +342,7 @@
                             <ul class="mt-2 space-y-1 text-sm text-gray-700">
                                 <li>✅ Role-specific cover letter aligned to your skills and CV</li>
                                 <li>✅ Strong opening + impact-focused accomplishments</li>
-                                <li>✅ Ready-to-send PDF generated instantly after payment</li>
+                                <li>✅ Ready-to-send PDF delivered by email after payment</li>
                             </ul>
                             <p class="mt-2 text-xs text-gray-600">Candidates with cover letters are up to 38% more likely to get noticed.</p>
                             <div id="cover-letter-checkout-section" class="upsell-checkout mt-4">
@@ -1083,14 +1083,9 @@
                 return false;
             }
             if (!currentRunId) {
-                try {
-                    await generateRevisedPdf(extractedCvText || getStoredValue('cvText') || '');
-                    cvUrl = getCvAccessUrl();
-                } catch (error) {
-                    if (!silent && cvEmailStatus) cvEmailStatus.textContent = 'Unable to prepare your CV right now. Please try again.';
-                    syncCvAccessActions();
-                    return false;
-                }
+                if (!silent && cvEmailStatus) cvEmailStatus.textContent = 'Your paid CV is still processing. Please try again shortly.';
+                syncCvAccessActions();
+                return false;
             }
             if (!cvUrl || cvUrl.startsWith('blob:')) {
                 if (!silent && cvEmailStatus) cvEmailStatus.textContent = 'CV link is not ready yet. Please try again.';
@@ -2022,15 +2017,13 @@
                     URL.revokeObjectURL(revisedCvBlobUrl);
                     revisedCvBlobUrl = null;
                 }
-                downloadNote.textContent = 'Complete payment to unlock email delivery.';
+                downloadNote.textContent = 'Complete payment to start the full AI-powered audit and delivery workflow.';
             } else {
-                downloadLink.classList.remove('opacity-50', 'pointer-events-none');
-                downloadLink.setAttribute('aria-disabled', 'false');
-                if (revisedCvBlobUrl) {
-                    downloadLink.href = revisedCvBlobUrl;
-                }
-                downloadLink.setAttribute('download', 'revised-cv.pdf');
-                downloadNote.textContent = 'Your revised CV is ready. We will send it to your checkout email.';
+                downloadLink.classList.add('opacity-50', 'pointer-events-none');
+                downloadLink.setAttribute('aria-disabled', 'true');
+                downloadLink.setAttribute('href', '#');
+                downloadLink.removeAttribute('download');
+                downloadNote.textContent = 'Payment received. Full AI-powered audit is in progress. Final CV will be sent by email.';
                 activeDownloadType = 'revised';
                 applyPaidGatedLayout();
                 initializeLinkedInUpsell();
@@ -2057,7 +2050,7 @@
                 warmUpCheckoutExperience();
                 if (hasPaidCV && !revisedCvBlobUrl) {
                     applyPaidGatedLayout();
-                    regeneratePdfOnRestore();
+                    // Paid CV is fulfilled asynchronously and delivered by email.
                 }
                 return true;
             }
@@ -2080,7 +2073,7 @@
                 initializeLinkedInUpsell();
                 initializeCoverLetterUpsell();
                 if (hasPaidCV && !revisedCvBlobUrl) {
-                    regeneratePdfOnRestore();
+                    // Paid CV is fulfilled asynchronously and delivered by email.
                 }
             }
             return true;
@@ -2089,41 +2082,21 @@
         let regeneratePdfTriggered = false;
 
         function regeneratePdfOnRestore() {
-            if (regeneratePdfTriggered || isGeneratingPdf) return;
-            if (revisedCvBlobUrl) {
-                setDownloadLocked(false);
-                return;
-            }
             regeneratePdfTriggered = true;
             if (primaryDownloadLink) {
-                primaryDownloadLink.textContent = 'Preparing your revised CV...';
+                primaryDownloadLink.textContent = 'Final revised CV will be emailed';
                 primaryDownloadLink.setAttribute('aria-disabled', 'true');
                 primaryDownloadLink.classList.add('opacity-50', 'pointer-events-none');
             }
-            generateRevisedPdf(extractedCvText)
-                .then(() => {
-                    if (primaryDownloadLink) {
-                        primaryDownloadLink.classList.remove('opacity-50', 'pointer-events-none');
-                        primaryDownloadLink.removeAttribute('aria-disabled');
-                    }
-                    setDownloadLocked(false);
-                })
-                .catch((error) => {
-                    console.error('Auto PDF regeneration failed:', error);
-                    regeneratePdfTriggered = false;
-                    if (primaryDownloadLink) {
-                        primaryDownloadLink.textContent = 'Revised CV Ready';
-                        primaryDownloadLink.classList.remove('opacity-50', 'pointer-events-none');
-                    }
-                    showError(error.message || 'Unable to generate your revised CV. Please try again.');
-                    if (revisedPaymentSection) revisedPaymentSection.classList.remove('hidden');
-                    updateRetryVisibility();
-                });
+            if (cvEmailStatus) {
+                cvEmailStatus.textContent = 'Your full AI-powered audit is still processing. The final CV will be sent by email.';
+            }
+            setDownloadLocked(true);
         }
 
         function updateRetryVisibility() {
             if (downloadNote && hasPaidCV && !revisedCvBlobUrl && !isGeneratingPdf) {
-                downloadNote.textContent = 'Payment received. We are safely processing and delivering your revised CV by email.';
+                downloadNote.textContent = 'Payment received. Full AI-powered audit is in progress and your polished CV will be delivered by email.';
             }
         }
 
@@ -2156,201 +2129,32 @@
         let cvDeliveryFinalizePromise = null;
 
         async function ensureCvEmailDeliveredThenReturn() {
-            if (cvDeliveryFinalizePromise) return cvDeliveryFinalizePromise;
-            cvDeliveryFinalizePromise = (async () => {
-            clearSafeCvEmailDeliverySchedule();
-            const maxAttempts = 6;
-            try {
-                await generateRevisedPdfWithRecovery();
-            } catch (generationError) {
-                console.warn('Unable to refresh revised CV before delivery confirmation loop.', generationError);
-            }
-            for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-                if (cvEmailStatus) {
-                    cvEmailStatus.textContent = attempt === 1
-                        ? 'Finalizing delivery...'
-                        : `Finalizing delivery (attempt ${attempt}/${maxAttempts})...`;
-                }
-                const sent = await sendCvEmail({ resend: false, silent: true });
-                if (sent) {
-                    if (cvEmailStatus) cvEmailStatus.textContent = 'Email sent successfully. Redirecting...';
-                    redirectToUploadHomeAfterPayment();
-                    return true;
-                }
-                if (attempt < maxAttempts) {
-                    await new Promise((resolve) => setTimeout(resolve, Math.min(12000, attempt * 2000)));
-                }
-            }
             if (cvEmailStatus) {
-                cvEmailStatus.textContent = 'We could not confirm email delivery yet. Please stay on this page while we keep processing.';
+                cvEmailStatus.textContent = 'Payment confirmed. Final CV preparation is in progress and will be sent by email.';
             }
             return false;
-            })();
-            try {
-                return await cvDeliveryFinalizePromise;
-            } finally {
-                cvDeliveryFinalizePromise = null;
-            }
         }
 
         async function generateRevisedPdfWithRecovery() {
-            const candidates = [
-                extractedCvText,
-                getStoredValue('cvText'),
-                hasActiveRunId ? undefined : null,
-            ];
-            let lastError = null;
-
-            for (let i = 0; i < candidates.length; i += 1) {
-                const candidate = candidates[i];
-                if (candidate === null) continue;
-                try {
-                    await generateRevisedPdf(candidate);
-                    return;
-                } catch (error) {
-                    lastError = error;
-                    const isLastAttempt = i === candidates.length - 1;
-                    if (!isLastAttempt) {
-                        await new Promise((resolve) => setTimeout(resolve, 900 * (i + 1)));
-                    }
-                }
-            }
-
-            throw lastError || new Error('Unable to generate your revised CV right now. We will keep trying to deliver it safely by email.');
+            throw new Error('Browser-side final CV generation is disabled.');
         }
 
         async function finalizeCvPaymentAndGenerate() {
             setPaidState('cv', true);
             applyPaidGatedLayout();
             if (revisedPaymentSection) revisedPaymentSection.classList.add('hidden');
-            if (revisedCvBlobUrl) {
-                setDownloadLocked(false);
-                if (cvEmailStatus) cvEmailStatus.textContent = 'Payment confirmed. Finalizing email delivery...';
-                updateRetryVisibility();
-                await ensureCvEmailDeliveredThenReturn();
-                return;
-            }
             setDownloadLocked(true);
             if (whishPayStatus) {
-                whishPayStatus.textContent = 'Payment confirmed. Preparing your revised CV...';
+                whishPayStatus.textContent = 'Payment confirmed. Full AI-powered audit is now running. Final CV will be delivered by email.';
             }
-            try {
-                await generateRevisedPdfWithRecovery();
-            } catch (error) {
-                console.warn('Revised CV generation failed after recovery attempts.', error);
-                const fallbackErrorMessage = error?.message || 'Unable to generate your revised CV right now. We will keep trying to deliver it safely by email.';
-                showError(fallbackErrorMessage);
+            if (cvEmailStatus) {
+                cvEmailStatus.textContent = 'Payment confirmed. We are now preparing your final revised CV and will email it shortly.';
             }
-            setDownloadLocked(false);
-            if (cvEmailStatus) cvEmailStatus.textContent = 'Payment confirmed. Finalizing email delivery...';
             updateRetryVisibility();
-            await ensureCvEmailDeliveredThenReturn();
         }
 
         async function generateRevisedPdf(cvText) {
-            const resolvedCvText = cvText || extractedCvText || getStoredValue('cvText');
-            if (!resolvedCvText && !hasActiveRunId) {
-                throw new Error('Unable to generate the revised CV. Please run the audit again.');
-            }
-            if (isGeneratingPdf) return;
-            isGeneratingPdf = true;
-            downloadNote.textContent = 'Preparing your revised CV PDF...';
-            try {
-                const cvAnalysis = extractedCvAnalysis || getStoredValue('cvAnalysis') || '';
-                const pdfController = new AbortController();
-                const pdfTimeout = setTimeout(() => pdfController.abort(), 80000);
-                let response;
-                try {
-                    if (hasActiveRunId && currentRunId) {
-                        try {
-                            const cachedResponse = await fetch(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(currentRunId)}`, { signal: pdfController.signal });
-                            if (cachedResponse.ok) {
-                                response = cachedResponse;
-                            }
-                        } catch (cachedFetchError) {
-                            if (cachedFetchError?.name !== 'AbortError') {
-                                console.warn('Cached generate-pdf request failed. Falling back to POST generation.', cachedFetchError);
-                            }
-                        }
-                    }
-                    if (!response) {
-                        try {
-                            response = await fetch('/.netlify/functions/generate-pdf', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ cvText: resolvedCvText || undefined, cvAnalysis, runId: hasActiveRunId ? currentRunId : undefined }),
-                                signal: pdfController.signal,
-                            });
-                        } catch (fetchError) {
-                            if (fetchError?.name === 'AbortError') {
-                                throw new Error('CV generation timed out. Please try again.');
-                            }
-                            if (currentRunId) {
-                                try {
-                                    const retryResponse = await fetch(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(currentRunId)}`);
-                                    if (retryResponse.ok) {
-                                        response = retryResponse;
-                                    }
-                                } catch (retryError) {
-                                    console.warn('Retry fetch for generate-pdf failed after POST network error.', retryError);
-                                }
-                            }
-                            if (!response) {
-                                throw new Error('Unable to connect to the CV generation service. Please try again.');
-                            }
-                        }
-                    }
-                } finally {
-                    clearTimeout(pdfTimeout);
-                }
-
-                if (!response.ok) {
-                    let message = 'Unable to generate the revised CV.';
-                    try {
-                        const errorData = await response.json();
-                        if (errorData?.error) {
-                            message = errorData.error;
-                        }
-                    } catch (parseError) {
-                        console.warn('Generate PDF error response could not be parsed.', parseError);
-                    }
-                    if (currentRunId) {
-                        const fallbackResponse = await fetch(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(currentRunId)}`);
-                        if (fallbackResponse.ok) {
-                            response = fallbackResponse;
-                        } else {
-                            throw new Error(message);
-                        }
-                    } else {
-                        throw new Error(message);
-                    }
-                }
-
-                const generatedRunId = response.headers.get('x-run-id');
-                if (generatedRunId) {
-                    currentRunId = generatedRunId;
-                    hasActiveRunId = true;
-                    persistRunId(generatedRunId);
-                    revisedCvPublicUrl = new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(generatedRunId)}`, window.location.origin).toString();
-                    localStorage.setItem('cv_url', revisedCvPublicUrl);
-                }
-
-                const pdfBlob = await response.blob();
-                if (revisedCvBlobUrl) {
-                    URL.revokeObjectURL(revisedCvBlobUrl);
-                }
-                revisedCvBlobUrl = URL.createObjectURL(pdfBlob);
-                downloadLink.href = revisedCvBlobUrl;
-                downloadLink.setAttribute('download', 'revised-cv.pdf');
-                if (!revisedCvPublicUrl && currentRunId) {
-                    revisedCvPublicUrl = new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(currentRunId)}`, window.location.origin).toString();
-                    localStorage.setItem('cv_url', revisedCvPublicUrl);
-                }
-                syncCvAccessActions();
-
-            } finally {
-                isGeneratingPdf = false;
-            }
+            throw new Error('Browser-side final CV generation is disabled. Final CV is generated post-payment and delivered by email.');
         }
 
         async function fetchPayPalConfig() {

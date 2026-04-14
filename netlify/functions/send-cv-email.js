@@ -8,7 +8,7 @@ const {
   upsertEmailDelivery,
 } = require('./run-store');
 const { saveEmailDownloadSnapshot } = require('./email-download-store');
-const { buildPdfBuffer, normalizeToCvTemplateText } = require('./pdf-builder');
+const { buildPdfBuffer, buildPdfBufferFromStructuredCv, normalizeToCvTemplateText } = require('./pdf-builder');
 const { triggerEmailQueueProcessing } = require('./queue-trigger');
 const crypto = require('crypto');
 const QUALITY_FLOOR_DISABLED_VALUES = new Set(['0', 'false', 'off', 'no']);
@@ -290,22 +290,27 @@ exports.handler = async (event) => {
     }
     const revisedCvText = run?.revised_cv_text ? canonicalizeCvText(run.revised_cv_text) : '';
     if (!revisedCvText) {
-      console.warn('Run is missing revised CV text; sending email with runId download URL only.', { runId });
+      console.warn('Run is missing revised CV text; attempting to resolve final attachment from generated PDF.', { runId });
     }
     let snapshotPdfBase64 = '';
-    try {
-      if (revisedCvText) {
-        snapshotPdfBase64 = buildPdfBuffer(revisedCvText).toString('base64');
+    if (run?.revised_cv_structured) {
+      try {
+        snapshotPdfBase64 = buildPdfBufferFromStructuredCv(run.revised_cv_structured).toString('base64');
+      } catch (attachmentError) {
+        console.warn('Unable to build CV PDF snapshot from structured revised source.', attachmentError?.message || attachmentError);
       }
-    } catch (attachmentError) {
-      console.warn('Unable to build CV PDF snapshot from revised text.', attachmentError?.message || attachmentError);
+    }
+    if (!snapshotPdfBase64 && revisedCvText) {
+      try {
+        snapshotPdfBase64 = buildPdfBuffer(revisedCvText).toString('base64');
+      } catch (attachmentError) {
+        console.warn('Unable to build CV PDF snapshot from revised text source.', attachmentError?.message || attachmentError);
+      }
     }
     let canonicalCvUrl = '';
     if (!snapshotPdfBase64 && clientPdfBase64) {
       snapshotPdfBase64 = clientPdfBase64;
     }
-    // Avoid emailing plain-text client fallback CV content for paid delivery.
-    // If revised text is not yet ready, send secure link first and let retries/queue deliver attachment later.
     if (!snapshotPdfBase64) {
       const resolvedCvUrl = buildRunCvUrl(runId, cvUrl);
       snapshotPdfBase64 = await fetchPdfBase64FromUrl(resolvedCvUrl);
@@ -313,11 +318,12 @@ exports.handler = async (event) => {
         console.warn('Unable to fetch CV PDF for email snapshot.', { runId });
       }
     }
+
     const effectiveRevisedText = revisedCvText;
-    if (!effectiveRevisedText && !snapshotPdfBase64) {
-      console.warn('No CV attachment or revised text available. Sending email with download link only so the user is not left without any email.', { runId });
-      canonicalCvUrl = buildRunCvUrl(runId, cvUrl);
+    if (!snapshotPdfBase64) {
+      return json(409, { error: 'Final CV attachment is not ready yet. Please retry shortly.' });
     }
+
     if ((effectiveRevisedText || snapshotPdfBase64) && !canonicalCvUrl) {
       const token = createEmailDownloadToken();
       const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
@@ -413,25 +419,6 @@ exports.handler = async (event) => {
       );
     }
 
-    // If the email was sent without an attachment, queue a follow-up re-send
-    // so the user eventually receives the CV as a PDF attachment.
-    if (!snapshotPdfBase64 && !isResend) {
-      bookkeepingPromises.push(
-        enqueueEmailJob({
-          email,
-          name,
-          cvUrl,
-          runId,
-          resend: true,
-          ...(fulfillmentId ? { fulfillmentId } : {}),
-        }).then(() => triggerEmailQueueProcessing()).catch((queueError) => {
-          console.warn('Unable to queue follow-up re-send with attachment.', {
-            runId,
-            error: queueError?.message || queueError,
-          });
-        })
-      );
-    }
 
     // Log timing for observability, then return immediately
     timing.total = Date.now() - timing.start;
