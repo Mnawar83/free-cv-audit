@@ -42,6 +42,8 @@ async function run() {
   let sendCount = 0;
   let handler;
   const sentRunIds = [];
+  const findProcessedForRun = (payload, runId) =>
+    Array.isArray(payload?.processed) ? payload.processed.find((entry) => entry?.runId === runId) : null;
   clearModule('../netlify/functions/send-cv-email');
   const sendModule = require('../netlify/functions/send-cv-email');
   let forcedSendStatusByRunId = {};
@@ -51,8 +53,12 @@ async function run() {
     const runId = payload.runId || '';
     sentRunIds.push(runId);
     const forcedStatus = forcedSendStatusByRunId[runId];
-    if (forcedStatus) {
-      return { statusCode: forcedStatus, body: JSON.stringify({ error: 'forced send status' }) };
+    if (Array.isArray(forcedStatus) && forcedStatus.length) {
+      const status = forcedStatus.shift();
+      return { statusCode: status, body: JSON.stringify({ error: 'forced send status' }) };
+    }
+    if (forcedStatus && Number.isFinite(Number(forcedStatus))) {
+      return { statusCode: Number(forcedStatus), body: JSON.stringify({ error: 'forced send status' }) };
     }
     return { statusCode: 200, body: JSON.stringify({ ok: true }) };
   };
@@ -149,19 +155,74 @@ async function run() {
   assert.strictEqual(sendCount, sendCountAfterLegacyDelivery + 1);
 
 
-  // case 3b: non-retryable email 4xx should dead-letter immediately
-  forcedSendStatusByRunId = { seq_run_send_400: 400 };
+
+  // case 3a: transient email failure should retry email without regenerating CV
+  const retryRunId = 'seq_run_retry_email';
+  let retryGenerateCallCount = 0;
+  clearModule('../netlify/functions/generate-pdf');
+  const generateModule3a = require('../netlify/functions/generate-pdf');
+  generateModule3a.handler = async (event) => {
+    const payload = JSON.parse(event?.body || '{}');
+    if (payload?.runId === retryRunId) {
+      retryGenerateCallCount += 1;
+    }
+    return { statusCode: 200, isBase64Encoded: true, body: Buffer.from('pdf').toString('base64') };
+  };
+  forcedSendStatusByRunId = { [retryRunId]: [503, 200] };
+  await setupPaidJob(runStore, retryRunId);
+  clearModule('../netlify/functions/process-fulfillment-queue');
+  handler = require('../netlify/functions/process-fulfillment-queue').handler;
+  await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  let secondRetryResult = null;
+  for (let attempt = 0; attempt < 3 && !secondRetryResult; attempt += 1) {
+    const res3aSecond = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
+    const payload3aSecond = JSON.parse(res3aSecond.body || '{}');
+    secondRetryResult = findProcessedForRun(payload3aSecond, retryRunId);
+    if (!secondRetryResult) {
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+    }
+  }
+  assert.strictEqual(secondRetryResult?.status, 'COMPLETED');
+  assert.strictEqual(retryGenerateCallCount, 1, 'CV generation should not rerun on retry when artifacts are already ready.');
+  forcedSendStatusByRunId = {};
+
+  // case 3b: transient email 404 should retry (durable-store propagation race) and then complete
+  const retry404RunId = 'seq_run_retry_email_404';
   clearModule('../netlify/functions/generate-pdf');
   const generateModule3b = require('../netlify/functions/generate-pdf');
   generateModule3b.handler = async () => ({ statusCode: 200, isBase64Encoded: true, body: Buffer.from('pdf').toString('base64') });
+  forcedSendStatusByRunId = { [retry404RunId]: [404, 200] };
+  await setupPaidJob(runStore, retry404RunId);
+  clearModule('../netlify/functions/process-fulfillment-queue');
+  handler = require('../netlify/functions/process-fulfillment-queue').handler;
+  await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  let retry404Result = null;
+  for (let attempt = 0; attempt < 3 && !retry404Result; attempt += 1) {
+    const res3b = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
+    const payload3b = JSON.parse(res3b.body || '{}');
+    retry404Result = findProcessedForRun(payload3b, retry404RunId);
+    if (!retry404Result) {
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+    }
+  }
+  assert.strictEqual(retry404Result?.status, 'COMPLETED');
+  forcedSendStatusByRunId = {};
+
+  // case 3c: non-retryable email 4xx should dead-letter immediately
+  forcedSendStatusByRunId = { seq_run_send_400: 400 };
+  clearModule('../netlify/functions/generate-pdf');
+  const generateModule3c = require('../netlify/functions/generate-pdf');
+  generateModule3c.handler = async () => ({ statusCode: 200, isBase64Encoded: true, body: Buffer.from('pdf').toString('base64') });
 
   const runId3b = 'seq_run_send_400';
   const fulfillmentId3b = await setupPaidJob(runStore, runId3b);
   clearModule('../netlify/functions/process-fulfillment-queue');
   handler = require('../netlify/functions/process-fulfillment-queue').handler;
-  const res3b = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
-  const payload3b = JSON.parse(res3b.body || '{}');
-  assert.strictEqual(payload3b.processed[0].status, 'DEAD_LETTER');
+  const res3c = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
+  const payload3c = JSON.parse(res3c.body || '{}');
+  assert.strictEqual(payload3c.processed[0].status, 'DEAD_LETTER');
   const state = JSON.parse(fs.readFileSync(process.env.RUN_STORE_PATH, 'utf8'));
   const failedJob = (state.fulfillmentQueue || []).find((job) => job?.payload?.fulfillmentId === fulfillmentId3b && job?.status === 'DEAD_LETTER');
   assert.ok(failedJob, 'Expected dead-letter queue job to be persisted.');

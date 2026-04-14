@@ -28,7 +28,7 @@ function getRetryDelayMs(attempts) {
 
 function isRetryableEmailDeliveryStatus(statusCode) {
   const code = Number(statusCode);
-  if (code === 409 || code === 423 || code === 425) return true;
+  if (code === 404 || code === 409 || code === 423 || code === 425) return true;
   return isTransientStatus(code);
 }
 
@@ -107,6 +107,12 @@ exports.handler = async (event) => {
       const run = await getRun(runId);
       const hasOriginalCvText = Boolean(String(run?.original_cv_text || '').trim());
       const hasLegacyDeliverable = Boolean(run?.revised_cv_structured || String(run?.revised_cv_text || '').trim());
+      const runFulfillmentStatus = String(run?.fulfillment_status || '').trim().toLowerCase();
+      const hasReusableGeneratedCv = Boolean(
+        hasLegacyDeliverable
+        || run?.revised_cv_generated_at
+        || ['cv_ready', 'email_sending', 'email_sent'].includes(runFulfillmentStatus)
+      );
       let effectiveRunId = runId;
 
       if (!hasOriginalCvText) {
@@ -119,67 +125,72 @@ exports.handler = async (event) => {
         });
         await upsertRun(effectiveRunId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
       } else {
-        console.log('[full-audit] running', { runId, fulfillmentId });
-        await updateFulfillment(fulfillmentId, { processing_status: 'full_audit_running' });
-        await upsertRun(runId, { fulfillment_status: 'full_audit_running' });
-        const fullAudit = await runFullAudit(runId, run.original_cv_text, run.audit_result || '');
-        await upsertRun(runId, {
-          full_audit_result: fullAudit,
-          fulfillment_status: 'cv_generation_running',
-          full_audit_completed_at: new Date().toISOString(),
-        });
-
-        console.log('[cv-generation] generating structured CV', { runId, fulfillmentId });
-        const generatePdfHandler = require('./generate-pdf').handler;
-        const genResponse = await generatePdfHandler({
-          httpMethod: 'POST',
-          body: JSON.stringify({ runId, cvText: run.original_cv_text, cvAnalysis: JSON.stringify(fullAudit), forceRegenerate: true }),
-        });
-        if (!(genResponse?.statusCode >= 200 && genResponse?.statusCode < 300)) {
-          throw buildError(`CV generation failed with status ${genResponse?.statusCode || 500}`, Number(genResponse?.statusCode) || 500, { transient: true });
-        }
-        if (!genResponse?.isBase64Encoded || !String(genResponse?.body || '').trim()) {
-          throw buildError('CV generation did not return a final PDF attachment payload.', 500, { transient: true });
-        }
-
-        const generatedRunIdHeader = String(
-          genResponse?.headers?.['x-run-id']
-          || genResponse?.headers?.['X-Run-Id']
-          || (typeof genResponse?.headers?.get === 'function' ? genResponse.headers.get('x-run-id') : ''),
-        ).trim();
-        effectiveRunId = generatedRunIdHeader || runId;
-        if (generatedRunIdHeader && generatedRunIdHeader !== runId) {
-          console.log('[cv-generation] runId rotated during regeneration', {
-            previousRunId: runId,
-            newRunId: generatedRunIdHeader,
-            fulfillmentId,
+        if (hasReusableGeneratedCv) {
+          console.log('[cv-generation] reusing existing generated CV artifacts for retry delivery', { runId, fulfillmentId });
+          await upsertRun(runId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
+        } else {
+          console.log('[full-audit] running', { runId, fulfillmentId });
+          await updateFulfillment(fulfillmentId, { processing_status: 'full_audit_running' });
+          await upsertRun(runId, { fulfillment_status: 'full_audit_running' });
+          const fullAudit = await runFullAudit(runId, run.original_cv_text, run.audit_result || '');
+          await upsertRun(runId, {
+            full_audit_result: fullAudit,
+            fulfillment_status: 'cv_generation_running',
+            full_audit_completed_at: new Date().toISOString(),
           });
-          await updateFulfillment(fulfillmentId, {
-            run_id: generatedRunIdHeader,
+
+          console.log('[cv-generation] generating structured CV', { runId, fulfillmentId });
+          const generatePdfHandler = require('./generate-pdf').handler;
+          const genResponse = await generatePdfHandler({
+            httpMethod: 'POST',
+            body: JSON.stringify({ runId, cvText: run.original_cv_text, cvAnalysis: JSON.stringify(fullAudit), forceRegenerate: true }),
           });
-          try {
-            const rotatedRun = await getRun(generatedRunIdHeader);
-            if (rotatedRun?.revised_cv_text || rotatedRun?.revised_cv_structured) {
-              await upsertRun(runId, {
-                revised_cv_text: rotatedRun.revised_cv_text || null,
-                revised_cv_structured: rotatedRun.revised_cv_structured || null,
-                revised_cv_generated_at: rotatedRun.revised_cv_generated_at || new Date().toISOString(),
-                full_audit_result: rotatedRun.full_audit_result || null,
-                full_audit_completed_at: rotatedRun.full_audit_completed_at || null,
-                fulfillment_status: 'cv_ready',
-                fulfillment_rotated_run_id: generatedRunIdHeader,
-              });
-            }
-          } catch (rotationSyncError) {
-            console.warn('[cv-generation] failed to sync rotated run artifacts back to original run id', {
+          if (!(genResponse?.statusCode >= 200 && genResponse?.statusCode < 300)) {
+            throw buildError(`CV generation failed with status ${genResponse?.statusCode || 500}`, Number(genResponse?.statusCode) || 500, { transient: true });
+          }
+          if (!genResponse?.isBase64Encoded || !String(genResponse?.body || '').trim()) {
+            throw buildError('CV generation did not return a final PDF attachment payload.', 500, { transient: true });
+          }
+
+          const generatedRunIdHeader = String(
+            genResponse?.headers?.['x-run-id']
+            || genResponse?.headers?.['X-Run-Id']
+            || (typeof genResponse?.headers?.get === 'function' ? genResponse.headers.get('x-run-id') : ''),
+          ).trim();
+          effectiveRunId = generatedRunIdHeader || runId;
+          if (generatedRunIdHeader && generatedRunIdHeader !== runId) {
+            console.log('[cv-generation] runId rotated during regeneration', {
               previousRunId: runId,
               newRunId: generatedRunIdHeader,
-              error: rotationSyncError?.message || rotationSyncError,
+              fulfillmentId,
             });
+            await updateFulfillment(fulfillmentId, {
+              run_id: generatedRunIdHeader,
+            });
+            try {
+              const rotatedRun = await getRun(generatedRunIdHeader);
+              if (rotatedRun?.revised_cv_text || rotatedRun?.revised_cv_structured) {
+                await upsertRun(runId, {
+                  revised_cv_text: rotatedRun.revised_cv_text || null,
+                  revised_cv_structured: rotatedRun.revised_cv_structured || null,
+                  revised_cv_generated_at: rotatedRun.revised_cv_generated_at || new Date().toISOString(),
+                  full_audit_result: rotatedRun.full_audit_result || null,
+                  full_audit_completed_at: rotatedRun.full_audit_completed_at || null,
+                  fulfillment_status: 'cv_ready',
+                  fulfillment_rotated_run_id: generatedRunIdHeader,
+                });
+              }
+            } catch (rotationSyncError) {
+              console.warn('[cv-generation] failed to sync rotated run artifacts back to original run id', {
+                previousRunId: runId,
+                newRunId: generatedRunIdHeader,
+                error: rotationSyncError?.message || rotationSyncError,
+              });
+            }
           }
-        }
 
-        await upsertRun(effectiveRunId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
+          await upsertRun(effectiveRunId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
+        }
       }
       await upsertRun(runId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
 
