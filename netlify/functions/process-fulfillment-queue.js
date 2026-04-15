@@ -4,6 +4,7 @@ const {
   completeFulfillmentJob,
   createArtifactToken,
   createEmailDownloadToken,
+  getArtifactToken,
   getFulfillment,
   getRun,
   updateFulfillment,
@@ -71,6 +72,21 @@ function prepareFinalPdfArtifact(run = {}, generatedPdfBase64 = '') {
   return '';
 }
 
+function isArtifactTokenUsable(tokenRecord) {
+  if (!tokenRecord) return false;
+  const expiresAtMs = tokenRecord.expires_at ? new Date(tokenRecord.expires_at).getTime() : null;
+  if (Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now()) return false;
+  const maxDownloads = Math.max(0, Number(tokenRecord.max_downloads || 0));
+  const downloadCount = Math.max(0, Number(tokenRecord.download_count || 0));
+  if (maxDownloads > 0 && downloadCount >= maxDownloads) return false;
+  return true;
+}
+
+function isReusableFullAudit(audit) {
+  if (!audit || typeof audit !== 'object') return false;
+  return Array.isArray(audit.auditFindings) && Array.isArray(audit.improvementNotes);
+}
+
 function hasQueueAccess(headers = {}) {
   const expectedSecret = String(process.env.QUEUE_PROCESSOR_SECRET || '').trim();
   if (!expectedSecret) return true;
@@ -100,12 +116,19 @@ exports.handler = async (event) => {
   for (let index = 0; index < maxJobs; index += 1) {
     const job = await claimFulfillmentJob();
     if (!job) break;
+    const jobStartMs = Date.now();
 
     try {
       const payload = job.payload || {};
       const fulfillmentId = String(payload.fulfillmentId || '').trim();
       const requestedEmail = String(payload.email || '').trim().toLowerCase();
       const name = String(payload.name || '').trim();
+      console.log('[fulfillment][queue] claimed', {
+        jobId: job.id,
+        fulfillmentId,
+        attempts: job.attempts || 1,
+        queueWaitMs: Math.max(0, jobStartMs - new Date(job.created_at || Date.now()).getTime()),
+      });
       if (!fulfillmentId) {
         await completeFulfillmentJob(job.id, { status: 'DEAD_LETTER', last_status_code: 400, last_response_body: JSON.stringify({ error: 'fulfillmentId is required.' }) });
         processed.push({ jobId: job.id, status: 'DEAD_LETTER', reason: 'MISSING_FULFILLMENT_ID' });
@@ -137,6 +160,7 @@ exports.handler = async (event) => {
 
       const runId = String(fulfillment.run_id || '').trim();
       const run = await getRun(runId);
+      const paidAtMs = fulfillment?.paid_at ? new Date(fulfillment.paid_at).getTime() : null;
       const hasOriginalCvText = Boolean(String(run?.original_cv_text || '').trim());
       const hasLegacyDeliverable = Boolean(run?.revised_cv_structured || String(run?.revised_cv_text || '').trim());
       const runFulfillmentStatus = String(run?.fulfillment_status || '').trim().toLowerCase();
@@ -159,20 +183,30 @@ exports.handler = async (event) => {
         await upsertRun(effectiveRunId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
       } else {
         if (hasReusableGeneratedCv) {
-          console.log('[cv-generation] reusing existing generated CV artifacts for retry delivery', { runId, fulfillmentId });
+          console.log('[fulfillment][cv-generation] reusing existing generated CV artifacts for retry delivery', { runId, fulfillmentId });
           await upsertRun(runId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
         } else {
-          console.log('[full-audit] running', { runId, fulfillmentId });
+          console.log('[fulfillment][audit] start', { runId, fulfillmentId });
+          const auditStartMs = Date.now();
           await updateFulfillment(fulfillmentId, { processing_status: 'full_audit_running' });
           await upsertRun(runId, { fulfillment_status: 'full_audit_running' });
-          const fullAudit = await runFullAudit(runId, run.original_cv_text, run.audit_result || '');
+          const cachedAudit = isReusableFullAudit(run?.full_audit_result) ? run.full_audit_result : null;
+          const fullAudit = cachedAudit || await runFullAudit(runId, run.original_cv_text, run.audit_result || '');
+          const auditEndMs = Date.now();
+          console.log('[fulfillment][audit] complete', {
+            runId,
+            fulfillmentId,
+            cached: Boolean(cachedAudit),
+            elapsedMs: auditEndMs - auditStartMs,
+          });
           await upsertRun(runId, {
             full_audit_result: fullAudit,
             fulfillment_status: 'cv_generation_running',
             full_audit_completed_at: new Date().toISOString(),
           });
 
-          console.log('[cv-generation] generating structured CV', { runId, fulfillmentId });
+          console.log('[fulfillment][cv-generation] start', { runId, fulfillmentId });
+          const generationStartMs = Date.now();
           const generatePdfHandler = require('./generate-pdf').handler;
           const genResponse = await generatePdfHandler({
             httpMethod: 'POST',
@@ -188,6 +222,11 @@ exports.handler = async (event) => {
           if (!generatedPdfBase64) {
             throw buildError('CV generation returned an invalid final PDF payload.', 500, { transient: true });
           }
+          console.log('[fulfillment][cv-generation] complete', {
+            runId,
+            fulfillmentId,
+            elapsedMs: Date.now() - generationStartMs,
+          });
 
           const generatedRunIdHeader = String(
             genResponse?.headers?.['x-run-id']
@@ -232,27 +271,50 @@ exports.handler = async (event) => {
       await upsertRun(runId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
 
       const artifactRun = await getRun(effectiveRunId);
+      const artifactBuildStartMs = Date.now();
+      console.log('[fulfillment][artifact] build-start', { runId: effectiveRunId, fulfillmentId });
       const finalPdfBase64 = prepareFinalPdfArtifact(artifactRun, generatedPdfBase64);
       if (!finalPdfBase64) {
         throw buildError('Final PDF artifact is missing and must be prepared before email delivery.', 425, { transient: true });
       }
-      const artifactToken = String(artifactRun?.final_cv_artifact_token || '').trim() || createEmailDownloadToken();
+      const existingArtifactToken = String(artifactRun?.final_cv_artifact_token || '').trim();
+      const existingTokenRecord = existingArtifactToken ? await getArtifactToken(existingArtifactToken) : null;
+      const shouldReuseArtifactToken = Boolean(
+        existingArtifactToken
+        && isArtifactTokenUsable(existingTokenRecord)
+        && normalizeBase64Pdf(existingTokenRecord?.pdf_base64) === finalPdfBase64
+      );
+      const artifactToken = shouldReuseArtifactToken ? existingArtifactToken : createEmailDownloadToken();
       const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
       const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
       const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
-      await createArtifactToken({
-        token: artifactToken,
+      if (!shouldReuseArtifactToken) {
+        await createArtifactToken({
+          token: artifactToken,
+          runId: effectiveRunId,
+          fulfillmentId,
+          pdf_base64: finalPdfBase64,
+          revised_cv_text: String(artifactRun?.revised_cv_text || '').trim() || null,
+          expires_at: expiresAt,
+        });
+      }
+      const shouldUpdateRunArtifact =
+        normalizeBase64Pdf(artifactRun?.final_cv_pdf_base64) !== finalPdfBase64
+        || String(artifactRun?.final_cv_artifact_token || '').trim() !== artifactToken
+        || String(artifactRun?.fulfillment_status || '').trim().toLowerCase() !== 'artifact_persisted';
+      if (shouldUpdateRunArtifact) {
+        await upsertRun(effectiveRunId, {
+          final_cv_pdf_base64: finalPdfBase64,
+          final_cv_artifact_token: artifactToken,
+          final_cv_artifact_ready_at: new Date().toISOString(),
+          fulfillment_status: 'artifact_persisted',
+        });
+      }
+      console.log('[fulfillment][artifact] build-complete', {
         runId: effectiveRunId,
         fulfillmentId,
-        pdf_base64: finalPdfBase64,
-        revised_cv_text: String(artifactRun?.revised_cv_text || '').trim() || null,
-        expires_at: expiresAt,
-      });
-      await upsertRun(effectiveRunId, {
-        final_cv_pdf_base64: finalPdfBase64,
-        final_cv_artifact_token: artifactToken,
-        final_cv_artifact_ready_at: new Date().toISOString(),
-        fulfillment_status: 'artifact_persisted',
+        elapsedMs: Date.now() - artifactBuildStartMs,
+        reusedToken: shouldReuseArtifactToken,
       });
 
       const email = requestedEmail || String(fulfillment.email || '').trim();
@@ -261,10 +323,12 @@ exports.handler = async (event) => {
       const normalizedBaseUrl = /^https?:\/\//i.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
       const cvUrl = new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(effectiveRunId)}`, normalizedBaseUrl).toString();
 
-      console.log('[email-delivery] sending', { runId: effectiveRunId, fulfillmentId });
+      console.log('[fulfillment][email] handoff', { runId: effectiveRunId, fulfillmentId });
       await updateFulfillment(fulfillmentId, { processing_status: 'email_sending' });
       await upsertRun(effectiveRunId, { fulfillment_status: 'email_sending' });
       const sendHandler = require('./send-cv-email').handler;
+      const emailSendStartMs = Date.now();
+      console.log('[fulfillment][email] send-start', { runId: effectiveRunId, fulfillmentId });
       const response = await sendHandler({
         httpMethod: 'POST',
         body: JSON.stringify({
@@ -280,6 +344,7 @@ exports.handler = async (event) => {
         }),
       });
       if (response.statusCode >= 200 && response.statusCode < 300) {
+        const emailSendEndMs = Date.now();
         await updateFulfillment(fulfillmentId, {
           email_status: 'SENT',
           email_sent_at: new Date().toISOString(),
@@ -287,6 +352,13 @@ exports.handler = async (event) => {
         });
         await upsertRun(effectiveRunId, { fulfillment_status: 'email_sent', email_sent_at: new Date().toISOString() });
         await completeFulfillmentJob(job.id, { status: 'COMPLETED', last_status_code: response.statusCode, last_response_body: response.body || '' });
+        console.log('[fulfillment][email] send-complete', {
+          runId: effectiveRunId,
+          fulfillmentId,
+          elapsedMs: emailSendEndMs - emailSendStartMs,
+          totalSincePaidMs: Number.isFinite(paidAtMs) ? Math.max(0, emailSendEndMs - paidAtMs) : null,
+          totalJobMs: emailSendEndMs - jobStartMs,
+        });
         processed.push({ jobId: job.id, status: 'COMPLETED', fulfillmentId, runId: effectiveRunId });
       } else {
         const responseStatus = Number(response.statusCode) || 500;
