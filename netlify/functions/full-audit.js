@@ -58,9 +58,12 @@ async function runFullAudit(runId, cvText, teaserHints = '') {
   const apiKey = process.env.GOOGLE_AI_API_KEY;
   if (!apiKey) return fallbackAudit(cvText);
   const modelTimeoutMs = Math.max(1_000, Number(process.env.FULL_AUDIT_MODEL_TIMEOUT_MS || 12_000));
+  const auditStartMs = Date.now();
+  console.log('[fulfillment][audit] model-run-start', { runId, modelTimeoutMs });
 
   const candidateModels = getGoogleAiCandidateModels();
   for (const model of candidateModels) {
+    const modelStartMs = Date.now();
     const requestController = new AbortController();
     const timeoutHandle = setTimeout(() => requestController.abort(), modelTimeoutMs);
     try {
@@ -78,19 +81,34 @@ async function runFullAudit(runId, cvText, teaserHints = '') {
         }),
         signal: requestController.signal,
       });
-      if (!response.ok) continue;
+      if (!response.ok) {
+        console.warn('[fulfillment][audit] model-response-not-ok', { runId, model, status: response.status });
+        continue;
+      }
       const data = await response.json();
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
       const parsed = parseAuditJson(text);
-      if (parsed) return parsed;
+      if (parsed) {
+        console.log('[fulfillment][audit] model-run-complete', {
+          runId,
+          model,
+          elapsedMs: Date.now() - modelStartMs,
+          totalElapsedMs: Date.now() - auditStartMs,
+        });
+        return parsed;
+      }
+      console.warn('[fulfillment][audit] model-parse-failed', { runId, model, elapsedMs: Date.now() - modelStartMs });
     } catch (error) {
       if (error?.name === 'AbortError') {
-        console.warn('[full-audit] model request timed out; trying next model', { model, modelTimeoutMs });
+        console.warn('[fulfillment][audit] model-timeout', { runId, model, modelTimeoutMs });
+      } else {
+        console.warn('[fulfillment][audit] model-error', { runId, model, error: error?.message || error });
       }
     } finally {
       clearTimeout(timeoutHandle);
     }
   }
+  console.warn('[fulfillment][audit] fallback-used', { runId, elapsedMs: Date.now() - auditStartMs });
   return fallbackAudit(cvText);
 }
 

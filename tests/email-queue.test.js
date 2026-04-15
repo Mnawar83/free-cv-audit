@@ -13,6 +13,14 @@ async function run() {
   clearModule('../netlify/functions/run-store');
   const runStore = require('../netlify/functions/run-store');
   const runId = 'queued-run-id';
+  const queuedPdfBase64 = Buffer.alloc(256, 'q').toString('base64');
+  const queuedArtifactToken = runStore.createEmailDownloadToken();
+  await runStore.createArtifactToken({
+    token: queuedArtifactToken,
+    runId,
+    pdf_base64: queuedPdfBase64,
+    expires_at: new Date(Date.now() + 60_000).toISOString(),
+  });
   await runStore.upsertRun(runId, { revised_cv_text: 'Queued Candidate\nEXPERIENCE\n- Async tested' });
 
   let sendCount = 0;
@@ -35,6 +43,8 @@ async function run() {
       name: 'Queue',
       cvUrl: `/.netlify/functions/generate-pdf?runId=${runId}`,
       runId,
+      pdfBase64: queuedPdfBase64,
+      artifactToken: queuedArtifactToken,
     }),
   });
   assert.strictEqual(queuedResponse.statusCode, 202);
@@ -97,9 +107,10 @@ async function run() {
       forceSync: true,
     }),
   });
-  assert.ok(
-    missingRunResponse.statusCode === 200,
-    'Missing run should still send email with download link only.',
+  assert.strictEqual(
+    missingRunResponse.statusCode,
+    425,
+    'Missing run should return retryable artifact-not-ready when no prepared artifact is available.',
   );
 
   delete process.env.QUEUE_PROCESSOR_SECRET;
