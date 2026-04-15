@@ -276,8 +276,8 @@ exports.handler = async (event) => {
     let canonicalCvUrl = '';
     if (artifactToken) {
       const tokenRecord = await getArtifactToken(artifactToken);
+      snapshotPdfBase64 = snapshotPdfBase64 || normalizeBase64Pdf(tokenRecord?.pdf_base64);
       if (isArtifactTokenUsable(tokenRecord)) {
-        snapshotPdfBase64 = snapshotPdfBase64 || normalizeBase64Pdf(tokenRecord?.pdf_base64);
         canonicalCvUrl = buildCanonicalCvUrl(artifactToken, cvUrl, runId);
       }
     }

@@ -177,6 +177,50 @@ async function run() {
   assert.strictEqual(tokenOnlyResponse.statusCode, 200, 'Token-backed artifact should send without run-level pdf snapshot.');
   assert.ok(Array.isArray(tokenOnlyPayload?.attachments) && tokenOnlyPayload.attachments.length === 1, 'Token-backed artifact should still attach PDF.');
 
+  // Expired token-only artifact should refresh from stored token pdf bytes (not return 425)
+  const tokenOnlyExpiredRunId = 'token_only_expired_artifact_run';
+  const tokenOnlyExpiredPdfBase64 = Buffer.alloc(256, 'x').toString('base64');
+  const expiredTokenOnlyArtifactToken = runStore.createEmailDownloadToken();
+  await runStore.createArtifactToken({
+    token: expiredTokenOnlyArtifactToken,
+    runId: tokenOnlyExpiredRunId,
+    pdf_base64: tokenOnlyExpiredPdfBase64,
+    expires_at: new Date(Date.now() - 60_000).toISOString(),
+  });
+  await runStore.upsertRun(tokenOnlyExpiredRunId, {
+    revised_cv_text: 'Token-only expired run revised text',
+    final_cv_pdf_base64: null,
+    final_cv_artifact_token: expiredTokenOnlyArtifactToken,
+    final_cv_artifact_ready_at: new Date().toISOString(),
+  });
+  let tokenOnlyExpiredPayload = null;
+  global.fetch = async (_url, options = {}) => {
+    tokenOnlyExpiredPayload = JSON.parse(options.body || '{}');
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'email_token_only_expired_refresh' }),
+    };
+  };
+  const tokenOnlyExpiredResponse = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      email: 'token-expired@example.com',
+      name: 'Token Expired',
+      runId: tokenOnlyExpiredRunId,
+      cvUrl: `/.netlify/functions/generate-pdf?runId=${tokenOnlyExpiredRunId}`,
+      resend: true,
+    }),
+  });
+  assert.strictEqual(tokenOnlyExpiredResponse.statusCode, 200, 'Expired token-only artifact should refresh and send from stored token pdf bytes.');
+  const tokenOnlyExpiredMatch = String(tokenOnlyExpiredPayload?.html || '').match(/cv-email-download\?token=([a-z0-9-]+)/i);
+  assert.ok(tokenOnlyExpiredMatch, 'Expired token-only resend should include tokenized link.');
+  assert.notStrictEqual(tokenOnlyExpiredMatch[1], expiredTokenOnlyArtifactToken, 'Expired token-only resend should mint a fresh token.');
+  assert.ok(Array.isArray(tokenOnlyExpiredPayload?.attachments) && tokenOnlyExpiredPayload.attachments.length === 1, 'Expired token-only resend should still attach PDF.');
+  const refreshedTokenOnlyRun = await runStore.getRun(tokenOnlyExpiredRunId);
+  assert.strictEqual(refreshedTokenOnlyRun.final_cv_artifact_token, tokenOnlyExpiredMatch[1], 'Run should store refreshed token for token-only expired resend.');
+  assert.strictEqual(refreshedTokenOnlyRun.final_cv_pdf_base64, tokenOnlyExpiredPdfBase64, 'Run should persist refreshed token pdf snapshot for future sends.');
+
   // Requests using pre-rotation runId should rebind to rotated run artifacts
   const rotatedOriginalRunId = 'rotated_original_run';
   const rotatedEffectiveRunId = 'rotated_effective_run';
