@@ -198,6 +198,65 @@ async function run() {
   assert.strictEqual(regenFallbackGenerateCalls, 1, 'Fallback should regenerate once from source CV when cached artifacts are unusable.');
   const sendCountAfterRegenerationFallbackDelivery = sendCount;
 
+  // case 0e: revised text render errors should not abort; source regeneration fallback should recover
+  const textRenderFallbackRunId = 'seq_run_text_render_fallback';
+  const textRenderFallbackFulfillment = await runStore.createFulfillment({
+    run_id: textRenderFallbackRunId,
+    email: 'sequence@example.com',
+    provider: 'paypal',
+    provider_order_id: `order_text_render_fallback_${Date.now()}`,
+    payment_status: 'PAID',
+  });
+  await runStore.upsertRun(textRenderFallbackRunId, {
+    original_cv_text: 'Source CV text that should be used by regeneration fallback when revised text render fails.',
+    revised_cv_structured: null,
+    revised_cv_text: 'THROW_REVISED_RENDER_ERROR',
+    full_audit_result: {
+      auditFindings: ['A'],
+      improvementNotes: ['B'],
+      atsKeywordSuggestions: ['C'],
+      summaryRecommendations: ['D'],
+      experienceRecommendations: ['E'],
+      skillsRecommendations: ['F'],
+    },
+    revised_cv_generated_at: new Date().toISOString(),
+  });
+  clearModule('../netlify/functions/pdf-builder');
+  const pdfBuilderModule = require('../netlify/functions/pdf-builder');
+  const originalBuildPdfBuffer = pdfBuilderModule.buildPdfBuffer;
+  pdfBuilderModule.buildPdfBuffer = (text) => {
+    if (String(text || '').includes('THROW_REVISED_RENDER_ERROR')) {
+      throw new Error('intentional revised text render failure');
+    }
+    return originalBuildPdfBuffer(text);
+  };
+  let textRenderFallbackGenerateCalls = 0;
+  clearModule('../netlify/functions/generate-pdf');
+  const textRenderFallbackGenerateModule = require('../netlify/functions/generate-pdf');
+  textRenderFallbackGenerateModule.handler = async (event) => {
+    const payload = JSON.parse(event?.body || '{}');
+    if (payload?.runId === textRenderFallbackRunId) {
+      textRenderFallbackGenerateCalls += 1;
+      return { statusCode: 200, isBase64Encoded: true, body: Buffer.from('text-render-fallback-pdf').toString('base64') };
+    }
+    return { statusCode: 200, isBase64Encoded: true, body: Buffer.from('pdf').toString('base64') };
+  };
+  await runStore.enqueueFulfillmentJob({
+    fulfillmentId: textRenderFallbackFulfillment.fulfillment_id,
+    email: 'sequence@example.com',
+    name: 'Seq User',
+    forceSync: true,
+  });
+  clearModule('../netlify/functions/process-fulfillment-queue');
+  handler = require('../netlify/functions/process-fulfillment-queue').handler;
+  const res0e = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
+  const payload0e = JSON.parse(res0e.body || '{}');
+  assert.strictEqual(payload0e.processed[0].status, 'COMPLETED');
+  assert.strictEqual(textRenderFallbackGenerateCalls, 1, 'Fallback should regenerate when revised text PDF render throws.');
+  pdfBuilderModule.buildPdfBuffer = originalBuildPdfBuffer;
+  clearModule('../netlify/functions/pdf-builder');
+  const sendCountAfterTextRenderFallbackDelivery = sendCount;
+
   // case 1: generation hard-fails => no email
   clearModule('../netlify/functions/generate-pdf');
   const generateModule1 = require('../netlify/functions/generate-pdf');
@@ -210,7 +269,7 @@ async function run() {
   const res1 = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
   const payload1 = JSON.parse(res1.body || '{}');
   assert.strictEqual(payload1.processed[0].status, 'RETRY');
-  assert.strictEqual(sendCount, sendCountAfterRegenerationFallbackDelivery);
+  assert.strictEqual(sendCount, sendCountAfterTextRenderFallbackDelivery);
 
   // case 2: generation returns no final attachment payload => no email
   clearModule('../netlify/functions/generate-pdf');
@@ -224,7 +283,7 @@ async function run() {
   const res2 = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
   const payload2 = JSON.parse(res2.body || '{}');
   assert.strictEqual(payload2.processed[0].status, 'RETRY');
-  assert.strictEqual(sendCount, sendCountAfterRegenerationFallbackDelivery);
+  assert.strictEqual(sendCount, sendCountAfterTextRenderFallbackDelivery);
 
   // case 3: generation succeeds with final attachment payload => email sends
   clearModule('../netlify/functions/generate-pdf');
@@ -238,7 +297,7 @@ async function run() {
   const res3 = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
   const payload3 = JSON.parse(res3.body || '{}');
   assert.strictEqual(payload3.processed[0].status, 'COMPLETED');
-  assert.strictEqual(sendCount, sendCountAfterRegenerationFallbackDelivery + 1);
+  assert.strictEqual(sendCount, sendCountAfterTextRenderFallbackDelivery + 1);
 
 
 
