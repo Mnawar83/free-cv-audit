@@ -1,6 +1,6 @@
 const { getEmailDownloadSnapshot } = require('./email-download-store');
 const { buildPdfBuffer, pdfResponse } = require('./pdf-builder');
-const { getArtifactToken, incrementArtifactTokenDownload, takeRateLimitSlot } = require('./run-store');
+const { getArtifactToken, getRun, incrementArtifactTokenDownload, takeRateLimitSlot } = require('./run-store');
 
 function normalizeBase64Pdf(value) {
   const raw = String(value || '').trim().replace(/\s+/g, '');
@@ -58,7 +58,14 @@ exports.handler = async (event) => {
 
     const artifactToken = await getArtifactToken(token);
     const snapshot = artifactToken || (await getEmailDownloadSnapshot(event, token));
-    const pdfBase64 = normalizeBase64Pdf(snapshot?.pdf_base64);
+    let pdfBase64 = normalizeBase64Pdf(snapshot?.pdf_base64);
+
+    // Resolve PDF from run record when artifact token stores only a reference
+    if (!pdfBase64 && snapshot?.runId) {
+      const run = await getRun(snapshot.runId);
+      pdfBase64 = normalizeBase64Pdf(run?.final_cv_pdf_base64);
+    }
+
     if (!snapshot?.revised_cv_text && !pdfBase64) {
       return htmlErrorResponse(404, 'Your revised CV could not be found. Please request a new download link.');
     }

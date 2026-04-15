@@ -4,6 +4,21 @@
 [functions."generate-pdf"]
   timeout = 90
 
+[functions."process-fulfillment-queue"]
+  timeout = 120
+
+[functions."process-fulfillment-queue-scheduled"]
+  timeout = 120
+
+[functions."process-email-queue"]
+  timeout = 60
+
+[functions."process-email-queue-scheduled"]
+  timeout = 60
+
+[functions."send-cv-email"]
+  timeout = 30
+
 [build]
   publish = "."
 

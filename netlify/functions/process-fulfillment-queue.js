@@ -138,7 +138,7 @@ exports.handler = async (event) => {
     return { statusCode: 403, body: JSON.stringify({ error: 'Forbidden' }) };
   }
 
-  const maxJobs = Math.max(1, Number(process.env.FULFILLMENT_QUEUE_BATCH_SIZE || 10));
+  const maxJobs = Math.max(1, Number(process.env.FULFILLMENT_QUEUE_BATCH_SIZE || 2));
   const maxAttempts = Math.max(1, Number(process.env.FULFILLMENT_QUEUE_MAX_ATTEMPTS || 3));
   const processed = [];
 
@@ -297,7 +297,69 @@ exports.handler = async (event) => {
           await upsertRun(effectiveRunId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
         }
       }
-      await upsertRun(runId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
+      // Only write cv_ready to original runId if it differs from effectiveRunId (rotation case)
+      if (effectiveRunId !== runId) {
+        await upsertRun(runId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
+      }
+
+      let artifactRun = await getRun(effectiveRunId);
+      const artifactBuildStartMs = Date.now();
+      console.log('[fulfillment][artifact] build-start', { runId: effectiveRunId, fulfillmentId });
+      let finalPdfBase64 = prepareFinalPdfArtifact(artifactRun, generatedPdfBase64);
+      if (!finalPdfBase64) {
+        console.warn('[fulfillment][artifact] cached artifact unavailable; attempting source regeneration fallback', {
+          runId: effectiveRunId,
+          fulfillmentId,
+        });
+        const regeneratedPdfBase64 = await regenerateFinalPdfFromSource(effectiveRunId, artifactRun, artifactRun?.full_audit_result || run?.full_audit_result);
+        if (regeneratedPdfBase64) {
+          generatedPdfBase64 = regeneratedPdfBase64;
+          artifactRun = await getRun(effectiveRunId);
+          finalPdfBase64 = prepareFinalPdfArtifact(artifactRun, regeneratedPdfBase64);
+        }
+      }
+      if (!finalPdfBase64) {
+        throw buildError('Final PDF artifact is missing and must be prepared before email delivery.', 425, { transient: true });
+      }
+      const existingArtifactToken = String(artifactRun?.final_cv_artifact_token || '').trim();
+      const existingTokenRecord = existingArtifactToken ? await getArtifactToken(existingArtifactToken) : null;
+      const shouldReuseArtifactToken = Boolean(
+        existingArtifactToken
+        && isArtifactTokenUsable(existingTokenRecord)
+        && normalizeBase64Pdf(artifactRun?.final_cv_pdf_base64) === finalPdfBase64
+      );
+      const artifactToken = shouldReuseArtifactToken ? existingArtifactToken : createEmailDownloadToken();
+      const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
+      const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
+      const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
+      if (!shouldReuseArtifactToken) {
+        await createArtifactToken({
+          token: artifactToken,
+          runId: effectiveRunId,
+          fulfillmentId,
+          revised_cv_text: String(artifactRun?.revised_cv_text || '').trim() || null,
+          expires_at: expiresAt,
+        });
+      }
+      const shouldUpdateRunArtifact =
+        normalizeBase64Pdf(artifactRun?.final_cv_pdf_base64) !== finalPdfBase64
+        || String(artifactRun?.final_cv_artifact_token || '').trim() !== artifactToken
+        || String(artifactRun?.fulfillment_status || '').trim().toLowerCase() !== 'artifact_persisted';
+      if (shouldUpdateRunArtifact) {
+        await upsertRun(effectiveRunId, {
+          final_cv_pdf_base64: finalPdfBase64,
+          final_cv_artifact_token: artifactToken,
+          final_cv_artifact_ready_at: new Date().toISOString(),
+          fulfillment_status: 'artifact_persisted',
+        });
+      }
+      console.log('[fulfillment][artifact] build-complete', {
+        runId: effectiveRunId,
+        fulfillmentId,
+        elapsedMs: Date.now() - artifactBuildStartMs,
+        reusedToken: shouldReuseArtifactToken,
+      });
+      stageTiming.artifactMs = Date.now() - artifactBuildStartMs;
 
       let artifactRun = await getRun(effectiveRunId);
       const artifactBuildStartMs = Date.now();
