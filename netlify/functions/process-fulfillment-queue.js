@@ -67,7 +67,14 @@ function prepareFinalPdfArtifact(run = {}, generatedPdfBase64 = '') {
   }
   const revisedText = String(run?.revised_cv_text || '').trim();
   if (revisedText) {
-    return buildPdfBuffer(revisedText).toString('base64');
+    try {
+      return buildPdfBuffer(revisedText).toString('base64');
+    } catch (error) {
+      console.warn('[artifact-prep] revised CV text render failed; falling back to source regeneration', {
+        runId: run?.runId || null,
+        error: error?.message || error,
+      });
+    }
   }
   return '';
 }
