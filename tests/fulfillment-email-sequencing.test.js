@@ -149,6 +149,55 @@ async function run() {
   assert.strictEqual(sendCount, sendCountAfterLegacyDelivery + 1, 'Malformed structured payload should still send via text fallback.');
   const sendCountAfterStructuredFallbackDelivery = sendCount;
 
+  // case 0d: cached artifacts unusable should regenerate from original CV before marking missing
+  const regenFallbackRunId = 'seq_run_regen_fallback';
+  const regenFallbackFulfillment = await runStore.createFulfillment({
+    run_id: regenFallbackRunId,
+    email: 'sequence@example.com',
+    provider: 'paypal',
+    provider_order_id: `order_regen_fallback_${Date.now()}`,
+    payment_status: 'PAID',
+  });
+  await runStore.upsertRun(regenFallbackRunId, {
+    original_cv_text: 'Regeneration fallback source CV with enough content to render a final PDF artifact.',
+    revised_cv_structured: null,
+    revised_cv_text: '',
+    final_cv_pdf_base64: 'invalid-base64-@@@',
+    full_audit_result: {
+      auditFindings: ['A'],
+      improvementNotes: ['B'],
+      atsKeywordSuggestions: ['C'],
+      summaryRecommendations: ['D'],
+      experienceRecommendations: ['E'],
+      skillsRecommendations: ['F'],
+    },
+    revised_cv_generated_at: new Date().toISOString(),
+  });
+  let regenFallbackGenerateCalls = 0;
+  clearModule('../netlify/functions/generate-pdf');
+  const regenFallbackGenerateModule = require('../netlify/functions/generate-pdf');
+  regenFallbackGenerateModule.handler = async (event) => {
+    const payload = JSON.parse(event?.body || '{}');
+    if (payload?.runId === regenFallbackRunId) {
+      regenFallbackGenerateCalls += 1;
+      return { statusCode: 200, isBase64Encoded: true, body: Buffer.from('regen-fallback-pdf').toString('base64') };
+    }
+    return { statusCode: 200, isBase64Encoded: true, body: Buffer.from('pdf').toString('base64') };
+  };
+  await runStore.enqueueFulfillmentJob({
+    fulfillmentId: regenFallbackFulfillment.fulfillment_id,
+    email: 'sequence@example.com',
+    name: 'Seq User',
+    forceSync: true,
+  });
+  clearModule('../netlify/functions/process-fulfillment-queue');
+  handler = require('../netlify/functions/process-fulfillment-queue').handler;
+  const res0d = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
+  const payload0d = JSON.parse(res0d.body || '{}');
+  assert.strictEqual(payload0d.processed[0].status, 'COMPLETED');
+  assert.strictEqual(regenFallbackGenerateCalls, 1, 'Fallback should regenerate once from source CV when cached artifacts are unusable.');
+  const sendCountAfterRegenerationFallbackDelivery = sendCount;
+
   // case 1: generation hard-fails => no email
   clearModule('../netlify/functions/generate-pdf');
   const generateModule1 = require('../netlify/functions/generate-pdf');
@@ -161,7 +210,7 @@ async function run() {
   const res1 = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
   const payload1 = JSON.parse(res1.body || '{}');
   assert.strictEqual(payload1.processed[0].status, 'RETRY');
-  assert.strictEqual(sendCount, sendCountAfterStructuredFallbackDelivery);
+  assert.strictEqual(sendCount, sendCountAfterRegenerationFallbackDelivery);
 
   // case 2: generation returns no final attachment payload => no email
   clearModule('../netlify/functions/generate-pdf');
@@ -175,7 +224,7 @@ async function run() {
   const res2 = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
   const payload2 = JSON.parse(res2.body || '{}');
   assert.strictEqual(payload2.processed[0].status, 'RETRY');
-  assert.strictEqual(sendCount, sendCountAfterStructuredFallbackDelivery);
+  assert.strictEqual(sendCount, sendCountAfterRegenerationFallbackDelivery);
 
   // case 3: generation succeeds with final attachment payload => email sends
   clearModule('../netlify/functions/generate-pdf');
@@ -189,7 +238,7 @@ async function run() {
   const res3 = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
   const payload3 = JSON.parse(res3.body || '{}');
   assert.strictEqual(payload3.processed[0].status, 'COMPLETED');
-  assert.strictEqual(sendCount, sendCountAfterStructuredFallbackDelivery + 1);
+  assert.strictEqual(sendCount, sendCountAfterRegenerationFallbackDelivery + 1);
 
 
 

@@ -139,6 +139,44 @@ async function run() {
   const refreshedRun = await runStore.getRun(runId);
   assert.strictEqual(refreshedRun.final_cv_artifact_token, refreshedTokenMatch[1], 'Run should track refreshed final artifact token.');
 
+  // Token-only artifact should still send even when run.final_cv_pdf_base64 is absent
+  const tokenOnlyRunId = 'token_only_artifact_run';
+  const tokenOnlyPdfBase64 = Buffer.alloc(256, 't').toString('base64');
+  const tokenOnlyArtifactToken = runStore.createEmailDownloadToken();
+  await runStore.createArtifactToken({
+    token: tokenOnlyArtifactToken,
+    runId: tokenOnlyRunId,
+    pdf_base64: tokenOnlyPdfBase64,
+    expires_at: new Date(Date.now() + 60_000).toISOString(),
+  });
+  await runStore.upsertRun(tokenOnlyRunId, {
+    revised_cv_text: 'Token-only run revised text',
+    final_cv_pdf_base64: null,
+    final_cv_artifact_token: tokenOnlyArtifactToken,
+    final_cv_artifact_ready_at: new Date().toISOString(),
+  });
+  let tokenOnlyPayload = null;
+  global.fetch = async (_url, options = {}) => {
+    tokenOnlyPayload = JSON.parse(options.body || '{}');
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'email_token_only' }),
+    };
+  };
+  const tokenOnlyResponse = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      email: 'token-only@example.com',
+      name: 'Token Only',
+      runId: tokenOnlyRunId,
+      cvUrl: `/.netlify/functions/generate-pdf?runId=${tokenOnlyRunId}`,
+      resend: true,
+    }),
+  });
+  assert.strictEqual(tokenOnlyResponse.statusCode, 200, 'Token-backed artifact should send without run-level pdf snapshot.');
+  assert.ok(Array.isArray(tokenOnlyPayload?.attachments) && tokenOnlyPayload.attachments.length === 1, 'Token-backed artifact should still attach PDF.');
+
   process.env.CV_DOWNLOAD_RATE_LIMIT_MAX = '3';
   process.env.CV_DOWNLOAD_RATE_LIMIT_WINDOW_MS = '60000';
   clearModule('../netlify/functions/cv-email-download');

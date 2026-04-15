@@ -87,6 +87,28 @@ function isReusableFullAudit(audit) {
   return Array.isArray(audit.auditFindings) && Array.isArray(audit.improvementNotes);
 }
 
+async function regenerateFinalPdfFromSource(runId, run, fullAuditResult) {
+  const sourceCvText = String(run?.original_cv_text || '').trim();
+  if (!sourceCvText) return '';
+  const generatePdfHandler = require('./generate-pdf').handler;
+  const response = await generatePdfHandler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      runId,
+      cvText: sourceCvText,
+      cvAnalysis: JSON.stringify(fullAuditResult || run?.full_audit_result || run?.audit_result || ''),
+      forceRegenerate: true,
+    }),
+  });
+  if (!(response?.statusCode >= 200 && response?.statusCode < 300)) {
+    throw buildError(`Fallback CV regeneration failed with status ${response?.statusCode || 500}`, Number(response?.statusCode) || 500, { transient: true });
+  }
+  if (!response?.isBase64Encoded || !String(response?.body || '').trim()) {
+    return '';
+  }
+  return normalizeBase64Pdf(response.body);
+}
+
 function hasQueueAccess(headers = {}) {
   const expectedSecret = String(process.env.QUEUE_PROCESSOR_SECRET || '').trim();
   if (!expectedSecret) return true;
@@ -270,10 +292,22 @@ exports.handler = async (event) => {
       }
       await upsertRun(runId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
 
-      const artifactRun = await getRun(effectiveRunId);
+      let artifactRun = await getRun(effectiveRunId);
       const artifactBuildStartMs = Date.now();
       console.log('[fulfillment][artifact] build-start', { runId: effectiveRunId, fulfillmentId });
-      const finalPdfBase64 = prepareFinalPdfArtifact(artifactRun, generatedPdfBase64);
+      let finalPdfBase64 = prepareFinalPdfArtifact(artifactRun, generatedPdfBase64);
+      if (!finalPdfBase64) {
+        console.warn('[fulfillment][artifact] cached artifact unavailable; attempting source regeneration fallback', {
+          runId: effectiveRunId,
+          fulfillmentId,
+        });
+        const regeneratedPdfBase64 = await regenerateFinalPdfFromSource(effectiveRunId, artifactRun, artifactRun?.full_audit_result || run?.full_audit_result);
+        if (regeneratedPdfBase64) {
+          generatedPdfBase64 = regeneratedPdfBase64;
+          artifactRun = await getRun(effectiveRunId);
+          finalPdfBase64 = prepareFinalPdfArtifact(artifactRun, regeneratedPdfBase64);
+        }
+      }
       if (!finalPdfBase64) {
         throw buildError('Final PDF artifact is missing and must be prepared before email delivery.', 425, { transient: true });
       }

@@ -248,12 +248,13 @@ exports.handler = async (event) => {
     if (isQualityFloorEnabled() && (run?.revised_cv_fallback_generated_at || run?.revised_cv_lenient_fallback_generated_at)) {
       return json(409, { error: 'Revised CV is still being refined for quality. Please retry shortly.' });
     }
-    const snapshotPdfBase64 = normalizeBase64Pdf(clientPdfBase64) || normalizeBase64Pdf(run?.final_cv_pdf_base64);
+    let snapshotPdfBase64 = normalizeBase64Pdf(clientPdfBase64) || normalizeBase64Pdf(run?.final_cv_pdf_base64);
     let artifactToken = toSafeText(payload.artifactToken) || toSafeText(run?.final_cv_artifact_token);
     let canonicalCvUrl = '';
     if (artifactToken) {
       const tokenRecord = await getArtifactToken(artifactToken);
       if (isArtifactTokenUsable(tokenRecord)) {
+        snapshotPdfBase64 = snapshotPdfBase64 || normalizeBase64Pdf(tokenRecord?.pdf_base64);
         canonicalCvUrl = buildCanonicalCvUrl(artifactToken, cvUrl, runId);
       }
     }
@@ -274,6 +275,7 @@ exports.handler = async (event) => {
       canonicalCvUrl = buildCanonicalCvUrl(artifactToken, cvUrl, runId);
       if (runId) {
         await upsertRun(runId, {
+          final_cv_pdf_base64: snapshotPdfBase64,
           final_cv_artifact_token: mintedToken,
           final_cv_artifact_ready_at: run?.final_cv_artifact_ready_at || new Date().toISOString(),
         }).catch(() => null);
