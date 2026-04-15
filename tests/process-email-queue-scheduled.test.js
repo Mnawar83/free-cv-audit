@@ -14,6 +14,14 @@ async function run() {
   clearModule('../netlify/functions/run-store');
   const runStore = require('../netlify/functions/run-store');
   const runId = 'scheduled-run-id';
+  const queuedPdfBase64 = Buffer.alloc(256, 's').toString('base64');
+  const queuedArtifactToken = runStore.createEmailDownloadToken();
+  await runStore.createArtifactToken({
+    token: queuedArtifactToken,
+    runId,
+    pdf_base64: queuedPdfBase64,
+    expires_at: new Date(Date.now() + 60_000).toISOString(),
+  });
   await runStore.upsertRun(runId, { revised_cv_text: 'Scheduled Candidate\nEXPERIENCE\n- Cron processed' });
 
   global.fetch = async () => ({ ok: true, status: 200, json: async () => ({ id: 'email_sched_1' }) });
@@ -27,6 +35,8 @@ async function run() {
       name: 'Cron',
       cvUrl: `/.netlify/functions/generate-pdf?runId=${runId}`,
       runId,
+      pdfBase64: queuedPdfBase64,
+      artifactToken: queuedArtifactToken,
     }),
   });
   assert.strictEqual(queued.statusCode, 202);

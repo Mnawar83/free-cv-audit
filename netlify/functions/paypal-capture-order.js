@@ -127,15 +127,27 @@ exports.handler = async (event) => {
           paid_at: new Date().toISOString(),
         });
         if (deliveryEmail) {
-          console.log('[payment-confirmation] paypal payment confirmed; queueing paid fulfillment', { fulfillmentId });
+          const queuedAtIso = new Date().toISOString();
+          console.log('[fulfillment][queue] payment-confirmed', {
+            provider: 'paypal',
+            fulfillmentId,
+            paidAt: queuedAtIso,
+          });
           await updateFulfillment(fulfillmentId, {
             processing_status: 'full_audit_queued',
+            queue_enqueued_at: queuedAtIso,
           });
-          await enqueueFulfillmentJob({
+          const queuedJob = await enqueueFulfillmentJob({
             fulfillmentId,
             email: deliveryEmail,
             name: '',
             forceSync: true,
+          });
+          console.log('[fulfillment][queue] enqueued', {
+            provider: 'paypal',
+            fulfillmentId,
+            jobId: queuedJob?.id || null,
+            queuedAt: queuedJob?.created_at || queuedAtIso,
           });
           await triggerFulfillmentQueueProcessing();
         }
