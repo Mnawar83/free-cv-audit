@@ -387,6 +387,11 @@ async function run() {
   const failedJob = (state.fulfillmentQueue || []).find((job) => job?.payload?.fulfillmentId === fulfillmentId3b && job?.status === 'DEAD_LETTER');
   assert.ok(failedJob, 'Expected dead-letter queue job to be persisted.');
   assert.strictEqual(failedJob.last_status_code, 400);
+  assert.ok(String(failedJob.last_response_body || '').includes('Email delivery failed with status 400'));
+  const failedFulfillment = await runStore.getFulfillment(fulfillmentId3b);
+  assert.strictEqual(failedFulfillment.processing_status, 'email_failed');
+  assert.strictEqual(failedFulfillment.last_email_error_status, 400);
+  assert.ok(String(failedFulfillment.last_email_error || '').includes('Email delivery failed with status 400'));
   forcedSendStatusByRunId = {};
 
   // case 4: generate-pdf rotates run id => queue must use new run id for send + status metadata

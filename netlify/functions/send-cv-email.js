@@ -204,6 +204,7 @@ exports.handler = async (event) => {
   try {
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
+      console.log('[fulfillment][email] send-blocked reason=missing_resend_api_key');
       return json(500, { error: 'RESEND_API_KEY is missing.' });
     }
 
@@ -338,7 +339,10 @@ exports.handler = async (event) => {
         run = rotatedRun;
       }
     }
-    if (isQualityFloorEnabled() && (run?.revised_cv_fallback_generated_at || run?.revised_cv_lenient_fallback_generated_at)) {
+    const hasQualityFloorMarker = Boolean(run?.revised_cv_fallback_generated_at || run?.revised_cv_lenient_fallback_generated_at);
+    const shouldEnforceQualityFloor = isQualityFloorEnabled() && !forceSync && !fulfillmentId;
+    if (shouldEnforceQualityFloor && hasQualityFloorMarker) {
+      console.log('[fulfillment][email] send-blocked reason=quality_floor', { runId, fulfillmentId: fulfillmentId || null, forceSync });
       return json(409, { error: 'Revised CV is still being refined for quality. Please retry shortly.' });
     }
     let snapshotPdfBase64 = normalizeBase64Pdf(clientPdfBase64) || normalizeBase64Pdf(run?.final_cv_pdf_base64);
@@ -360,6 +364,7 @@ exports.handler = async (event) => {
         token: mintedToken,
         runId,
         fulfillmentId: fulfillmentId || null,
+        pdf_base64: snapshotPdfBase64,
         revised_cv_text: String(run?.revised_cv_text || '').trim() || null,
         expires_at: expiresAt,
       });
@@ -378,6 +383,12 @@ exports.handler = async (event) => {
       if (emergencyFetchEnabled) {
         canonicalCvUrl = canonicalCvUrl || buildRunCvUrl(runId, cvUrl);
       } else {
+        console.log('[fulfillment][email] send-blocked reason=artifact_not_ready', {
+          runId,
+          fulfillmentId: fulfillmentId || null,
+          hasAttachment: Boolean(snapshotPdfBase64),
+          hasArtifactLink: Boolean(canonicalCvUrl),
+        });
         return json(425, { error: 'Final CV artifact is not ready for email delivery yet. Please retry shortly.' });
       }
     }
@@ -413,6 +424,11 @@ exports.handler = async (event) => {
     console.log('[send-cv-email] send-start', { runId, at: new Date().toISOString() });
     const sendResult = await sendResendEmail(apiKey, emailPayload, idempotencyKey);
     timing.sendEnd = Date.now();
+    console.log('[fulfillment][email] provider-response status=' + String(sendResult.statusCode || 500), {
+      runId,
+      fulfillmentId: fulfillmentId || null,
+      ok: Boolean(sendResult.ok),
+    });
 
     if (!sendResult.ok) {
       const details = sendResult?.payload?.message || sendResult?.payload?.error || 'Unable to send CV email.';

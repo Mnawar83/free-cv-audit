@@ -152,7 +152,6 @@ exports.handler = async (event) => {
       const fulfillmentId = String(payload.fulfillmentId || '').trim();
       const requestedEmail = String(payload.email || '').trim().toLowerCase();
       const name = String(payload.name || '').trim();
-      const stageTiming = {};
       console.log('[fulfillment][queue] claimed', {
         jobId: job.id,
         fulfillmentId,
@@ -190,7 +189,6 @@ exports.handler = async (event) => {
 
       const runId = String(fulfillment.run_id || '').trim();
       const run = await getRun(runId);
-      stageTiming.validationMs = Date.now() - jobStartMs;
       const paidAtMs = fulfillment?.paid_at ? new Date(fulfillment.paid_at).getTime() : null;
       const hasOriginalCvText = Boolean(String(run?.original_cv_text || '').trim());
       const hasLegacyDeliverable = Boolean(run?.revised_cv_structured || String(run?.revised_cv_text || '').trim());
@@ -230,7 +228,6 @@ exports.handler = async (event) => {
             cached: Boolean(cachedAudit),
             elapsedMs: auditEndMs - auditStartMs,
           });
-          stageTiming.auditMs = auditEndMs - auditStartMs;
           await upsertRun(runId, {
             full_audit_result: fullAudit,
             fulfillment_status: 'cv_generation_running',
@@ -259,7 +256,6 @@ exports.handler = async (event) => {
             fulfillmentId,
             elapsedMs: Date.now() - generationStartMs,
           });
-          stageTiming.cvGenerationMs = Date.now() - generationStartMs;
 
           const generatedRunIdHeader = String(
             genResponse?.headers?.['x-run-id']
@@ -365,15 +361,84 @@ exports.handler = async (event) => {
       });
       stageTiming.artifactMs = Date.now() - artifactBuildStartMs;
 
+      let artifactRun = await getRun(effectiveRunId);
+      const artifactBuildStartMs = Date.now();
+      console.log('[fulfillment][artifact] build-start', { runId: effectiveRunId, fulfillmentId });
+      let finalPdfBase64 = prepareFinalPdfArtifact(artifactRun, generatedPdfBase64);
+      if (!finalPdfBase64) {
+        console.warn('[fulfillment][artifact] cached artifact unavailable; attempting source regeneration fallback', {
+          runId: effectiveRunId,
+          fulfillmentId,
+        });
+        const regeneratedPdfBase64 = await regenerateFinalPdfFromSource(effectiveRunId, artifactRun, artifactRun?.full_audit_result || run?.full_audit_result);
+        if (regeneratedPdfBase64) {
+          generatedPdfBase64 = regeneratedPdfBase64;
+          artifactRun = await getRun(effectiveRunId);
+          finalPdfBase64 = prepareFinalPdfArtifact(artifactRun, regeneratedPdfBase64);
+        }
+      }
+      if (!finalPdfBase64) {
+        throw buildError('Final PDF artifact is missing and must be prepared before email delivery.', 425, { transient: true });
+      }
+      const existingArtifactToken = String(artifactRun?.final_cv_artifact_token || '').trim();
+      const existingTokenRecord = existingArtifactToken ? await getArtifactToken(existingArtifactToken) : null;
+      const shouldReuseArtifactToken = Boolean(
+        existingArtifactToken
+        && isArtifactTokenUsable(existingTokenRecord)
+        && normalizeBase64Pdf(existingTokenRecord?.pdf_base64) === finalPdfBase64
+      );
+      const artifactToken = shouldReuseArtifactToken ? existingArtifactToken : createEmailDownloadToken();
+      const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
+      const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
+      const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
+      if (!shouldReuseArtifactToken) {
+        await createArtifactToken({
+          token: artifactToken,
+          runId: effectiveRunId,
+          fulfillmentId,
+          pdf_base64: finalPdfBase64,
+          revised_cv_text: String(artifactRun?.revised_cv_text || '').trim() || null,
+          expires_at: expiresAt,
+        });
+      }
+      const shouldUpdateRunArtifact =
+        normalizeBase64Pdf(artifactRun?.final_cv_pdf_base64) !== finalPdfBase64
+        || String(artifactRun?.final_cv_artifact_token || '').trim() !== artifactToken
+        || String(artifactRun?.fulfillment_status || '').trim().toLowerCase() !== 'artifact_persisted';
+      if (shouldUpdateRunArtifact) {
+        await upsertRun(effectiveRunId, {
+          final_cv_pdf_base64: finalPdfBase64,
+          final_cv_artifact_token: artifactToken,
+          final_cv_artifact_ready_at: new Date().toISOString(),
+          fulfillment_status: 'artifact_persisted',
+        });
+      }
+      console.log('[fulfillment][artifact] build-complete', {
+        runId: effectiveRunId,
+        fulfillmentId,
+        elapsedMs: Date.now() - artifactBuildStartMs,
+        reusedToken: shouldReuseArtifactToken,
+      });
+
       const email = requestedEmail || String(fulfillment.email || '').trim();
       if (!email) throw buildError('Email is required for fulfillment send.', 400);
       const baseUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || 'https://freecvaudit.com';
       const normalizedBaseUrl = /^https?:\/\//i.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
       const cvUrl = new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(effectiveRunId)}`, normalizedBaseUrl).toString();
 
+      console.log('[fulfillment][email] stage-entered', { runId: effectiveRunId, fulfillmentId });
+      console.log('[fulfillment][email] artifact-check-passed', {
+        runId: effectiveRunId,
+        fulfillmentId,
+        hasAttachment: Boolean(finalPdfBase64),
+        hasArtifactToken: Boolean(artifactToken),
+      });
       console.log('[fulfillment][email] handoff', { runId: effectiveRunId, fulfillmentId });
+      await updateFulfillment(fulfillmentId, { processing_status: 'email_sending' });
+      await upsertRun(effectiveRunId, { fulfillment_status: 'email_sending' });
       const sendHandler = require('./send-cv-email').handler;
       const emailSendStartMs = Date.now();
+      console.log('[fulfillment][email] invoking-send', { runId: effectiveRunId, fulfillmentId });
       console.log('[fulfillment][email] send-start', { runId: effectiveRunId, fulfillmentId });
       const response = await sendHandler({
         httpMethod: 'POST',
@@ -389,6 +454,10 @@ exports.handler = async (event) => {
           pdfBase64: finalPdfBase64,
         }),
       });
+      console.log('[fulfillment][email] provider-response status=' + String(Number(response?.statusCode) || 500), {
+        runId: effectiveRunId,
+        fulfillmentId,
+      });
       if (response.statusCode >= 200 && response.statusCode < 300) {
         const emailSendEndMs = Date.now();
         await updateFulfillment(fulfillmentId, {
@@ -397,33 +466,55 @@ exports.handler = async (event) => {
           processing_status: 'email_sent',
         });
         await upsertRun(effectiveRunId, { fulfillment_status: 'email_sent', email_sent_at: new Date().toISOString() });
+        console.log('[fulfillment][email] state-updated email_sent', { runId: effectiveRunId, fulfillmentId });
         await completeFulfillmentJob(job.id, { status: 'COMPLETED', last_status_code: response.statusCode, last_response_body: response.body || '' });
         console.log('[fulfillment][email] send-complete', {
           runId: effectiveRunId,
           fulfillmentId,
-          emailMs: emailSendEndMs - emailSendStartMs,
-          validationMs: stageTiming.validationMs || null,
-          auditMs: stageTiming.auditMs || null,
-          cvGenerationMs: stageTiming.cvGenerationMs || null,
-          artifactMs: stageTiming.artifactMs || null,
+          elapsedMs: emailSendEndMs - emailSendStartMs,
           totalSincePaidMs: Number.isFinite(paidAtMs) ? Math.max(0, emailSendEndMs - paidAtMs) : null,
           totalJobMs: emailSendEndMs - jobStartMs,
         });
         processed.push({ jobId: job.id, status: 'COMPLETED', fulfillmentId, runId: effectiveRunId });
       } else {
         const responseStatus = Number(response.statusCode) || 500;
-        throw buildError(`Email delivery failed with status ${responseStatus}`, responseStatus, {
+        let providerErrorMessage = '';
+        try {
+          const parsedBody = JSON.parse(String(response?.body || '{}'));
+          providerErrorMessage = String(parsedBody?.error || parsedBody?.message || '').trim();
+        } catch (_error) {
+          providerErrorMessage = String(response?.body || '').trim();
+        }
+        const errorMessage = providerErrorMessage
+          ? `Email delivery failed with status ${responseStatus}: ${providerErrorMessage}`
+          : `Email delivery failed with status ${responseStatus}`;
+        throw buildError(errorMessage, responseStatus, {
           transient: isRetryableEmailDeliveryStatus(responseStatus),
         });
       }
     } catch (error) {
       const statusCode = Number(error?.statusCode) || 500;
       const retryable = shouldRetry(job, maxAttempts, statusCode, Boolean(error?.transient));
+      const failureReason = String(error?.message || 'Fulfillment queue processing failed.');
+      console.log('[fulfillment][email] retry-scheduled reason=' + String(error?.message || 'unknown'), {
+        jobId: job.id,
+        statusCode,
+        retryable,
+      });
+      const errorFulfillmentId = String(job?.payload?.fulfillmentId || '').trim();
+      if (errorFulfillmentId) {
+        await updateFulfillment(errorFulfillmentId, {
+          processing_status: retryable ? 'email_retry_scheduled' : 'email_failed',
+          last_email_error: failureReason,
+          last_email_error_status: statusCode,
+          last_email_error_at: new Date().toISOString(),
+        }).catch(() => null);
+      }
       await completeFulfillmentJob(job.id, {
         status: retryable ? 'RETRY' : 'DEAD_LETTER',
         next_attempt_at: retryable ? new Date(Date.now() + getRetryDelayMs(job.attempts || 1)).toISOString() : null,
         last_status_code: statusCode,
-        last_response_body: JSON.stringify({ error: error.message || 'Fulfillment queue processing failed.' }),
+        last_response_body: JSON.stringify({ error: failureReason }),
       });
       processed.push({ jobId: job.id, status: retryable ? 'RETRY' : 'DEAD_LETTER' });
     }
