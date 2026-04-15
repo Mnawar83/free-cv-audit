@@ -79,13 +79,11 @@ exports.handler = async (event) => {
       token,
       runId: fulfillment.run_id,
       fulfillmentId,
-      pdf_base64: pdfBase64,
       revised_cv_text: revisedCvText,
       expires_at: expiresAt,
     });
     await saveEmailDownloadSnapshot(event, token, {
       runId: fulfillment.run_id,
-      pdf_base64: pdfBase64,
       revised_cv_text: revisedCvText,
       expires_at: expiresAt,
     });

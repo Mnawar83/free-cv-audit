@@ -1,5 +1,5 @@
 const { handler: processQueueHandler } = require('./process-email-queue');
-exports.config = { schedule: '*/5 * * * *' };
+exports.config = { schedule: '*/2 * * * *' };
 exports.handler = async (event) =>
   processQueueHandler({
     ...event,
