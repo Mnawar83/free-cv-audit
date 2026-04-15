@@ -19,6 +19,12 @@ function isTransientTriggerStatus(statusCode) {
   return code === 408 || code === 429 || (code >= 500 && code <= 599);
 }
 
+function parsePositiveInt(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.floor(parsed));
+}
+
 async function invokeQueueHandlerDirectly(functionName) {
   try {
     const event = {
@@ -45,7 +51,7 @@ async function invokeQueueHandlerDirectly(functionName) {
 async function triggerQueue(functionName) {
   const timeoutMs = Math.max(200, Number(process.env.QUEUE_TRIGGER_TIMEOUT_MS || 1500));
   const targetUrl = new URL(`/.netlify/functions/${functionName}`, resolveBaseUrl()).toString();
-  const maxAttempts = Math.max(1, Number(process.env.QUEUE_TRIGGER_MAX_ATTEMPTS || 2));
+  const maxAttempts = parsePositiveInt(process.env.QUEUE_TRIGGER_MAX_ATTEMPTS || 2, 2);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const controller = new AbortController();

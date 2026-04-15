@@ -255,6 +255,19 @@ exports.handler = async (event) => {
     }
 
     let run = await getRun(runId);
+    const rotatedRunId = toSafeText(run?.fulfillment_rotated_run_id);
+    if (rotatedRunId && rotatedRunId !== runId) {
+      const rotatedRun = await getRun(rotatedRunId).catch(() => null);
+      const rotatedHasArtifact = Boolean(
+        normalizeBase64Pdf(rotatedRun?.final_cv_pdf_base64)
+        || toSafeText(rotatedRun?.final_cv_artifact_token)
+      );
+      if (rotatedRun && rotatedHasArtifact) {
+        console.log('[send-cv-email] run-rebind', { requestedRunId: runId, effectiveRunId: rotatedRunId });
+        runId = rotatedRunId;
+        run = rotatedRun;
+      }
+    }
     if (isQualityFloorEnabled() && (run?.revised_cv_fallback_generated_at || run?.revised_cv_lenient_fallback_generated_at)) {
       return json(409, { error: 'Revised CV is still being refined for quality. Please retry shortly.' });
     }

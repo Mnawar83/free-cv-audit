@@ -177,6 +177,49 @@ async function run() {
   assert.strictEqual(tokenOnlyResponse.statusCode, 200, 'Token-backed artifact should send without run-level pdf snapshot.');
   assert.ok(Array.isArray(tokenOnlyPayload?.attachments) && tokenOnlyPayload.attachments.length === 1, 'Token-backed artifact should still attach PDF.');
 
+  // Requests using pre-rotation runId should rebind to rotated run artifacts
+  const rotatedOriginalRunId = 'rotated_original_run';
+  const rotatedEffectiveRunId = 'rotated_effective_run';
+  const rotatedPdfBase64 = Buffer.alloc(256, 'r').toString('base64');
+  const rotatedArtifactToken = runStore.createEmailDownloadToken();
+  await runStore.createArtifactToken({
+    token: rotatedArtifactToken,
+    runId: rotatedEffectiveRunId,
+    pdf_base64: rotatedPdfBase64,
+    expires_at: new Date(Date.now() + 60_000).toISOString(),
+  });
+  await runStore.upsertRun(rotatedOriginalRunId, {
+    fulfillment_rotated_run_id: rotatedEffectiveRunId,
+    revised_cv_text: 'Original run that should rebind to rotated artifacts',
+  });
+  await runStore.upsertRun(rotatedEffectiveRunId, {
+    revised_cv_text: 'Rotated run revised CV',
+    final_cv_pdf_base64: rotatedPdfBase64,
+    final_cv_artifact_token: rotatedArtifactToken,
+    final_cv_artifact_ready_at: new Date().toISOString(),
+  });
+  let rotatedPayload = null;
+  global.fetch = async (_url, options = {}) => {
+    rotatedPayload = JSON.parse(options.body || '{}');
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'email_rotated_rebind' }),
+    };
+  };
+  const rotatedResponse = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      email: 'rotated@example.com',
+      name: 'Rotated',
+      runId: rotatedOriginalRunId,
+      cvUrl: `/.netlify/functions/generate-pdf?runId=${rotatedOriginalRunId}`,
+      resend: true,
+    }),
+  });
+  assert.strictEqual(rotatedResponse.statusCode, 200, 'Original runId resend should rebind to rotated run artifacts.');
+  assert.ok(Array.isArray(rotatedPayload?.attachments) && rotatedPayload.attachments.length === 1, 'Rebound rotated run should include attachment.');
+
   process.env.CV_DOWNLOAD_RATE_LIMIT_MAX = '3';
   process.env.CV_DOWNLOAD_RATE_LIMIT_WINDOW_MS = '60000';
   clearModule('../netlify/functions/cv-email-download');
