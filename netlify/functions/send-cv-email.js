@@ -1,14 +1,14 @@
 const {
-  createEmailDownloadToken,
   createArtifactToken,
+  createEmailDownloadToken,
   enqueueEmailJob,
   getFulfillment,
+  getArtifactToken,
   getRun,
   updateFulfillment,
+  upsertRun,
   upsertEmailDelivery,
 } = require('./run-store');
-const { saveEmailDownloadSnapshot } = require('./email-download-store');
-const { buildPdfBuffer, buildPdfBufferFromStructuredCv, normalizeToCvTemplateText } = require('./pdf-builder');
 const { triggerEmailQueueProcessing } = require('./queue-trigger');
 const crypto = require('crypto');
 const QUALITY_FLOOR_DISABLED_VALUES = new Set(['0', 'false', 'off', 'no']);
@@ -91,33 +91,21 @@ function createIdempotencyKey({ email, runId, isResend }) {
     .digest('hex');
 }
 
-function canonicalizeCvText(text) {
-  const safeText = toSafeText(text);
-  if (!safeText) return '';
-  try {
-    return normalizeToCvTemplateText(safeText);
-  } catch (error) {
-    console.warn('Unable to normalize CV text; using source text for PDF generation.', error?.message || error);
-    return safeText;
-  }
+function normalizeBase64Pdf(value) {
+  const raw = String(value || '').trim().replace(/\s+/g, '');
+  if (!raw) return '';
+  if (!/^[A-Za-z0-9+/=]+$/.test(raw)) return '';
+  return raw;
 }
 
-async function fetchPdfBase64FromUrl(cvUrl) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Math.max(500, Number(process.env.CV_EMAIL_SNAPSHOT_FETCH_TIMEOUT_MS || 8000)));
-  try {
-    const response = await fetch(cvUrl, { method: 'GET', signal: controller.signal });
-    if (!response.ok) return '';
-    const contentType = String(response.headers?.get?.('content-type') || '').toLowerCase();
-    if (!contentType.includes('application/pdf')) return '';
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (!buffer.length) return '';
-    return buffer.toString('base64');
-  } catch (error) {
-    return '';
-  } finally {
-    clearTimeout(timeout);
-  }
+function isArtifactTokenUsable(tokenRecord) {
+  if (!tokenRecord) return false;
+  const expiresAtMs = tokenRecord.expires_at ? new Date(tokenRecord.expires_at).getTime() : null;
+  if (Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now()) return false;
+  const maxDownloads = Math.max(0, Number(tokenRecord.max_downloads || 0));
+  const downloadCount = Math.max(0, Number(tokenRecord.download_count || 0));
+  if (maxDownloads > 0 && downloadCount >= maxDownloads) return false;
+  return true;
 }
 
 function shouldRetryStatus(statusCode) {
@@ -256,105 +244,58 @@ exports.handler = async (event) => {
       return json(202, { ok: true, queued: true, jobId: queued.id, ...(fulfillmentId ? { fulfillmentId } : {}) });
     }
 
-    timing.buildStart = Date.now();
-
     let run = await getRun(runId);
-    if ((!run?.revised_cv_text || run?.revised_cv_fallback_generated_at || run?.revised_cv_lenient_fallback_generated_at) && run?.original_cv_text) {
-      try {
-        const generatePdfHandler = require('./generate-pdf').handler;
-        const refreshResponse = await generatePdfHandler({
-          httpMethod: 'POST',
-          body: JSON.stringify({
-            runId,
-            cvText: run.original_cv_text,
-            cvAnalysis: run.audit_result || '',
-            forceRegenerate: true,
-          }),
-        });
-        const refreshedRunId = toSafeText(
-          refreshResponse?.headers?.['x-run-id'] || refreshResponse?.headers?.['X-Run-Id'],
-        );
-        if (refreshedRunId) {
-          runId = refreshedRunId;
-        }
-        run = await getRun(runId);
-      } catch (refreshError) {
-        console.warn('Unable to refresh fallback revised CV before sending email.', {
-          runId,
-          error: refreshError?.message || refreshError,
-        });
-      }
-    }
     if (isQualityFloorEnabled() && (run?.revised_cv_fallback_generated_at || run?.revised_cv_lenient_fallback_generated_at)) {
       return json(409, { error: 'Revised CV is still being refined for quality. Please retry shortly.' });
     }
-    const revisedCvText = run?.revised_cv_text ? canonicalizeCvText(run.revised_cv_text) : '';
-    if (!revisedCvText) {
-      console.warn('Run is missing revised CV text; attempting to resolve final attachment from generated PDF.', { runId });
-    }
-    let snapshotPdfBase64 = '';
-    if (run?.revised_cv_structured) {
-      try {
-        snapshotPdfBase64 = buildPdfBufferFromStructuredCv(run.revised_cv_structured).toString('base64');
-      } catch (attachmentError) {
-        console.warn('Unable to build CV PDF snapshot from structured revised source.', attachmentError?.message || attachmentError);
-      }
-    }
-    if (!snapshotPdfBase64 && revisedCvText) {
-      try {
-        snapshotPdfBase64 = buildPdfBuffer(revisedCvText).toString('base64');
-      } catch (attachmentError) {
-        console.warn('Unable to build CV PDF snapshot from revised text source.', attachmentError?.message || attachmentError);
-      }
-    }
+    let snapshotPdfBase64 = normalizeBase64Pdf(clientPdfBase64) || normalizeBase64Pdf(run?.final_cv_pdf_base64);
+    let artifactToken = toSafeText(payload.artifactToken) || toSafeText(run?.final_cv_artifact_token);
     let canonicalCvUrl = '';
-    if (!snapshotPdfBase64 && clientPdfBase64) {
-      snapshotPdfBase64 = clientPdfBase64;
-    }
-    if (!snapshotPdfBase64) {
-      const resolvedCvUrl = buildRunCvUrl(runId, cvUrl);
-      snapshotPdfBase64 = await fetchPdfBase64FromUrl(resolvedCvUrl);
-      if (!snapshotPdfBase64) {
-        console.warn('Unable to fetch CV PDF for email snapshot.', { runId });
+    if (artifactToken) {
+      const tokenRecord = await getArtifactToken(artifactToken);
+      if (isArtifactTokenUsable(tokenRecord)) {
+        snapshotPdfBase64 = snapshotPdfBase64 || normalizeBase64Pdf(tokenRecord?.pdf_base64);
+        canonicalCvUrl = buildCanonicalCvUrl(artifactToken, cvUrl, runId);
       }
     }
-
-    const effectiveRevisedText = revisedCvText;
-    if (!snapshotPdfBase64) {
-      return json(409, { error: 'Final CV attachment is not ready yet. Please retry shortly.' });
-    }
-
-    if ((effectiveRevisedText || snapshotPdfBase64) && !canonicalCvUrl) {
-      const token = createEmailDownloadToken();
+    if (!canonicalCvUrl && snapshotPdfBase64) {
+      const mintedToken = createEmailDownloadToken();
       const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
       const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
       const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
-      const snapshotData = {
+      await createArtifactToken({
+        token: mintedToken,
         runId,
-        ...(snapshotPdfBase64 ? { pdf_base64: snapshotPdfBase64 } : {}),
-        ...(effectiveRevisedText ? { revised_cv_text: effectiveRevisedText } : {}),
+        fulfillmentId: fulfillmentId || null,
+        pdf_base64: snapshotPdfBase64,
+        revised_cv_text: String(run?.revised_cv_text || '').trim() || null,
         expires_at: expiresAt,
-      };
-      try {
-        // Parallelize artifact token creation and blob snapshot write
-        await Promise.all([
-          createArtifactToken({
-            token,
-            fulfillmentId: fulfillmentId || null,
-            ...snapshotData,
-          }),
-          saveEmailDownloadSnapshot(event, token, snapshotData),
-        ]);
-        canonicalCvUrl = buildCanonicalCvUrl(token, cvUrl, runId);
-      } catch (snapshotError) {
-        console.warn('Unable to persist email download snapshot; falling back to runId URL.', snapshotError?.message || snapshotError);
-        if (runId) {
-          canonicalCvUrl = buildRunCvUrl(runId, cvUrl);
-        }
+      });
+      artifactToken = mintedToken;
+      canonicalCvUrl = buildCanonicalCvUrl(artifactToken, cvUrl, runId);
+      if (runId) {
+        await upsertRun(runId, {
+          final_cv_pdf_base64: snapshotPdfBase64,
+          final_cv_artifact_token: mintedToken,
+          final_cv_artifact_ready_at: run?.final_cv_artifact_ready_at || new Date().toISOString(),
+        }).catch(() => null);
       }
     }
-
-    timing.buildEnd = Date.now();
+    if (!snapshotPdfBase64 || !canonicalCvUrl) {
+      const emergencyFetchEnabled = String(process.env.CV_EMAIL_EMERGENCY_FETCH_MODE || '').trim().toLowerCase() === 'true';
+      if (emergencyFetchEnabled) {
+        canonicalCvUrl = canonicalCvUrl || buildRunCvUrl(runId, cvUrl);
+      } else {
+        return json(425, { error: 'Final CV artifact is not ready for email delivery yet. Please retry shortly.' });
+      }
+    }
+    console.log('[send-cv-email] artifact-ready', {
+      runId,
+      artifactReadyAt: run?.final_cv_artifact_ready_at || null,
+      observedAt: new Date().toISOString(),
+      hasAttachment: Boolean(snapshotPdfBase64),
+      hasArtifactLink: Boolean(canonicalCvUrl),
+    });
 
     const subject = isResend ? 'Here Is Your CV Again' : 'Your CV is Ready';
     const from = 'FreeCVAudit <noreply@freecvaudit.com>';
@@ -377,6 +318,7 @@ exports.handler = async (event) => {
     };
 
     timing.sendStart = Date.now();
+    console.log('[send-cv-email] send-start', { runId, at: new Date().toISOString() });
     const sendResult = await sendResendEmail(apiKey, emailPayload, idempotencyKey);
     timing.sendEnd = Date.now();
 
@@ -422,11 +364,11 @@ exports.handler = async (event) => {
 
     // Log timing for observability, then return immediately
     timing.total = Date.now() - timing.start;
-    console.log('[send-cv-email] timing', {
-      buildMs: (timing.buildEnd || timing.start) - (timing.buildStart || timing.start),
+    console.log('[send-cv-email] send-complete', {
+      runId,
+      at: new Date().toISOString(),
       sendMs: (timing.sendEnd || timing.start) - (timing.sendStart || timing.start),
       totalMs: timing.total,
-      hasAttachment: Boolean(snapshotPdfBase64),
       outcome: 'ok',
     });
 

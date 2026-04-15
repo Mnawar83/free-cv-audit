@@ -23,8 +23,19 @@ async function run() {
   clearModule('../netlify/functions/fulfillment-auth');
   const { createFulfillmentSessionCookie } = require('../netlify/functions/fulfillment-auth');
   const runId = 'fulfillment_test_run';
+  const finalPdfBase64 = Buffer.alloc(256, 'b').toString('base64');
+  const finalArtifactToken = runStore.createEmailDownloadToken();
+  await runStore.createArtifactToken({
+    token: finalArtifactToken,
+    runId,
+    pdf_base64: finalPdfBase64,
+    expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+  });
   await runStore.upsertRun(runId, {
     revised_cv_text: 'Candidate\nEXPERIENCE\n- Built robust systems',
+    final_cv_pdf_base64: finalPdfBase64,
+    final_cv_artifact_token: finalArtifactToken,
+    final_cv_artifact_ready_at: new Date().toISOString(),
   });
 
   const fulfillment = await runStore.createFulfillment({

@@ -38,9 +38,9 @@ async function run() {
     }),
   });
 
-  assert.strictEqual(response.statusCode, 409);
+  assert.strictEqual(response.statusCode, 425);
   const payload = JSON.parse(response.body || '{}');
-  assert.ok(String(payload.error || '').includes('attachment is not ready'));
+  assert.ok(String(payload.error || '').includes('artifact is not ready'));
 
   await runStore.upsertRun('structured_fallback_run', {
     revised_cv_structured: {
@@ -48,8 +48,23 @@ async function run() {
       sections: [{ heading: 'Experience', bullets: 'invalid-should-be-array' }],
     },
     revised_cv_text: 'Alex Rivera\nExperience\n- Delivered critical systems\n- Improved reliability',
+    final_cv_pdf_base64: Buffer.from('%PDF-1.4 ready artifact').toString('base64'),
+    final_cv_artifact_ready_at: new Date().toISOString(),
+  });
+  const preparedToken = runStore.createEmailDownloadToken();
+  await runStore.createArtifactToken({
+    token: preparedToken,
+    runId: 'structured_fallback_run',
+    pdf_base64: Buffer.from('%PDF-1.4 ready artifact').toString('base64'),
+    expires_at: new Date(Date.now() + 60_000).toISOString(),
+  });
+  await runStore.upsertRun('structured_fallback_run', {
+    final_cv_artifact_token: preparedToken,
   });
   global.fetch = async (url) => {
+    if (String(url).includes('/.netlify/functions/generate-pdf')) {
+      throw new Error('send-cv-email should not call generate-pdf during delivery');
+    }
     if (String(url).includes('api.resend.com/emails')) {
       return {
         ok: true,
@@ -68,7 +83,7 @@ async function run() {
       forceSync: true,
     }),
   });
-  assert.strictEqual(fallbackResponse.statusCode, 200, 'Should fall back to revised text PDF when structured render fails.');
+  assert.strictEqual(fallbackResponse.statusCode, 200, 'Should send immediately when prepared artifact is ready.');
 
   console.log('send cv email attachment required test passed');
 }
