@@ -94,17 +94,27 @@ exports.handler = async (event) => {
         paid_at: fulfillment.paid_at || new Date().toISOString(),
       });
       if (deliveryEmail) {
-        console.log('[payment-confirmation] whishpay webhook confirmed; queueing paid fulfillment', {
+        const queuedAtIso = new Date().toISOString();
+        console.log('[fulfillment][queue] payment-confirmed', {
+          provider: 'whishpay',
           fulfillmentId: fulfillment.fulfillment_id,
+          paidAt: queuedAtIso,
         });
         await updateFulfillment(fulfillment.fulfillment_id, {
           processing_status: 'full_audit_queued',
+          queue_enqueued_at: queuedAtIso,
         });
-        await enqueueFulfillmentJob({
+        const queuedJob = await enqueueFulfillmentJob({
           fulfillmentId: fulfillment.fulfillment_id,
           email: deliveryEmail,
           name: '',
           forceSync: true,
+        });
+        console.log('[fulfillment][queue] enqueued', {
+          provider: 'whishpay',
+          fulfillmentId: fulfillment.fulfillment_id,
+          jobId: queuedJob?.id || null,
+          queuedAt: queuedJob?.created_at || queuedAtIso,
         });
         await triggerFulfillmentQueueProcessing();
       }
