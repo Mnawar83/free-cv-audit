@@ -232,12 +232,22 @@ exports.handler = async (event) => {
     }
 
     if (process.env.CV_EMAIL_ASYNC_MODE === 'true' && !forceSync) {
+      const asyncRun = await getRun(runId).catch(() => null);
+      const asyncPdfBase64 =
+        normalizeBase64Pdf(clientPdfBase64) ||
+        normalizeBase64Pdf(asyncRun?.final_cv_pdf_base64);
+      const asyncArtifactToken =
+        toSafeText(payload.artifactToken) ||
+        toSafeText(asyncRun?.final_cv_artifact_token);
       const queued = await enqueueEmailJob({
         email,
         name,
         cvUrl,
         runId,
         resend: isResend,
+        ...(asyncPdfBase64 ? { pdfBase64: asyncPdfBase64 } : {}),
+        ...(asyncArtifactToken ? { artifactToken: asyncArtifactToken } : {}),
+        ...(clientCvText ? { cvText: clientCvText } : {}),
         ...(fulfillmentId ? { fulfillmentId } : {}),
       });
       await triggerEmailQueueProcessing();
