@@ -222,7 +222,77 @@ exports.handler = async (event) => {
     if (!cvUrl) return json(400, { error: 'cvUrl is required.' });
     if (!runId) return json(400, { error: 'runId is required to create a reliable download link.' });
 
-    // Parallelize fulfillment validation + run fetch when both are needed
+    // ---- Fast path: fulfillment queue already resolved all artifacts ----
+    // When forceSync + pdfBase64 + artifactToken are all provided, skip redundant
+    // store lookups (fulfillment, run, artifact token) since the caller already
+    // validated payment, generated the CV, and created the artifact token.
+    if (forceSync && clientPdfBase64 && payload.artifactToken) {
+      const fastPdf = normalizeBase64Pdf(clientPdfBase64);
+      const fastToken = toSafeText(payload.artifactToken);
+      if (fastPdf && fastToken) {
+        const fastCvUrl = buildCanonicalCvUrl(fastToken, cvUrl, runId);
+        const fastSubject = isResend ? 'Here Is Your CV Again' : 'Your CV is Ready';
+        const fastFrom = 'FreeCVAudit <noreply@freecvaudit.com>';
+        const fastIdempotencyKey = createIdempotencyKey({ email, runId, isResend });
+        const fastEmailPayload = {
+          from: fastFrom,
+          to: [email],
+          subject: fastSubject,
+          html: getHtml({ name, cvUrl: fastCvUrl, isResend, hasAttachment: true }),
+          attachments: [{ filename: 'revised-cv.pdf', content: fastPdf }],
+        };
+
+        timing.sendStart = Date.now();
+        console.log('[send-cv-email] fast-path-send-start', { runId, fulfillmentId, at: new Date().toISOString() });
+        const fastResult = await sendResendEmail(apiKey, fastEmailPayload, fastIdempotencyKey);
+        timing.sendEnd = Date.now();
+
+        if (!fastResult.ok) {
+          const fastDetails = fastResult?.payload?.message || fastResult?.payload?.error || 'Unable to send CV email.';
+          timing.total = Date.now() - timing.start;
+          console.warn('[send-cv-email] fast-path timing', { runId, fulfillmentId, totalMs: timing.total, outcome: 'send_failed' });
+          return json(fastResult.statusCode || 502, { error: fastDetails });
+        }
+
+        // Fire-and-forget bookkeeping (same as slow path)
+        const fastBookkeeping = [];
+        fastBookkeeping.push(
+          upsertEmailDelivery(`delivery:${fastIdempotencyKey}`, {
+            runId, email, provider: 'resend',
+            provider_email_id: fastResult.payload?.id || null,
+            status: 'SENT', is_resend: isResend, download_url: fastCvUrl,
+          }).catch((e) => {
+            console.warn('Email sent but delivery record could not be persisted.', { runId, error: e?.message || e });
+          })
+        );
+        if (fulfillmentId) {
+          fastBookkeeping.push(
+            updateFulfillment(fulfillmentId, (existing) => ({
+              email: email || existing.email || null,
+              email_status: 'SENT',
+              email_sent_at: new Date().toISOString(),
+            })).catch((e) => {
+              console.warn('Email sent but fulfillment record could not be updated.', { fulfillmentId, error: e?.message || e });
+            })
+          );
+        }
+
+        timing.total = Date.now() - timing.start;
+        console.log('[send-cv-email] fast-path-send-complete', {
+          runId, fulfillmentId, at: new Date().toISOString(),
+          sendMs: (timing.sendEnd || timing.start) - (timing.sendStart || timing.start),
+          totalMs: timing.total, outcome: 'ok',
+        });
+
+        const fastWait = Promise.allSettled(fastBookkeeping);
+        if (typeof event?.waitUntil === 'function') event.waitUntil(fastWait);
+        else if (typeof globalThis?.waitUntil === 'function') globalThis.waitUntil(fastWait);
+
+        return json(200, { ok: true, id: fastResult.payload?.id || null, ...(fulfillmentId ? { fulfillmentId } : {}), fastPath: true });
+      }
+    }
+
+    // ---- Slow path: resolve artifacts from store ----
     if (fulfillmentId) {
       const fulfillment = await getFulfillment(fulfillmentId);
       if (!fulfillment) return json(404, { error: 'fulfillmentId was not found.' });
@@ -290,7 +360,6 @@ exports.handler = async (event) => {
         token: mintedToken,
         runId,
         fulfillmentId: fulfillmentId || null,
-        pdf_base64: snapshotPdfBase64,
         revised_cv_text: String(run?.revised_cv_text || '').trim() || null,
         expires_at: expiresAt,
       });

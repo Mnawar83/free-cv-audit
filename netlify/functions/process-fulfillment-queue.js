@@ -138,7 +138,7 @@ exports.handler = async (event) => {
     return { statusCode: 403, body: JSON.stringify({ error: 'Forbidden' }) };
   }
 
-  const maxJobs = Math.max(1, Number(process.env.FULFILLMENT_QUEUE_BATCH_SIZE || 10));
+  const maxJobs = Math.max(1, Number(process.env.FULFILLMENT_QUEUE_BATCH_SIZE || 2));
   const maxAttempts = Math.max(1, Number(process.env.FULFILLMENT_QUEUE_MAX_ATTEMPTS || 3));
   const processed = [];
 
@@ -152,6 +152,7 @@ exports.handler = async (event) => {
       const fulfillmentId = String(payload.fulfillmentId || '').trim();
       const requestedEmail = String(payload.email || '').trim().toLowerCase();
       const name = String(payload.name || '').trim();
+      const stageTiming = {};
       console.log('[fulfillment][queue] claimed', {
         jobId: job.id,
         fulfillmentId,
@@ -189,6 +190,7 @@ exports.handler = async (event) => {
 
       const runId = String(fulfillment.run_id || '').trim();
       const run = await getRun(runId);
+      stageTiming.validationMs = Date.now() - jobStartMs;
       const paidAtMs = fulfillment?.paid_at ? new Date(fulfillment.paid_at).getTime() : null;
       const hasOriginalCvText = Boolean(String(run?.original_cv_text || '').trim());
       const hasLegacyDeliverable = Boolean(run?.revised_cv_structured || String(run?.revised_cv_text || '').trim());
@@ -228,6 +230,7 @@ exports.handler = async (event) => {
             cached: Boolean(cachedAudit),
             elapsedMs: auditEndMs - auditStartMs,
           });
+          stageTiming.auditMs = auditEndMs - auditStartMs;
           await upsertRun(runId, {
             full_audit_result: fullAudit,
             fulfillment_status: 'cv_generation_running',
@@ -256,6 +259,7 @@ exports.handler = async (event) => {
             fulfillmentId,
             elapsedMs: Date.now() - generationStartMs,
           });
+          stageTiming.cvGenerationMs = Date.now() - generationStartMs;
 
           const generatedRunIdHeader = String(
             genResponse?.headers?.['x-run-id']
@@ -297,7 +301,10 @@ exports.handler = async (event) => {
           await upsertRun(effectiveRunId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
         }
       }
-      await upsertRun(runId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
+      // Only write cv_ready to original runId if it differs from effectiveRunId (rotation case)
+      if (effectiveRunId !== runId) {
+        await upsertRun(runId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
+      }
 
       let artifactRun = await getRun(effectiveRunId);
       const artifactBuildStartMs = Date.now();
@@ -323,7 +330,7 @@ exports.handler = async (event) => {
       const shouldReuseArtifactToken = Boolean(
         existingArtifactToken
         && isArtifactTokenUsable(existingTokenRecord)
-        && normalizeBase64Pdf(existingTokenRecord?.pdf_base64) === finalPdfBase64
+        && normalizeBase64Pdf(artifactRun?.final_cv_pdf_base64) === finalPdfBase64
       );
       const artifactToken = shouldReuseArtifactToken ? existingArtifactToken : createEmailDownloadToken();
       const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
@@ -334,7 +341,6 @@ exports.handler = async (event) => {
           token: artifactToken,
           runId: effectiveRunId,
           fulfillmentId,
-          pdf_base64: finalPdfBase64,
           revised_cv_text: String(artifactRun?.revised_cv_text || '').trim() || null,
           expires_at: expiresAt,
         });
@@ -357,6 +363,7 @@ exports.handler = async (event) => {
         elapsedMs: Date.now() - artifactBuildStartMs,
         reusedToken: shouldReuseArtifactToken,
       });
+      stageTiming.artifactMs = Date.now() - artifactBuildStartMs;
 
       const email = requestedEmail || String(fulfillment.email || '').trim();
       if (!email) throw buildError('Email is required for fulfillment send.', 400);
@@ -365,8 +372,6 @@ exports.handler = async (event) => {
       const cvUrl = new URL(`/.netlify/functions/generate-pdf?runId=${encodeURIComponent(effectiveRunId)}`, normalizedBaseUrl).toString();
 
       console.log('[fulfillment][email] handoff', { runId: effectiveRunId, fulfillmentId });
-      await updateFulfillment(fulfillmentId, { processing_status: 'email_sending' });
-      await upsertRun(effectiveRunId, { fulfillment_status: 'email_sending' });
       const sendHandler = require('./send-cv-email').handler;
       const emailSendStartMs = Date.now();
       console.log('[fulfillment][email] send-start', { runId: effectiveRunId, fulfillmentId });
@@ -396,7 +401,11 @@ exports.handler = async (event) => {
         console.log('[fulfillment][email] send-complete', {
           runId: effectiveRunId,
           fulfillmentId,
-          elapsedMs: emailSendEndMs - emailSendStartMs,
+          emailMs: emailSendEndMs - emailSendStartMs,
+          validationMs: stageTiming.validationMs || null,
+          auditMs: stageTiming.auditMs || null,
+          cvGenerationMs: stageTiming.cvGenerationMs || null,
+          artifactMs: stageTiming.artifactMs || null,
           totalSincePaidMs: Number.isFinite(paidAtMs) ? Math.max(0, emailSendEndMs - paidAtMs) : null,
           totalJobMs: emailSendEndMs - jobStartMs,
         });

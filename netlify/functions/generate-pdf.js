@@ -241,15 +241,17 @@ exports.handler = async (event) => {
       const body = JSON.parse(event.body || '{}');
       incomingRunId = body.runId;
       var forceRegenerate = Boolean(body.forceRegenerate);
-      if (incomingRunId) {
+      var cvText = body.cvText;
+      var cvAnalysis = body.cvAnalysis;
+      // Skip store lookup when forceRegenerate + cvText are both provided (called from fulfillment queue)
+      const skipStoreLookup = forceRegenerate && cvText;
+      if (incomingRunId && !skipStoreLookup) {
         try {
           existingRun = await getRun(incomingRunId);
         } catch (lookupError) {
           console.warn('Run store lookup failed; proceeding with request body data.', lookupError?.message || lookupError);
         }
       }
-      var cvText = body.cvText;
-      var cvAnalysis = body.cvAnalysis;
     }
     const resolvedCvText = cvText || existingRun?.original_cv_text || '';
     const normalizedResolvedCvText = normalizeRevisedCvText(resolvedCvText);
