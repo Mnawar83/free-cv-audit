@@ -16,38 +16,20 @@ async function run() {
   const runStore = require('../netlify/functions/run-store');
 
   const oldRunId = 'run_old_with_fallback';
-  const refreshedRunId = 'run_refreshed_clean';
   await runStore.upsertRun(oldRunId, {
     original_cv_text: 'Jane Example\nPROFESSIONAL EXPERIENCE\n- Built stable systems',
     revised_cv_text: 'Old fallback text',
     revised_cv_fallback_generated_at: new Date().toISOString(),
   });
-  await runStore.upsertRun(refreshedRunId, {
-    original_cv_text: 'Jane Example\nPROFESSIONAL EXPERIENCE\n- Built stable systems',
-    revised_cv_text: 'Jane Example\nPROFESSIONAL EXPERIENCE\n- Built stable systems',
-    revised_cv_fallback_generated_at: null,
-    revised_cv_lenient_fallback_generated_at: null,
-  });
-
-  const generatePdfPath = require.resolve('../netlify/functions/generate-pdf');
-  delete require.cache[generatePdfPath];
-  require.cache[generatePdfPath] = {
-    id: generatePdfPath,
-    filename: generatePdfPath,
-    loaded: true,
-    exports: {
-      handler: async () => ({
-        statusCode: 200,
-        headers: { 'x-run-id': refreshedRunId },
-        body: '',
-      }),
-    },
-  };
+  let providerSendCount = 0;
 
   global.fetch = async (_url, options = {}) => ({
     ok: true,
     status: 200,
-    json: async () => ({ id: 'email_123', payload: JSON.parse(options.body || '{}') }),
+    json: async () => {
+      providerSendCount += 1;
+      return { id: 'email_123', payload: JSON.parse(options.body || '{}') };
+    },
   });
 
   clearModule('../netlify/functions/send-cv-email');
@@ -63,7 +45,8 @@ async function run() {
     }),
   });
 
-  assert.strictEqual(response.statusCode, 200, 'Expected send to continue after rebinding to refreshed runId.');
+  assert.strictEqual(response.statusCode, 409, 'Quality floor should block email delivery when fallback CV is detected.');
+  assert.strictEqual(providerSendCount, 0, 'Email provider should not be called when quality floor blocks send.');
 
   delete process.env.CV_QUALITY_FLOOR_MODE;
   console.log('send-cv-email quality floor runId rebind test passed');
