@@ -35,33 +35,41 @@ async function setupPaidJob(runStore, runId, fulfillmentId = null) {
 async function run() {
   setupIsolatedRunStoreEnv('fulfillment-email-sequencing.test');
   process.env.QUEUE_PROCESSOR_SECRET = 'queue-secret';
+  process.env.CV_EMAIL_LINK_TTL_DAYS = '30';
 
   clearModule('../netlify/functions/run-store');
   const runStore = require('../netlify/functions/run-store');
-
-  let sendCount = 0;
-  let handler;
-  const sentRunIds = [];
-  const findProcessedForRun = (payload, runId) =>
-    Array.isArray(payload?.processed) ? payload.processed.find((entry) => entry?.runId === runId) : null;
-  clearModule('../netlify/functions/send-cv-email');
-  const sendModule = require('../netlify/functions/send-cv-email');
-  let forcedSendStatusByRunId = {};
-  sendModule.handler = async (event) => {
-    sendCount += 1;
-    const payload = JSON.parse(event.body || '{}');
-    const runId = payload.runId || '';
-    sentRunIds.push(runId);
-    const forcedStatus = forcedSendStatusByRunId[runId];
-    if (Array.isArray(forcedStatus) && forcedStatus.length) {
-      const status = forcedStatus.shift();
-      return { statusCode: status, body: JSON.stringify({ error: 'forced send status' }) };
-    }
-    if (forcedStatus && Number.isFinite(Number(forcedStatus))) {
-      return { statusCode: Number(forcedStatus), body: JSON.stringify({ error: 'forced send status' }) };
-    }
-    return { statusCode: 200, body: JSON.stringify({ ok: true }) };
+  const observedLogs = [];
+  const originalConsoleLog = console.log;
+  console.log = (...args) => {
+    observedLogs.push(args.map((item) => String(item)).join(' '));
+    originalConsoleLog(...args);
   };
+
+  try {
+    let sendCount = 0;
+    let handler;
+    const sentRunIds = [];
+    const findProcessedForRun = (payload, runId) =>
+      Array.isArray(payload?.processed) ? payload.processed.find((entry) => entry?.runId === runId) : null;
+    clearModule('../netlify/functions/send-cv-email');
+    const sendModule = require('../netlify/functions/send-cv-email');
+    let forcedSendStatusByRunId = {};
+    sendModule.handler = async (event) => {
+      sendCount += 1;
+      const payload = JSON.parse(event.body || '{}');
+      const runId = payload.runId || '';
+      sentRunIds.push(runId);
+      const forcedStatus = forcedSendStatusByRunId[runId];
+      if (Array.isArray(forcedStatus) && forcedStatus.length) {
+        const status = forcedStatus.shift();
+        return { statusCode: status, body: JSON.stringify({ error: 'forced send status' }) };
+      }
+      if (forcedStatus && Number.isFinite(Number(forcedStatus))) {
+        return { statusCode: Number(forcedStatus), body: JSON.stringify({ error: 'forced send status' }) };
+      }
+      return { statusCode: 200, body: JSON.stringify({ ok: true }) };
+    };
 
 
   // case 0: temporarily missing original CV text should retry (not dead-letter)
@@ -112,6 +120,143 @@ async function run() {
   assert.strictEqual(payload0b.processed[0].status, 'COMPLETED');
   const sendCountAfterLegacyDelivery = sendCount;
 
+  // case 0c: malformed structured artifact should fall back to revised text artifact prep and still deliver
+  const malformedStructuredFulfillment = await runStore.createFulfillment({
+    run_id: 'seq_run_malformed_structured',
+    email: 'sequence@example.com',
+    provider: 'paypal',
+    provider_order_id: `order_malformed_${Date.now()}`,
+    payment_status: 'PAID',
+  });
+  await runStore.upsertRun('seq_run_malformed_structured', {
+    revised_cv_structured: {
+      fullName: 'Broken Structured Candidate',
+      sections: [{ heading: 'Experience', bullets: 'this-should-be-array' }],
+    },
+    revised_cv_text: 'Broken Structured Candidate\nEXPERIENCE\n- Reliable plain-text fallback should still deliver',
+  });
+  await runStore.enqueueFulfillmentJob({
+    fulfillmentId: malformedStructuredFulfillment.fulfillment_id,
+    email: 'sequence@example.com',
+    name: 'Seq User',
+    forceSync: true,
+  });
+  clearModule('../netlify/functions/process-fulfillment-queue');
+  handler = require('../netlify/functions/process-fulfillment-queue').handler;
+  const res0c = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
+  const payload0c = JSON.parse(res0c.body || '{}');
+  assert.strictEqual(payload0c.processed[0].status, 'COMPLETED');
+  assert.strictEqual(sendCount, sendCountAfterLegacyDelivery + 1, 'Malformed structured payload should still send via text fallback.');
+  const sendCountAfterStructuredFallbackDelivery = sendCount;
+
+  // case 0d: cached artifacts unusable should regenerate from original CV before marking missing
+  const regenFallbackRunId = 'seq_run_regen_fallback';
+  const regenFallbackFulfillment = await runStore.createFulfillment({
+    run_id: regenFallbackRunId,
+    email: 'sequence@example.com',
+    provider: 'paypal',
+    provider_order_id: `order_regen_fallback_${Date.now()}`,
+    payment_status: 'PAID',
+  });
+  await runStore.upsertRun(regenFallbackRunId, {
+    original_cv_text: 'Regeneration fallback source CV with enough content to render a final PDF artifact.',
+    revised_cv_structured: null,
+    revised_cv_text: '',
+    final_cv_pdf_base64: 'invalid-base64-@@@',
+    full_audit_result: {
+      auditFindings: ['A'],
+      improvementNotes: ['B'],
+      atsKeywordSuggestions: ['C'],
+      summaryRecommendations: ['D'],
+      experienceRecommendations: ['E'],
+      skillsRecommendations: ['F'],
+    },
+    revised_cv_generated_at: new Date().toISOString(),
+  });
+  let regenFallbackGenerateCalls = 0;
+  clearModule('../netlify/functions/generate-pdf');
+  const regenFallbackGenerateModule = require('../netlify/functions/generate-pdf');
+  regenFallbackGenerateModule.handler = async (event) => {
+    const payload = JSON.parse(event?.body || '{}');
+    if (payload?.runId === regenFallbackRunId) {
+      regenFallbackGenerateCalls += 1;
+      return { statusCode: 200, isBase64Encoded: true, body: Buffer.from('regen-fallback-pdf').toString('base64') };
+    }
+    return { statusCode: 200, isBase64Encoded: true, body: Buffer.from('pdf').toString('base64') };
+  };
+  await runStore.enqueueFulfillmentJob({
+    fulfillmentId: regenFallbackFulfillment.fulfillment_id,
+    email: 'sequence@example.com',
+    name: 'Seq User',
+    forceSync: true,
+  });
+  clearModule('../netlify/functions/process-fulfillment-queue');
+  handler = require('../netlify/functions/process-fulfillment-queue').handler;
+  const res0d = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
+  const payload0d = JSON.parse(res0d.body || '{}');
+  assert.strictEqual(payload0d.processed[0].status, 'COMPLETED');
+  assert.strictEqual(regenFallbackGenerateCalls, 1, 'Fallback should regenerate once from source CV when cached artifacts are unusable.');
+  const sendCountAfterRegenerationFallbackDelivery = sendCount;
+
+  // case 0e: revised text render errors should not abort; source regeneration fallback should recover
+  const textRenderFallbackRunId = 'seq_run_text_render_fallback';
+  const textRenderFallbackFulfillment = await runStore.createFulfillment({
+    run_id: textRenderFallbackRunId,
+    email: 'sequence@example.com',
+    provider: 'paypal',
+    provider_order_id: `order_text_render_fallback_${Date.now()}`,
+    payment_status: 'PAID',
+  });
+  await runStore.upsertRun(textRenderFallbackRunId, {
+    original_cv_text: 'Source CV text that should be used by regeneration fallback when revised text render fails.',
+    revised_cv_structured: null,
+    revised_cv_text: 'THROW_REVISED_RENDER_ERROR',
+    full_audit_result: {
+      auditFindings: ['A'],
+      improvementNotes: ['B'],
+      atsKeywordSuggestions: ['C'],
+      summaryRecommendations: ['D'],
+      experienceRecommendations: ['E'],
+      skillsRecommendations: ['F'],
+    },
+    revised_cv_generated_at: new Date().toISOString(),
+  });
+  clearModule('../netlify/functions/pdf-builder');
+  const pdfBuilderModule = require('../netlify/functions/pdf-builder');
+  const originalBuildPdfBuffer = pdfBuilderModule.buildPdfBuffer;
+  pdfBuilderModule.buildPdfBuffer = (text) => {
+    if (String(text || '').includes('THROW_REVISED_RENDER_ERROR')) {
+      throw new Error('intentional revised text render failure');
+    }
+    return originalBuildPdfBuffer(text);
+  };
+  let textRenderFallbackGenerateCalls = 0;
+  clearModule('../netlify/functions/generate-pdf');
+  const textRenderFallbackGenerateModule = require('../netlify/functions/generate-pdf');
+  textRenderFallbackGenerateModule.handler = async (event) => {
+    const payload = JSON.parse(event?.body || '{}');
+    if (payload?.runId === textRenderFallbackRunId) {
+      textRenderFallbackGenerateCalls += 1;
+      return { statusCode: 200, isBase64Encoded: true, body: Buffer.from('text-render-fallback-pdf').toString('base64') };
+    }
+    return { statusCode: 200, isBase64Encoded: true, body: Buffer.from('pdf').toString('base64') };
+  };
+  await runStore.enqueueFulfillmentJob({
+    fulfillmentId: textRenderFallbackFulfillment.fulfillment_id,
+    email: 'sequence@example.com',
+    name: 'Seq User',
+    forceSync: true,
+  });
+  clearModule('../netlify/functions/process-fulfillment-queue');
+  handler = require('../netlify/functions/process-fulfillment-queue').handler;
+  const res0e = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
+  const payload0e = JSON.parse(res0e.body || '{}');
+  assert.strictEqual(payload0e.processed[0].status, 'COMPLETED');
+  assert.strictEqual(textRenderFallbackGenerateCalls, 1, 'Fallback should regenerate when revised text PDF render throws.');
+  pdfBuilderModule.buildPdfBuffer = originalBuildPdfBuffer;
+  clearModule('../netlify/functions/pdf-builder');
+  const sendCountAfterTextRenderFallbackDelivery = sendCount;
+
   // case 1: generation hard-fails => no email
   clearModule('../netlify/functions/generate-pdf');
   const generateModule1 = require('../netlify/functions/generate-pdf');
@@ -124,7 +269,7 @@ async function run() {
   const res1 = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
   const payload1 = JSON.parse(res1.body || '{}');
   assert.strictEqual(payload1.processed[0].status, 'RETRY');
-  assert.strictEqual(sendCount, sendCountAfterLegacyDelivery);
+  assert.strictEqual(sendCount, sendCountAfterTextRenderFallbackDelivery);
 
   // case 2: generation returns no final attachment payload => no email
   clearModule('../netlify/functions/generate-pdf');
@@ -138,7 +283,7 @@ async function run() {
   const res2 = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
   const payload2 = JSON.parse(res2.body || '{}');
   assert.strictEqual(payload2.processed[0].status, 'RETRY');
-  assert.strictEqual(sendCount, sendCountAfterLegacyDelivery);
+  assert.strictEqual(sendCount, sendCountAfterTextRenderFallbackDelivery);
 
   // case 3: generation succeeds with final attachment payload => email sends
   clearModule('../netlify/functions/generate-pdf');
@@ -152,11 +297,11 @@ async function run() {
   const res3 = await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
   const payload3 = JSON.parse(res3.body || '{}');
   assert.strictEqual(payload3.processed[0].status, 'COMPLETED');
-  assert.strictEqual(sendCount, sendCountAfterLegacyDelivery + 1);
+  assert.strictEqual(sendCount, sendCountAfterTextRenderFallbackDelivery + 1);
 
 
 
-  // case 3a: transient email failure should retry email without regenerating CV
+    // case 3a: transient email failure should retry email without regenerating CV
   const retryRunId = 'seq_run_retry_email';
   let retryGenerateCallCount = 0;
   clearModule('../netlify/functions/generate-pdf');
@@ -168,11 +313,14 @@ async function run() {
     }
     return { statusCode: 200, isBase64Encoded: true, body: Buffer.from('pdf').toString('base64') };
   };
-  forcedSendStatusByRunId = { [retryRunId]: [503, 200] };
+    forcedSendStatusByRunId = { [retryRunId]: [503, 200] };
   await setupPaidJob(runStore, retryRunId);
   clearModule('../netlify/functions/process-fulfillment-queue');
   handler = require('../netlify/functions/process-fulfillment-queue').handler;
   await handler({ httpMethod: 'POST', headers: { Authorization: 'Bearer queue-secret' } });
+  const retryRunAfterFirstPass = await runStore.getRun(retryRunId);
+  const retryArtifactTokenBeforeRetry = retryRunAfterFirstPass?.final_cv_artifact_token || null;
+  const retryArtifactBefore = retryArtifactTokenBeforeRetry ? await runStore.getArtifactToken(retryArtifactTokenBeforeRetry) : null;
   await new Promise((resolve) => setTimeout(resolve, 1100));
   let secondRetryResult = null;
   for (let attempt = 0; attempt < 3 && !secondRetryResult; attempt += 1) {
@@ -185,6 +333,18 @@ async function run() {
   }
   assert.strictEqual(secondRetryResult?.status, 'COMPLETED');
   assert.strictEqual(retryGenerateCallCount, 1, 'CV generation should not rerun on retry when artifacts are already ready.');
+  const retryRunAfterSecondPass = await runStore.getRun(retryRunId);
+  assert.strictEqual(
+    retryRunAfterSecondPass?.final_cv_artifact_token,
+    retryArtifactTokenBeforeRetry,
+    'Retry should reuse existing final artifact token when still valid.',
+  );
+  const retryArtifactAfter = retryArtifactTokenBeforeRetry ? await runStore.getArtifactToken(retryArtifactTokenBeforeRetry) : null;
+  assert.strictEqual(
+    retryArtifactAfter?.updated_at,
+    retryArtifactBefore?.updated_at,
+    'Artifact token should not be rewritten on retry when payload is unchanged.',
+  );
   forcedSendStatusByRunId = {};
 
   // case 3b: transient email 404 should retry (durable-store propagation race) and then complete
@@ -258,7 +418,17 @@ async function run() {
   assert.ok(originalRunAfterRotation?.revised_cv_text, 'Original run should retain revised CV text for client-visible run id flows.');
   assert.strictEqual(originalRunAfterRotation?.fulfillment_rotated_run_id, 'seq_run_rotated_new');
 
-  console.log('fulfillment email sequencing test passed');
+    assert.ok(observedLogs.some((entry) => entry.includes('[fulfillment][queue] claimed')), 'Queue claim timing log should exist.');
+    assert.ok(observedLogs.some((entry) => entry.includes('[fulfillment][audit] start')), 'Audit start timing log should exist.');
+    assert.ok(observedLogs.some((entry) => entry.includes('[fulfillment][cv-generation] start')), 'CV generation start timing log should exist.');
+    assert.ok(observedLogs.some((entry) => entry.includes('[fulfillment][artifact] build-complete')), 'Artifact build timing log should exist.');
+    assert.ok(observedLogs.some((entry) => entry.includes('[fulfillment][email] send-complete')), 'Email send timing log should exist.');
+
+    console.log('fulfillment email sequencing test passed');
+  } finally {
+    console.log = originalConsoleLog;
+    delete process.env.CV_EMAIL_LINK_TTL_DAYS;
+  }
 }
 
 run().catch((error) => {
