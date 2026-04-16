@@ -233,7 +233,10 @@ exports.handler = async (event) => {
     // store lookups (fulfillment, run, artifact token) since the caller already
     // validated payment, generated the CV, and created the artifact token.
     if (forceSync && clientPdfBase64 && !payload.artifactToken) {
-      return badRequest({ event, functionName, route, message: 'Missing artifact token.', payload, missingFields: ['artifactToken'] });
+      console.log('[send-cv-email] fast-path-skip-missing-artifact-token', {
+        runId,
+        fulfillmentId: fulfillmentId || null,
+      });
     }
 
     if (forceSync && clientPdfBase64 && payload.artifactToken) {

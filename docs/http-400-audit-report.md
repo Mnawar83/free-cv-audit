@@ -58,7 +58,7 @@ Frontend + Netlify Functions for:
 | `/.netlify/functions/cover-letter-fetch-job` | POST | `Content-Type: application/json` | `runId`, `jobLink` | both required | invalid JSON, unsupported content-type, missing `runId`/`jobLink` |
 | `/.netlify/functions/cover-letter-generate-docx` | POST | query string `runId` | N/A | runId required, run must include `revised_cv_text` | missing `runId`, missing `revised_cv_text` |
 | `/.netlify/functions/linkedin-generate-docx` | POST | query string `runId` | N/A | runId required, run must include `revised_cv_text` | missing `runId`, missing `revised_cv_text` |
-| `/.netlify/functions/send-cv-email` | POST | `Content-Type: application/json` | `email`,`cvUrl`,`runId` (+`artifactToken` with fast path) | required fields non-empty, fast-path token required if `forceSync && pdfBase64` | invalid JSON, unsupported content-type, missing email, missing CV URL, missing runId, missing artifact token |
+| `/.netlify/functions/send-cv-email` | POST | `Content-Type: application/json` | `email`,`cvUrl`,`runId` (+optional `artifactToken`) | required fields non-empty; if `artifactToken` absent system falls back to slow-path token recovery/minting | invalid JSON, unsupported content-type, missing email, missing CV URL, missing runId |
 | `/.netlify/functions/send-linkedin-email` | POST | `Content-Type: application/json` | `email`,`pdfUrl` | required non-empty | invalid JSON, unsupported content-type, missing email, missing pdfUrl |
 | `/.netlify/functions/send-cover-letter-email` | POST | `Content-Type: application/json` | `email`,`pdfUrl` | required non-empty | invalid JSON, unsupported content-type, missing email, missing pdfUrl |
 
