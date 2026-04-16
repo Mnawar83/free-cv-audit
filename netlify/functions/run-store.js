@@ -133,10 +133,13 @@ function shouldUseDurableStore() {
 
 function getDefaultStore() {
   return {
+    users: {},
+    userRuns: {},
     runs: {},
     emailDownloads: {},
     emailDeliveries: {},
     rateLimits: {},
+    analyticsEvents: [],
     emailQueue: [],
     fulfillmentQueue: [],
     webhookEvents: {},
@@ -144,6 +147,10 @@ function getDefaultStore() {
     paymentEvents: {},
     artifactTokens: {},
   };
+}
+
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
 }
 
 function getDurableHeaders() {
@@ -172,6 +179,7 @@ function normalizeStore(parsed) {
         parsed.rateLimits && typeof parsed.rateLimits === 'object'
           ? parsed.rateLimits
           : {},
+      analyticsEvents: Array.isArray(parsed.analyticsEvents) ? parsed.analyticsEvents : [],
       emailQueue: Array.isArray(parsed.emailQueue) ? parsed.emailQueue : [],
       fulfillmentQueue: Array.isArray(parsed.fulfillmentQueue) ? parsed.fulfillmentQueue : [],
       webhookEvents:
@@ -223,6 +231,19 @@ function normalizeStore(parsed) {
     return {
       ...parsed,
       rateLimits: {},
+      analyticsEvents: Array.isArray(parsed.analyticsEvents) ? parsed.analyticsEvents : [],
+      emailQueue: Array.isArray(parsed.emailQueue) ? parsed.emailQueue : [],
+      fulfillmentQueue: Array.isArray(parsed.fulfillmentQueue) ? parsed.fulfillmentQueue : [],
+      webhookEvents: parsed.webhookEvents && typeof parsed.webhookEvents === 'object' ? parsed.webhookEvents : {},
+      fulfillments: parsed.fulfillments && typeof parsed.fulfillments === 'object' ? parsed.fulfillments : {},
+      paymentEvents: parsed.paymentEvents && typeof parsed.paymentEvents === 'object' ? parsed.paymentEvents : {},
+      artifactTokens: parsed.artifactTokens && typeof parsed.artifactTokens === 'object' ? parsed.artifactTokens : {},
+    };
+  }
+  if (!Array.isArray(parsed.analyticsEvents)) {
+    return {
+      ...parsed,
+      analyticsEvents: [],
       emailQueue: Array.isArray(parsed.emailQueue) ? parsed.emailQueue : [],
       fulfillmentQueue: Array.isArray(parsed.fulfillmentQueue) ? parsed.fulfillmentQueue : [],
       webhookEvents: parsed.webhookEvents && typeof parsed.webhookEvents === 'object' ? parsed.webhookEvents : {},
@@ -301,6 +322,7 @@ function mergeStoreForDurableRebase(durableStoreInput, localStoreInput) {
     fulfillments: { ...durableStore.fulfillments, ...localStore.fulfillments },
     paymentEvents: { ...durableStore.paymentEvents, ...localStore.paymentEvents },
     artifactTokens: { ...durableStore.artifactTokens, ...localStore.artifactTokens },
+    analyticsEvents: mergeUniqueQueueItems(durableStore.analyticsEvents, localStore.analyticsEvents),
     emailQueue: mergeUniqueQueueItems(durableStore.emailQueue, localStore.emailQueue),
     fulfillmentQueue: mergeUniqueQueueItems(durableStore.fulfillmentQueue, localStore.fulfillmentQueue),
   };
@@ -544,6 +566,74 @@ async function upsertRun(runId, updates = {}) {
     store.runs[runId] = next;
     return { value: next };
   });
+}
+
+async function upsertUserByEmail(email, profile = {}) {
+  return mutateStore((store) => {
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) {
+      throw new Error('email is required.');
+    }
+    store.users = store.users && typeof store.users === 'object' ? store.users : {};
+    const existing = Object.values(store.users).find((item) => normalizeEmail(item?.email) === normalizedEmail);
+    const userId = existing?.user_id || `usr_${crypto.randomUUID()}`;
+    const previous = store.users[userId] || { user_id: userId, created_at: new Date().toISOString() };
+    const next = {
+      ...previous,
+      ...profile,
+      user_id: userId,
+      email: normalizedEmail,
+      updated_at: new Date().toISOString(),
+    };
+    store.users[userId] = next;
+    return { value: next };
+  });
+}
+
+async function getUserById(userId) {
+  const safeUserId = String(userId || '').trim();
+  if (!safeUserId) return null;
+  const { store } = await readStoreWithMeta();
+  return store.users?.[safeUserId] || null;
+}
+
+async function linkRunToUser(userId, runId) {
+  return mutateStore((store) => {
+    const safeUserId = String(userId || '').trim();
+    const safeRunId = String(runId || '').trim();
+    if (!safeUserId || !safeRunId) {
+      throw new Error('userId and runId are required.');
+    }
+    const run = store.runs?.[safeRunId];
+    if (!run) {
+      throw new Error('run not found.');
+    }
+    store.userRuns = store.userRuns && typeof store.userRuns === 'object' ? store.userRuns : {};
+    const existing = Array.isArray(store.userRuns[safeUserId]) ? store.userRuns[safeUserId] : [];
+    if (!existing.includes(safeRunId)) {
+      existing.push(safeRunId);
+    }
+    store.userRuns[safeUserId] = existing;
+    store.runs[safeRunId] = {
+      ...run,
+      user_id: safeUserId,
+      updated_at: new Date().toISOString(),
+    };
+    return { value: { userId: safeUserId, runId: safeRunId } };
+  });
+}
+
+async function listUserRuns(userId, limit = 20) {
+  const safeUserId = String(userId || '').trim();
+  if (!safeUserId) return [];
+  const safeLimit = Math.max(1, Math.min(100, Number(limit) || 20));
+  const { store } = await readStoreWithMeta();
+  const runIds = Array.isArray(store.userRuns?.[safeUserId]) ? store.userRuns[safeUserId] : [];
+  return runIds
+    .slice(-safeLimit)
+    .reverse()
+    .map((runId) => store.runs?.[runId])
+    .filter(Boolean);
 }
 
 async function getRun(runId) {
@@ -824,6 +914,41 @@ async function takeRateLimitSlot(key, windowMs, maxRequests) {
       },
     };
   });
+}
+
+async function enqueueAnalyticsEvent(payload = {}) {
+  return mutateStore((store) => {
+    const eventName = String(payload?.eventName || '').trim().toLowerCase();
+    if (!eventName) {
+      throw new Error('eventName is required.');
+    }
+    const createdAt = new Date().toISOString();
+    const event = {
+      eventName,
+      created_at: createdAt,
+      session_id: String(payload?.sessionId || '').trim() || null,
+      run_id: String(payload?.runId || '').trim() || null,
+      context: payload?.context && typeof payload.context === 'object' && !Array.isArray(payload.context)
+        ? payload.context
+        : {},
+      source: String(payload?.source || 'web').trim() || 'web',
+    };
+    const queue = Array.isArray(store.analyticsEvents) ? store.analyticsEvents : [];
+    queue.push(event);
+    const maxEvents = Math.max(200, Number(process.env.ANALYTICS_EVENT_MAX_STORED || 5000));
+    if (queue.length > maxEvents) {
+      queue.splice(0, queue.length - maxEvents);
+    }
+    store.analyticsEvents = queue;
+    return { value: event };
+  });
+}
+
+async function listAnalyticsEvents(limit = 100) {
+  const safeLimit = Math.max(1, Math.min(500, Number(limit) || 100));
+  const { store } = await readStoreWithMeta();
+  const queue = Array.isArray(store.analyticsEvents) ? store.analyticsEvents : [];
+  return queue.slice(-safeLimit).reverse();
 }
 
 async function enqueueEmailJob(payload) {
@@ -1156,6 +1281,9 @@ async function getOperationalStats() {
     artifactTokens: {
       total: Object.keys(store.artifactTokens || {}).length,
     },
+    analyticsEvents: {
+      total: Array.isArray(store.analyticsEvents) ? store.analyticsEvents.length : 0,
+    },
   };
 }
 
@@ -1180,11 +1308,15 @@ module.exports = {
   getEmailDownload,
   getArtifactToken,
   getRun,
+  getUserById,
   incrementArtifactTokenDownload,
   isWebhookEventProcessed,
   markPaymentEventProcessed,
   markWebhookEventProcessed,
   getOperationalStats,
+  enqueueAnalyticsEvent,
+  listAnalyticsEvents,
+  listUserRuns,
   pruneOperationalData,
   takeRateLimitSlot,
   createArtifactToken,
@@ -1193,6 +1325,8 @@ module.exports = {
   updateFulfillment,
   upsertEmailDelivery,
   upsertEmailDownload,
+  upsertUserByEmail,
   upsertRun,
+  linkRunToUser,
   updateRun,
 };
