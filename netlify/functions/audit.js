@@ -74,9 +74,21 @@ exports.handler = async (event) => {
     return { statusCode: 405, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Method Not Allowed' }) };
   }
 
+  let parsedBody;
   try {
-    const { cvText } = JSON.parse(event.body || '{}');
-    if (!cvText) return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
+    parsedBody = JSON.parse(event.body || '{}');
+  } catch (error) {
+    return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON body.' }) };
+  }
+
+  try {
+    const cvText = String(
+      parsedBody?.cvText
+      || parsedBody?.cv_text
+      || parsedBody?.text
+      || ''
+    );
+    if (!cvText.trim()) return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
     const runId = createRunId();
 
     const apiKey = process.env.GOOGLE_AI_API_KEY;
