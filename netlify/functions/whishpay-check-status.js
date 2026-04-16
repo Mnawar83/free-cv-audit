@@ -14,8 +14,11 @@ const {
 } = require('./run-store');
 const { triggerFulfillmentQueueProcessing } = require('./queue-trigger');
 const { hasSessionSecretConfigured, createFulfillmentSessionCookie } = require('./fulfillment-auth');
+const { badRequest, parseJsonBody } = require('./http-400');
 
 exports.handler = async (event) => {
+  const functionName = 'whishpay-check-status';
+  const route = '/.netlify/functions/whishpay-check-status';
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') {
@@ -24,7 +27,9 @@ exports.handler = async (event) => {
 
   try {
     assertWhishPayConfigured();
-    const payload = JSON.parse(event.body || '{}');
+    const parsed = parseJsonBody(event, { functionName, route });
+    if (!parsed.ok) return parsed.response;
+    const payload = parsed.body;
     const currency = payload.currency || WHISHPAY_CURRENCY;
     const externalId = String(payload.externalId || '').trim();
     const runId = String(payload.runId || '').trim();
@@ -32,7 +37,7 @@ exports.handler = async (event) => {
     const requestedFulfillmentId = String(payload.fulfillmentId || '').trim();
 
     if (!externalId) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'externalId is required.' }) };
+      return badRequest({ event, functionName, route, message: 'Missing payment session id (externalId).', payload, missingFields: ['externalId'] });
     }
 
     const response = await fetch(getWhishPayStatusUrl(), {

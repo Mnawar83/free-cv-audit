@@ -17,6 +17,7 @@ const {
   upsertRun,
 } = require('./run-store');
 const { hasSessionSecretConfigured, createFulfillmentSessionCookie } = require('./fulfillment-auth');
+const { badRequest, parseJsonBody } = require('./http-400');
 
 function generateExternalId() {
   return crypto.randomInt(1_000_000_000_000, 9_999_999_999_999);
@@ -33,6 +34,8 @@ function appendExternalId(urlString, externalId) {
 }
 
 exports.handler = async (event) => {
+  const functionName = 'whishpay-create-payment';
+  const route = '/.netlify/functions/whishpay-create-payment';
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') {
@@ -44,14 +47,16 @@ exports.handler = async (event) => {
     const functionStart = Date.now();
     console.info('[timing] whishpay-create-payment start', { at: functionStart });
     assertWhishPayConfigured();
-    const payload = JSON.parse(event.body || '{}');
+    const parsed = parseJsonBody(event, { functionName, route });
+    if (!parsed.ok) return parsed.response;
+    const payload = parsed.body;
     const runId = String(payload.runId || '').trim();
     const email = String(payload.email || '').trim().toLowerCase();
     if (!runId) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'runId is required.' }) };
+      return badRequest({ event, functionName, route, message: 'Missing runId.', payload, missingFields: ['runId'] });
     }
     if (!email) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'email is required.' }) };
+      return badRequest({ event, functionName, route, message: 'Missing email.', payload, missingFields: ['email'] });
     }
     let run = await getRun(runId);
     if (!run) {

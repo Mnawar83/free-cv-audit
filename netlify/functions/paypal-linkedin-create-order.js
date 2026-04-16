@@ -2,8 +2,11 @@ const { PAYPAL_CURRENCY, getPayPalAccessToken } = require('./paypal-utils');
 const { LINKEDIN_UPSELL_STATUS, getRun } = require('./run-store');
 
 const LINKEDIN_AMOUNT = '9.99';
+const { badRequest, parseJsonBody } = require('./http-400');
 
 exports.handler = async (event) => {
+  const functionName = 'paypal-linkedin-create-order';
+  const route = '/.netlify/functions/paypal-linkedin-create-order';
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') {
@@ -11,9 +14,11 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { runId } = JSON.parse(event.body || '{}');
+    const parsed = parseJsonBody(event, { functionName, route });
+    if (!parsed.ok) return parsed.response;
+    const { runId } = parsed.body;
     if (!runId) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'runId is required.' }) };
+      return badRequest({ event, functionName, route, message: 'Missing runId.', payload: parsed.body, missingFields: ['runId'] });
     }
 
     let run = await getRun(runId);

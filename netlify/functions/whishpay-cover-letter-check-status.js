@@ -5,17 +5,22 @@ const {
   getWhishPayStatusUrl,
 } = require('./whishpay-utils');
 const { COVER_LETTER_STATUS, getRun, updateRun } = require('./run-store');
+const { badRequest, parseJsonBody } = require('./http-400');
 
 exports.handler = async (event) => {
+  const functionName = 'whishpay-cover-letter-check-status';
+  const route = '/.netlify/functions/whishpay-cover-letter-check-status';
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
 
   try {
     assertWhishPayConfigured();
-    const payload = JSON.parse(event.body || '{}');
+    const parsed = parseJsonBody(event, { functionName, route });
+    if (!parsed.ok) return parsed.response;
+    const payload = parsed.body;
     const { runId, externalId } = payload;
-    if (!runId || !externalId) return { statusCode: 400, body: JSON.stringify({ error: 'runId and externalId are required.' }) };
+    if (!runId || !externalId) return badRequest({ event, functionName, route, message: !runId ? 'Missing runId.' : 'Missing payment session id (externalId).', payload, missingFields: !runId ? ['runId'] : ['externalId'] });
 
     const run = await getRun(runId);
     if (!run) return { statusCode: 404, body: JSON.stringify({ error: 'Run not found.' }) };

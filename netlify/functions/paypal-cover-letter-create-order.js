@@ -1,15 +1,20 @@
 const { PAYPAL_CURRENCY, getPayPalAccessToken } = require('./paypal-utils');
 const { COVER_LETTER_STATUS, getRun } = require('./run-store');
 const { COVER_LETTER_PRICE_STRING } = require('./cover-letter-constants');
+const { badRequest, parseJsonBody } = require('./http-400');
 
 exports.handler = async (event) => {
+  const functionName = 'paypal-cover-letter-create-order';
+  const route = '/.netlify/functions/paypal-cover-letter-create-order';
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
 
   try {
-    const { runId } = JSON.parse(event.body || '{}');
-    if (!runId) return { statusCode: 400, body: JSON.stringify({ error: 'runId is required.' }) };
+    const parsed = parseJsonBody(event, { functionName, route });
+    if (!parsed.ok) return parsed.response;
+    const { runId } = parsed.body;
+    if (!runId) return badRequest({ event, functionName, route, message: 'Missing runId.', payload: parsed.body, missingFields: ['runId'] });
 
     let run = await getRun(runId);
     if (!run) {

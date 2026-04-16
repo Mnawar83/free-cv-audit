@@ -1,6 +1,7 @@
 const { Document, Packer, Paragraph, TextRun, HeadingLevel } = require('docx');
 const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { LINKEDIN_UPSELL_STATUS, getRun, updateRun } = require('./run-store');
+const { badRequest } = require('./http-400');
 
 const RATE_LIMIT_MS = 20_000;
 
@@ -40,6 +41,8 @@ function sanitizePdfText(input) {
 }
 
 exports.handler = async (event) => {
+  const functionName = 'linkedin-generate-docx';
+  const route = '/.netlify/functions/linkedin-generate-docx';
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') {
@@ -48,7 +51,7 @@ exports.handler = async (event) => {
 
   try {
     const { runId } = JSON.parse(event.body || '{}');
-    if (!runId) return { statusCode: 400, body: JSON.stringify({ error: 'runId is required.' }) };
+    if (!runId) return badRequest({ event, functionName, route, message: 'Missing runId.', missingFields: ['runId'] });
 
     const run = await getRun(runId);
     if (!run) return { statusCode: 404, body: JSON.stringify({ error: 'Run not found.' }) };
@@ -66,7 +69,7 @@ exports.handler = async (event) => {
     }
 
     if (!run.revised_cv_text) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'Missing revised_cv_text for this run.' }) };
+      return badRequest({ event, functionName, route, message: 'Missing revised CV text for this run.', payload: { runId }, missingFields: ['revised_cv_text'] });
     }
 
     await updateRun(runId, () => ({ linkedin_last_generate_attempt_at: new Date().toISOString() }));

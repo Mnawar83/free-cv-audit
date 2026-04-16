@@ -1,6 +1,7 @@
 const { PAYPAL_CURRENCY, getPayPalAccessToken } = require('./paypal-utils');
 const { COVER_LETTER_STATUS, getRun, updateRun } = require('./run-store');
 const { COVER_LETTER_PRICE_STRING } = require('./cover-letter-constants');
+const { badRequest, parseJsonBody } = require('./http-400');
 
 const EXPECTED_CURRENCY = (PAYPAL_CURRENCY || 'USD').toUpperCase();
 
@@ -18,13 +19,17 @@ function isValidCapture(data, runId) {
 }
 
 exports.handler = async (event) => {
+  const functionName = 'paypal-cover-letter-capture-order';
+  const route = '/.netlify/functions/paypal-cover-letter-capture-order';
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
 
   try {
-    const { runId, orderID } = JSON.parse(event.body || '{}');
-    if (!runId || !orderID) return { statusCode: 400, body: JSON.stringify({ error: 'runId and orderID are required.' }) };
+    const parsed = parseJsonBody(event, { functionName, route });
+    if (!parsed.ok) return parsed.response;
+    const { runId, orderID } = parsed.body;
+    if (!runId || !orderID) return badRequest({ event, functionName, route, message: !runId ? 'Missing runId.' : 'Missing payment session id (orderID).', payload: parsed.body, missingFields: !runId ? ['runId'] : ['orderID'] });
 
     const run = await getRun(runId);
     if (!run) return { statusCode: 404, body: JSON.stringify({ error: 'Run not found.' }) };
@@ -40,7 +45,7 @@ exports.handler = async (event) => {
 
     if (!response.ok) return { statusCode: 502, body: JSON.stringify({ error: 'PayPal order capture failed.', details: await response.text() }) };
     const data = await response.json();
-    if (!isValidCapture(data, runId)) return { statusCode: 400, body: JSON.stringify({ error: 'Invalid PayPal capture details.' }) };
+    if (!isValidCapture(data, runId)) return badRequest({ event, functionName, route, message: 'Invalid PayPal capture details.', payload: parsed.body, invalidFields: ['orderID'] });
 
     const captureId = data?.purchase_units?.[0]?.payments?.captures?.[0]?.id || orderID;
     await updateRun(runId, () => ({

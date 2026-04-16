@@ -1,5 +1,6 @@
 const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { createRunId, upsertRun } = require('./run-store');
+const { badRequest, parseJsonBody } = require('./http-400');
 
 const AUDIT_SYSTEM_PROMPT = `You are a senior ATS CV auditor for Work Waves Career Services.
 
@@ -68,18 +69,17 @@ function normalizeAuditFailureMessage(rawMessage) {
 }
 
 exports.handler = async (event) => {
+  const functionName = 'audit';
+  const route = '/.netlify/functions/audit';
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Method Not Allowed' }) };
   }
 
-  let parsedBody;
-  try {
-    parsedBody = JSON.parse(event.body || '{}');
-  } catch (error) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON body.' }) };
-  }
+  const parsed = parseJsonBody(event, { functionName, route });
+  if (!parsed.ok) return parsed.response;
+  const parsedBody = parsed.body;
 
   try {
     const cvText = String(
@@ -88,7 +88,16 @@ exports.handler = async (event) => {
       || parsedBody?.text
       || ''
     );
-    if (!cvText.trim()) return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
+    if (!cvText.trim()) {
+      return badRequest({
+        event,
+        functionName,
+        route,
+        message: 'Missing cvText.',
+        payload: parsedBody,
+        missingFields: ['cvText'],
+      });
+    }
     const runId = createRunId();
 
     const apiKey = process.env.GOOGLE_AI_API_KEY;

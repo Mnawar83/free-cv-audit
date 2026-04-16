@@ -12,8 +12,11 @@ const {
   upsertRun,
 } = require('./run-store');
 const { hasSessionSecretConfigured, createFulfillmentSessionCookie } = require('./fulfillment-auth');
+const { badRequest, parseJsonBody } = require('./http-400');
 
 exports.handler = async (event) => {
+  const functionName = 'paypal-create-order';
+  const route = '/.netlify/functions/paypal-create-order';
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') {
@@ -22,14 +25,16 @@ exports.handler = async (event) => {
 
   try {
     const sessionSecretAvailable = hasSessionSecretConfigured();
-    const payload = JSON.parse(event.body || '{}');
+    const parsed = parseJsonBody(event, { functionName, route });
+    if (!parsed.ok) return parsed.response;
+    const payload = parsed.body;
     const runId = String(payload.runId || '').trim();
     const email = String(payload.email || '').trim().toLowerCase();
     if (!runId) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'runId is required.' }) };
+      return badRequest({ event, functionName, route, message: 'Missing runId.', payload, missingFields: ['runId'] });
     }
     if (!email) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'email is required.' }) };
+      return badRequest({ event, functionName, route, message: 'Missing email.', payload, missingFields: ['email'] });
     }
     let run = await getRun(runId);
     if (!run) {
