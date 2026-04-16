@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 
-const COOKIE_NAME_PREFIX = '__Host-cv_fulfillment_session_';
+const COOKIE_NAME_PREFIX = '__Host-cv_fulfillment_session';
+const LEGACY_COOKIE_NAME_PREFIX = '__Host-cv_fulfillment_session_';
 
 function getSessionSecret() {
   return String(process.env.FULFILLMENT_SESSION_SECRET || '').trim();
@@ -40,6 +41,22 @@ function parseCookies(headerValue) {
   return output;
 }
 
+function getLegacyFulfillmentCookieClearValues(event, maxCount = 12) {
+  const cookies = parseCookies(event?.headers?.cookie || event?.headers?.Cookie || '');
+  const legacyNames = Object.keys(cookies || {})
+    .filter((name) => String(name || '').startsWith(LEGACY_COOKIE_NAME_PREFIX))
+    .slice(0, Math.max(0, Number(maxCount) || 0));
+  return legacyNames.map((cookieName) => `${cookieName}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`);
+}
+
+function getSetCookieValues(event, primaryCookie = '') {
+  const output = [];
+  const safePrimaryCookie = String(primaryCookie || '').trim();
+  if (safePrimaryCookie) output.push(safePrimaryCookie);
+  output.push(...getLegacyFulfillmentCookieClearValues(event));
+  return output;
+}
+
 function getAllowedOrigins() {
   const known = [
     process.env.URL,
@@ -75,10 +92,11 @@ function validateCsrfOrigin(event) {
 }
 
 function getCookieNameForFulfillment(fulfillmentId) {
-  const safeFulfillmentId = String(fulfillmentId || '').trim().toLowerCase();
+  const safeFulfillmentId = String(fulfillmentId || '').trim();
   if (!safeFulfillmentId) return '';
-  const normalized = safeFulfillmentId.replace(/[^a-z0-9_-]/g, '-').slice(0, 64);
-  return `${COOKIE_NAME_PREFIX}${normalized}`;
+  // Keep a single cookie key so repeat purchases do not accumulate unbounded cookie headers.
+  // The fulfillment id is still embedded and validated from the signed payload.
+  return COOKIE_NAME_PREFIX;
 }
 
 function createFulfillmentSessionCookie({ fulfillmentId, accessToken, expiresAt }) {
@@ -141,10 +159,13 @@ function getAccessTokenFromSessionCookie(event, expectedFulfillmentId = '') {
 
 module.exports = {
   COOKIE_NAME_PREFIX,
+  LEGACY_COOKIE_NAME_PREFIX,
   assertSessionSecretConfigured,
   clearFulfillmentSessionCookie,
   createFulfillmentSessionCookie,
+  getLegacyFulfillmentCookieClearValues,
   getCookieNameForFulfillment,
+  getSetCookieValues,
   getAccessTokenFromSessionCookie,
   hasSessionSecretConfigured,
   validateCsrfOrigin,

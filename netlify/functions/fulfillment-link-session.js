@@ -10,15 +10,21 @@ const {
 const {
   assertSessionSecretConfigured,
   createFulfillmentSessionCookie,
+  getSetCookieValues,
   validateCsrfOrigin,
 } = require('./fulfillment-auth');
 
-function json(statusCode, payload, extraHeaders = {}) {
-  return {
+function json(statusCode, payload, extraHeaders = {}, setCookies = []) {
+  const response = {
     statusCode,
     headers: { 'Content-Type': 'application/json', ...extraHeaders },
     body: JSON.stringify(payload),
   };
+  if (Array.isArray(setCookies) && setCookies.length > 0) {
+    response.headers['Set-Cookie'] = setCookies[0];
+    response.multiValueHeaders = { 'Set-Cookie': setCookies };
+  }
+  return response;
 }
 
 function hashLinkCode(code) {
@@ -115,7 +121,7 @@ exports.handler = async (event) => {
         challengeSent: true,
         fulfillmentId,
         ...(shouldReturnDebugCode() ? { debugCode: generatedCode } : {}),
-      });
+      }, {}, getSetCookieValues(event));
     }
 
     const expectedHash = String(fulfillment.link_code_hash || '').trim();
@@ -156,7 +162,7 @@ exports.handler = async (event) => {
       accessToken: rotatedAccessToken,
       expiresAt: rotatedExpiresAt,
     });
-    return json(200, { ok: true, fulfillmentId }, setCookie ? { 'Set-Cookie': setCookie } : {});
+    return json(200, { ok: true, fulfillmentId }, {}, getSetCookieValues(event, setCookie));
   } catch (error) {
     return json(500, { error: error.message || 'Unable to link fulfillment session.' });
   }
