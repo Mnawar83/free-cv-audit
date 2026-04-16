@@ -2,6 +2,7 @@ const { PAYPAL_CURRENCY, getPayPalAccessToken } = require('./paypal-utils');
 const { LINKEDIN_UPSELL_STATUS, getRun, updateRun } = require('./run-store');
 
 const EXPECTED_AMOUNT = '9.99';
+const { badRequest, parseJsonBody } = require('./http-400');
 const EXPECTED_CURRENCY = (PAYPAL_CURRENCY || 'USD').toUpperCase();
 
 function isValidCapture(data, runId) {
@@ -19,6 +20,8 @@ function isValidCapture(data, runId) {
 }
 
 exports.handler = async (event) => {
+  const functionName = 'paypal-linkedin-capture-order';
+  const route = '/.netlify/functions/paypal-linkedin-capture-order';
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') {
@@ -26,9 +29,11 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { runId, orderID } = JSON.parse(event.body || '{}');
+    const parsed = parseJsonBody(event, { functionName, route });
+    if (!parsed.ok) return parsed.response;
+    const { runId, orderID } = parsed.body;
     if (!runId || !orderID) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'runId and orderID are required.' }) };
+      return badRequest({ event, functionName, route, message: !runId ? 'Missing runId.' : 'Missing payment session id (orderID).', payload: parsed.body, missingFields: !runId ? ['runId'] : ['orderID'] });
     }
 
     const run = await getRun(runId);
@@ -52,7 +57,7 @@ exports.handler = async (event) => {
 
     const data = await response.json();
     if (!isValidCapture(data, runId)) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'Invalid PayPal capture details.' }) };
+      return badRequest({ event, functionName, route, message: 'Invalid PayPal capture details.', payload: parsed.body, invalidFields: ['orderID'] });
     }
 
     const captureId = data?.purchase_units?.[0]?.payments?.captures?.[0]?.id || orderID;

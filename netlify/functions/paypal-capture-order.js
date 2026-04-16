@@ -10,8 +10,11 @@ const {
 } = require('./run-store');
 const { triggerFulfillmentQueueProcessing } = require('./queue-trigger');
 const { hasSessionSecretConfigured, createFulfillmentSessionCookie } = require('./fulfillment-auth');
+const { badRequest, parseJsonBody } = require('./http-400');
 
 exports.handler = async (event) => {
+  const functionName = 'paypal-capture-order';
+  const route = '/.netlify/functions/paypal-capture-order';
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') {
@@ -19,13 +22,15 @@ exports.handler = async (event) => {
   }
 
   try {
-    const payload = JSON.parse(event.body || '{}');
+    const parsed = parseJsonBody(event, { functionName, route });
+    if (!parsed.ok) return parsed.response;
+    const payload = parsed.body;
     const orderID = String(payload.orderID || '').trim();
     const requestedFulfillmentId = String(payload.fulfillmentId || '').trim();
     const runId = String(payload.runId || '').trim();
     const email = String(payload.email || '').trim().toLowerCase();
     if (!orderID) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'orderID is required.' }) };
+      return badRequest({ event, functionName, route, message: 'Missing payment session id (orderID).', payload, missingFields: ['orderID'] });
     }
 
     let fulfillment = null;

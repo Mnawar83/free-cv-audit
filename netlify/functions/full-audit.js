@@ -1,5 +1,6 @@
 const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { getRun, upsertRun } = require('./run-store');
+const { badRequest, parseJsonBody } = require('./http-400');
 
 const FULL_AUDIT_PROMPT = `You are a senior ATS CV auditor and rewrite strategist.
 Return strict JSON only with this schema:
@@ -115,14 +116,27 @@ async function runFullAudit(runId, cvText, teaserHints = '') {
 exports.runFullAudit = runFullAudit;
 
 exports.handler = async (event) => {
+  const functionName = 'full-audit';
+  const route = '/.netlify/functions/full-audit';
   try { require('@netlify/blobs').connectLambda(event); } catch (e) {}
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
   }
   try {
-    const body = JSON.parse(event.body || '{}');
+    const parsed = parseJsonBody(event, { functionName, route });
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.body;
     const runId = String(body.runId || '').trim();
-    if (!runId) return { statusCode: 400, body: JSON.stringify({ error: 'runId is required.' }) };
+    if (!runId) {
+      return badRequest({
+        event,
+        functionName,
+        route,
+        message: 'Missing runId.',
+        payload: body,
+        missingFields: ['runId'],
+      });
+    }
     const run = await getRun(runId);
     if (!run?.original_cv_text) return { statusCode: 404, body: JSON.stringify({ error: 'run not found or missing CV text.' }) };
 

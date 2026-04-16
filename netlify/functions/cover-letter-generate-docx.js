@@ -1,6 +1,7 @@
 const { Document, Packer, Paragraph, TextRun } = require('docx');
 const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { COVER_LETTER_STATUS, getRun, updateRun } = require('./run-store');
+const { badRequest } = require('./http-400');
 const { fetchJobPageWithPuppeteer } = require('./job-page-fetcher');
 const { COVER_LETTER_AI_JOB_TEXT_MAX, COVER_LETTER_JOB_TEXT_THRESHOLD } = require('./cover-letter-constants');
 
@@ -86,20 +87,22 @@ function sanitizePdfText(input) {
 
 
 exports.handler = async (event) => {
+  const functionName = 'cover-letter-generate-docx';
+  const route = '/.netlify/functions/cover-letter-generate-docx';
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
 
   try {
     const { runId } = JSON.parse(event.body || '{}');
-    if (!runId) return { statusCode: 400, body: JSON.stringify({ error: 'runId is required.' }) };
+    if (!runId) return badRequest({ event, functionName, route, message: 'Missing runId.', missingFields: ['runId'] });
 
     const run = await getRun(runId);
     if (!run) return { statusCode: 404, body: JSON.stringify({ error: 'Run not found.' }) };
     if (![COVER_LETTER_STATUS.PAID, COVER_LETTER_STATUS.GENERATED].includes(run.cover_letter_status)) {
       return { statusCode: 403, body: JSON.stringify({ error: 'Payment is required before generation.' }) };
     }
-    if (!run.revised_cv_text) return { statusCode: 400, body: JSON.stringify({ error: 'Missing revised_cv_text for this run.' }) };
+    if (!run.revised_cv_text) return badRequest({ event, functionName, route, message: 'Missing revised CV text for this run.', payload: { runId }, missingFields: ['revised_cv_text'] });
     if (run.cover_letter_docx_base64) {
       return { statusCode: 200, body: JSON.stringify({ ok: true, usedJobText: Boolean(run.used_job_text), pdfUrl: `/.netlify/functions/cover-letter-download-pdf?runId=${encodeURIComponent(runId)}`, downloadUrl: `/.netlify/functions/cover-letter-download-docx?runId=${encodeURIComponent(runId)}` }) };
     }
