@@ -424,7 +424,7 @@ async function run() {
   assert.strictEqual(originalRunAfterRotation?.fulfillment_rotated_run_id, 'seq_run_rotated_new');
 
     assert.ok(observedLogs.some((entry) => entry.includes('[fulfillment][queue] claimed')), 'Queue claim timing log should exist.');
-    assert.ok(observedLogs.some((entry) => entry.includes('[fulfillment][audit] start')), 'Audit start timing log should exist.');
+    assert.ok(!observedLogs.some((entry) => entry.includes('[fulfillment][audit] start')), 'Full audit timing log should not exist when full audit is removed from fulfillment.');
     assert.ok(observedLogs.some((entry) => entry.includes('[fulfillment][cv-generation] start')), 'CV generation start timing log should exist.');
     assert.ok(observedLogs.some((entry) => entry.includes('[fulfillment][artifact] build-complete')), 'Artifact build timing log should exist.');
     assert.ok(observedLogs.some((entry) => entry.includes('[fulfillment][email] send-complete')), 'Email send timing log should exist.');

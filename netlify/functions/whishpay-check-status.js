@@ -129,7 +129,7 @@ exports.handler = async (event) => {
             fulfillmentId: fulfillment.fulfillment_id,
           });
           await updateFulfillment(fulfillment.fulfillment_id, {
-            processing_status: 'full_audit_queued',
+            processing_status: 'cv_generation_queued',
           });
           await enqueueFulfillmentJob({
             fulfillmentId: fulfillment.fulfillment_id,

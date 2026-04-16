@@ -11,7 +11,6 @@ const {
   upsertRun,
 } = require('./run-store');
 const { buildPdfBuffer, buildPdfBufferFromStructuredCv } = require('./pdf-builder');
-const { runFullAudit } = require('./full-audit');
 
 function isTransientStatus(statusCode) {
   const code = Number(statusCode);
@@ -89,10 +88,6 @@ function isArtifactTokenUsable(tokenRecord) {
   return true;
 }
 
-function isReusableFullAudit(audit) {
-  if (!audit || typeof audit !== 'object') return false;
-  return Array.isArray(audit.auditFindings) && Array.isArray(audit.improvementNotes);
-}
 
 async function regenerateFinalPdfFromSource(runId, run, fullAuditResult) {
   const sourceCvText = String(run?.original_cv_text || '').trim();
@@ -215,31 +210,14 @@ exports.handler = async (event) => {
           console.log('[fulfillment][cv-generation] reusing existing generated CV artifacts for retry delivery', { runId, fulfillmentId });
           await upsertRun(runId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
         } else {
-          console.log('[fulfillment][audit] start', { runId, fulfillmentId });
-          const auditStartMs = Date.now();
-          await updateFulfillment(fulfillmentId, { processing_status: 'full_audit_running' });
-          await upsertRun(runId, { fulfillment_status: 'full_audit_running' });
-          const cachedAudit = isReusableFullAudit(run?.full_audit_result) ? run.full_audit_result : null;
-          const fullAudit = cachedAudit || await runFullAudit(runId, run.original_cv_text, run.audit_result || '');
-          const auditEndMs = Date.now();
-          console.log('[fulfillment][audit] complete', {
-            runId,
-            fulfillmentId,
-            cached: Boolean(cachedAudit),
-            elapsedMs: auditEndMs - auditStartMs,
-          });
-          await upsertRun(runId, {
-            full_audit_result: fullAudit,
-            fulfillment_status: 'cv_generation_running',
-            full_audit_completed_at: new Date().toISOString(),
-          });
-
           console.log('[fulfillment][cv-generation] start', { runId, fulfillmentId });
           const generationStartMs = Date.now();
+          await updateFulfillment(fulfillmentId, { processing_status: 'cv_generation_running' });
+          await upsertRun(runId, { fulfillment_status: 'cv_generation_running' });
           const generatePdfHandler = require('./generate-pdf').handler;
           const genResponse = await generatePdfHandler({
             httpMethod: 'POST',
-            body: JSON.stringify({ runId, cvText: run.original_cv_text, cvAnalysis: JSON.stringify(fullAudit), forceRegenerate: true }),
+            body: JSON.stringify({ runId, cvText: run.original_cv_text, cvAnalysis: String(run.audit_result || '').trim(), forceRegenerate: true }),
           });
           if (!(genResponse?.statusCode >= 200 && genResponse?.statusCode < 300)) {
             throw buildError(`CV generation failed with status ${genResponse?.statusCode || 500}`, Number(genResponse?.statusCode) || 500, { transient: true });
@@ -279,8 +257,6 @@ exports.handler = async (event) => {
                   revised_cv_text: rotatedRun.revised_cv_text || null,
                   revised_cv_structured: rotatedRun.revised_cv_structured || null,
                   revised_cv_generated_at: rotatedRun.revised_cv_generated_at || new Date().toISOString(),
-                  full_audit_result: rotatedRun.full_audit_result || null,
-                  full_audit_completed_at: rotatedRun.full_audit_completed_at || null,
                   fulfillment_status: 'cv_ready',
                   fulfillment_rotated_run_id: generatedRunIdHeader,
                 });
@@ -301,65 +277,6 @@ exports.handler = async (event) => {
       if (effectiveRunId !== runId) {
         await upsertRun(runId, { fulfillment_status: 'cv_ready', cv_ready_at: new Date().toISOString() });
       }
-
-      let artifactRun = await getRun(effectiveRunId);
-      const artifactBuildStartMs = Date.now();
-      console.log('[fulfillment][artifact] build-start', { runId: effectiveRunId, fulfillmentId });
-      let finalPdfBase64 = prepareFinalPdfArtifact(artifactRun, generatedPdfBase64);
-      if (!finalPdfBase64) {
-        console.warn('[fulfillment][artifact] cached artifact unavailable; attempting source regeneration fallback', {
-          runId: effectiveRunId,
-          fulfillmentId,
-        });
-        const regeneratedPdfBase64 = await regenerateFinalPdfFromSource(effectiveRunId, artifactRun, artifactRun?.full_audit_result || run?.full_audit_result);
-        if (regeneratedPdfBase64) {
-          generatedPdfBase64 = regeneratedPdfBase64;
-          artifactRun = await getRun(effectiveRunId);
-          finalPdfBase64 = prepareFinalPdfArtifact(artifactRun, regeneratedPdfBase64);
-        }
-      }
-      if (!finalPdfBase64) {
-        throw buildError('Final PDF artifact is missing and must be prepared before email delivery.', 425, { transient: true });
-      }
-      const existingArtifactToken = String(artifactRun?.final_cv_artifact_token || '').trim();
-      const existingTokenRecord = existingArtifactToken ? await getArtifactToken(existingArtifactToken) : null;
-      const shouldReuseArtifactToken = Boolean(
-        existingArtifactToken
-        && isArtifactTokenUsable(existingTokenRecord)
-        && normalizeBase64Pdf(artifactRun?.final_cv_pdf_base64) === finalPdfBase64
-      );
-      const artifactToken = shouldReuseArtifactToken ? existingArtifactToken : createEmailDownloadToken();
-      const rawTtl = Number(process.env.CV_EMAIL_LINK_TTL_DAYS || 30);
-      const ttlDays = Math.min(90, Math.max(1, Number.isFinite(rawTtl) ? rawTtl : 30));
-      const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
-      if (!shouldReuseArtifactToken) {
-        await createArtifactToken({
-          token: artifactToken,
-          runId: effectiveRunId,
-          fulfillmentId,
-          revised_cv_text: String(artifactRun?.revised_cv_text || '').trim() || null,
-          expires_at: expiresAt,
-        });
-      }
-      const shouldUpdateRunArtifact =
-        normalizeBase64Pdf(artifactRun?.final_cv_pdf_base64) !== finalPdfBase64
-        || String(artifactRun?.final_cv_artifact_token || '').trim() !== artifactToken
-        || String(artifactRun?.fulfillment_status || '').trim().toLowerCase() !== 'artifact_persisted';
-      if (shouldUpdateRunArtifact) {
-        await upsertRun(effectiveRunId, {
-          final_cv_pdf_base64: finalPdfBase64,
-          final_cv_artifact_token: artifactToken,
-          final_cv_artifact_ready_at: new Date().toISOString(),
-          fulfillment_status: 'artifact_persisted',
-        });
-      }
-      console.log('[fulfillment][artifact] build-complete', {
-        runId: effectiveRunId,
-        fulfillmentId,
-        elapsedMs: Date.now() - artifactBuildStartMs,
-        reusedToken: shouldReuseArtifactToken,
-      });
-      stageTiming.artifactMs = Date.now() - artifactBuildStartMs;
 
       let artifactRun = await getRun(effectiveRunId);
       const artifactBuildStartMs = Date.now();
