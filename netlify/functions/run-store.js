@@ -135,6 +135,8 @@ function getDefaultStore() {
   return {
     users: {},
     userRuns: {},
+    subscriptions: {},
+    entitlements: {},
     runs: {},
     emailDownloads: {},
     emailDeliveries: {},
@@ -634,6 +636,91 @@ async function listUserRuns(userId, limit = 20) {
     .reverse()
     .map((runId) => store.runs?.[runId])
     .filter(Boolean);
+}
+
+function normalizePlan(value) {
+  const safePlan = String(value || '').trim().toLowerCase();
+  if (safePlan === 'team') return 'team';
+  if (safePlan === 'pro') return 'pro';
+  return 'free';
+}
+
+function deriveEntitlementsFromSubscriptions(subscriptions = []) {
+  const normalized = Array.isArray(subscriptions) ? subscriptions : [];
+  const active = normalized.filter((item) => String(item?.status || '').toUpperCase() === 'ACTIVE');
+  const hasTeam = active.some((item) => normalizePlan(item?.plan) === 'team');
+  const hasPro = hasTeam || active.some((item) => normalizePlan(item?.plan) === 'pro');
+  return {
+    plan: hasTeam ? 'team' : hasPro ? 'pro' : 'free',
+    canUseUnlimitedAudits: hasPro,
+    canUseTeamWorkspace: hasTeam,
+    canUsePriorityQueue: hasTeam,
+    activeSubscriptionCount: active.length,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+async function upsertSubscription(payload = {}) {
+  return mutateStore((store) => {
+    store.subscriptions = store.subscriptions && typeof store.subscriptions === 'object' ? store.subscriptions : {};
+    const userId = String(payload.user_id || '').trim();
+    if (!userId) {
+      throw new Error('user_id is required.');
+    }
+    const subscriptionId = String(payload.subscription_id || `sub_${crypto.randomUUID()}`).trim();
+    const existing = store.subscriptions[subscriptionId] || {
+      subscription_id: subscriptionId,
+      created_at: new Date().toISOString(),
+    };
+    const next = {
+      ...existing,
+      ...payload,
+      subscription_id: subscriptionId,
+      user_id: userId,
+      plan: normalizePlan(payload.plan || existing.plan),
+      status: String(payload.status || existing.status || 'ACTIVE').trim().toUpperCase(),
+      updated_at: new Date().toISOString(),
+    };
+    store.subscriptions[subscriptionId] = next;
+    return { value: next };
+  });
+}
+
+async function getUserSubscriptions(userId) {
+  const safeUserId = String(userId || '').trim();
+  if (!safeUserId) return [];
+  const { store } = await readStoreWithMeta();
+  const subscriptions = Object.values(store.subscriptions || {}).filter((item) => item?.user_id === safeUserId);
+  return subscriptions.sort((a, b) => {
+    const aTime = new Date(a?.updated_at || a?.created_at || 0).getTime();
+    const bTime = new Date(b?.updated_at || b?.created_at || 0).getTime();
+    return bTime - aTime;
+  });
+}
+
+async function refreshUserEntitlements(userId) {
+  return mutateStore((store) => {
+    const safeUserId = String(userId || '').trim();
+    if (!safeUserId) {
+      throw new Error('userId is required.');
+    }
+    store.entitlements = store.entitlements && typeof store.entitlements === 'object' ? store.entitlements : {};
+    const userSubscriptions = Object.values(store.subscriptions || {}).filter((item) => item?.user_id === safeUserId);
+    const entitlements = deriveEntitlementsFromSubscriptions(userSubscriptions);
+    store.entitlements[safeUserId] = {
+      ...(store.entitlements[safeUserId] || { user_id: safeUserId, created_at: new Date().toISOString() }),
+      ...entitlements,
+      user_id: safeUserId,
+    };
+    return { value: store.entitlements[safeUserId] };
+  });
+}
+
+async function getUserEntitlements(userId) {
+  const safeUserId = String(userId || '').trim();
+  if (!safeUserId) return null;
+  const { store } = await readStoreWithMeta();
+  return store.entitlements?.[safeUserId] || null;
 }
 
 async function getRun(runId) {
@@ -1309,6 +1396,8 @@ module.exports = {
   getArtifactToken,
   getRun,
   getUserById,
+  getUserEntitlements,
+  getUserSubscriptions,
   incrementArtifactTokenDownload,
   isWebhookEventProcessed,
   markPaymentEventProcessed,
@@ -1326,7 +1415,9 @@ module.exports = {
   upsertEmailDelivery,
   upsertEmailDownload,
   upsertUserByEmail,
+  upsertSubscription,
   upsertRun,
   linkRunToUser,
+  refreshUserEntitlements,
   updateRun,
 };
