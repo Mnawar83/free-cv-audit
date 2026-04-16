@@ -9,7 +9,12 @@ exports.handler = async (event) => {
   }
 
   try {
-    const parsedBody = JSON.parse(event.body || '{}');
+    let parsedBody;
+    try {
+      parsedBody = JSON.parse(event.body || '{}');
+    } catch (error) {
+      return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON body.' }) };
+    }
     const runId = String(parsedBody?.runId || '').trim();
     const jobLink = String(parsedBody?.jobLink || parsedBody?.jobUrl || parsedBody?.url || '').trim();
     if (!runId || !jobLink) {

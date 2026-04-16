@@ -8,7 +8,12 @@ exports.handler = async (event) => {
   }
 
   try {
-    const parsedBody = JSON.parse(event.body || '{}');
+    let parsedBody;
+    try {
+      parsedBody = JSON.parse(event.body || '{}');
+    } catch (error) {
+      return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON body.' }) };
+    }
     const runId = String(parsedBody?.runId || '').trim();
     const providedLinkedInUrl = String(
       parsedBody?.providedLinkedInUrl
