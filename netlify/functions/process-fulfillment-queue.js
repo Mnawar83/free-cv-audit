@@ -89,7 +89,7 @@ function isArtifactTokenUsable(tokenRecord) {
 }
 
 
-async function regenerateFinalPdfFromSource(runId, run, fullAuditResult) {
+async function regenerateFinalPdfFromSource(runId, run, cvAnalysis) {
   const sourceCvText = String(run?.original_cv_text || '').trim();
   if (!sourceCvText) return '';
   const generatePdfHandler = require('./generate-pdf').handler;
@@ -98,7 +98,7 @@ async function regenerateFinalPdfFromSource(runId, run, fullAuditResult) {
     body: JSON.stringify({
       runId,
       cvText: sourceCvText,
-      cvAnalysis: JSON.stringify(fullAuditResult || run?.full_audit_result || run?.audit_result || ''),
+      cvAnalysis: String(cvAnalysis || run?.audit_result || '').trim(),
       forceRegenerate: true,
     }),
   });
@@ -287,7 +287,7 @@ exports.handler = async (event) => {
           runId: effectiveRunId,
           fulfillmentId,
         });
-        const regeneratedPdfBase64 = await regenerateFinalPdfFromSource(effectiveRunId, artifactRun, artifactRun?.full_audit_result || run?.full_audit_result);
+        const regeneratedPdfBase64 = await regenerateFinalPdfFromSource(effectiveRunId, artifactRun, run?.audit_result || artifactRun?.audit_result || '');
         if (regeneratedPdfBase64) {
           generatedPdfBase64 = regeneratedPdfBase64;
           artifactRun = await getRun(effectiveRunId);
