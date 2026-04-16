@@ -11,9 +11,25 @@ exports.handler = async (event) => {
     };
   }
 
+  let parsedBody;
   try {
-    const { cvText } = JSON.parse(event.body || '{}');
-    if (!cvText || String(cvText).trim().length < 50) {
+    parsedBody = JSON.parse(event.body || '{}');
+  } catch (error) {
+    return {
+      statusCode: 400,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Invalid JSON body.' }),
+    };
+  }
+
+  try {
+    const cvText = String(
+      parsedBody?.cvText
+      || parsedBody?.cv_text
+      || parsedBody?.text
+      || ''
+    );
+    if (!cvText || cvText.trim().length < 50) {
       return {
         statusCode: 400,
         headers: { 'Content-Type': 'application/json' },
@@ -23,7 +39,7 @@ exports.handler = async (event) => {
 
     const runId = createRunId();
     await upsertRun(runId, {
-      original_cv_text: String(cvText),
+      original_cv_text: cvText,
       teaser_audit_status: 'teaser_audit_ready',
       fulfillment_status: 'payment_pending',
       audit_preview_initialized_at: new Date().toISOString(),
