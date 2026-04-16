@@ -9,7 +9,9 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { runId, jobLink } = JSON.parse(event.body || '{}');
+    const parsedBody = JSON.parse(event.body || '{}');
+    const runId = String(parsedBody?.runId || '').trim();
+    const jobLink = String(parsedBody?.jobLink || parsedBody?.jobUrl || parsedBody?.url || '').trim();
     if (!runId || !jobLink) {
       return { statusCode: 400, body: JSON.stringify({ error: 'runId and jobLink are required.' }) };
     }
@@ -29,6 +31,8 @@ exports.handler = async (event) => {
 
     return { statusCode: 200, body: JSON.stringify({ status: next.cover_letter_status }) };
   } catch (error) {
-    return { statusCode: 500, body: JSON.stringify({ error: error.message || 'Init failed.' }) };
+    const statusCode = error instanceof SyntaxError ? 400 : 500;
+    const fallback = statusCode === 400 ? 'Invalid JSON body.' : 'Init failed.';
+    return { statusCode, body: JSON.stringify({ error: error.message || fallback }) };
   }
 };
