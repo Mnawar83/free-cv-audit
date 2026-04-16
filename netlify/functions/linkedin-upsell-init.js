@@ -43,6 +43,8 @@ exports.handler = async (event) => {
 
     return { statusCode: 200, body: JSON.stringify({ status: next.linkedin_upsell_status }) };
   } catch (error) {
-    return { statusCode: 500, body: JSON.stringify({ error: error.message || 'Init failed.' }) };
+    const statusCode = error instanceof SyntaxError ? 400 : 500;
+    const fallback = statusCode === 400 ? 'Invalid JSON body.' : 'Init failed.';
+    return { statusCode, body: JSON.stringify({ error: error.message || fallback }) };
   }
 };
