@@ -137,6 +137,7 @@ function getDefaultStore() {
     emailDownloads: {},
     emailDeliveries: {},
     rateLimits: {},
+    analyticsEvents: [],
     emailQueue: [],
     fulfillmentQueue: [],
     webhookEvents: {},
@@ -172,6 +173,7 @@ function normalizeStore(parsed) {
         parsed.rateLimits && typeof parsed.rateLimits === 'object'
           ? parsed.rateLimits
           : {},
+      analyticsEvents: Array.isArray(parsed.analyticsEvents) ? parsed.analyticsEvents : [],
       emailQueue: Array.isArray(parsed.emailQueue) ? parsed.emailQueue : [],
       fulfillmentQueue: Array.isArray(parsed.fulfillmentQueue) ? parsed.fulfillmentQueue : [],
       webhookEvents:
@@ -223,6 +225,19 @@ function normalizeStore(parsed) {
     return {
       ...parsed,
       rateLimits: {},
+      analyticsEvents: Array.isArray(parsed.analyticsEvents) ? parsed.analyticsEvents : [],
+      emailQueue: Array.isArray(parsed.emailQueue) ? parsed.emailQueue : [],
+      fulfillmentQueue: Array.isArray(parsed.fulfillmentQueue) ? parsed.fulfillmentQueue : [],
+      webhookEvents: parsed.webhookEvents && typeof parsed.webhookEvents === 'object' ? parsed.webhookEvents : {},
+      fulfillments: parsed.fulfillments && typeof parsed.fulfillments === 'object' ? parsed.fulfillments : {},
+      paymentEvents: parsed.paymentEvents && typeof parsed.paymentEvents === 'object' ? parsed.paymentEvents : {},
+      artifactTokens: parsed.artifactTokens && typeof parsed.artifactTokens === 'object' ? parsed.artifactTokens : {},
+    };
+  }
+  if (!Array.isArray(parsed.analyticsEvents)) {
+    return {
+      ...parsed,
+      analyticsEvents: [],
       emailQueue: Array.isArray(parsed.emailQueue) ? parsed.emailQueue : [],
       fulfillmentQueue: Array.isArray(parsed.fulfillmentQueue) ? parsed.fulfillmentQueue : [],
       webhookEvents: parsed.webhookEvents && typeof parsed.webhookEvents === 'object' ? parsed.webhookEvents : {},
@@ -301,6 +316,7 @@ function mergeStoreForDurableRebase(durableStoreInput, localStoreInput) {
     fulfillments: { ...durableStore.fulfillments, ...localStore.fulfillments },
     paymentEvents: { ...durableStore.paymentEvents, ...localStore.paymentEvents },
     artifactTokens: { ...durableStore.artifactTokens, ...localStore.artifactTokens },
+    analyticsEvents: mergeUniqueQueueItems(durableStore.analyticsEvents, localStore.analyticsEvents),
     emailQueue: mergeUniqueQueueItems(durableStore.emailQueue, localStore.emailQueue),
     fulfillmentQueue: mergeUniqueQueueItems(durableStore.fulfillmentQueue, localStore.fulfillmentQueue),
   };
@@ -826,6 +842,41 @@ async function takeRateLimitSlot(key, windowMs, maxRequests) {
   });
 }
 
+async function enqueueAnalyticsEvent(payload = {}) {
+  return mutateStore((store) => {
+    const eventName = String(payload?.eventName || '').trim().toLowerCase();
+    if (!eventName) {
+      throw new Error('eventName is required.');
+    }
+    const createdAt = new Date().toISOString();
+    const event = {
+      eventName,
+      created_at: createdAt,
+      session_id: String(payload?.sessionId || '').trim() || null,
+      run_id: String(payload?.runId || '').trim() || null,
+      context: payload?.context && typeof payload.context === 'object' && !Array.isArray(payload.context)
+        ? payload.context
+        : {},
+      source: String(payload?.source || 'web').trim() || 'web',
+    };
+    const queue = Array.isArray(store.analyticsEvents) ? store.analyticsEvents : [];
+    queue.push(event);
+    const maxEvents = Math.max(200, Number(process.env.ANALYTICS_EVENT_MAX_STORED || 5000));
+    if (queue.length > maxEvents) {
+      queue.splice(0, queue.length - maxEvents);
+    }
+    store.analyticsEvents = queue;
+    return { value: event };
+  });
+}
+
+async function listAnalyticsEvents(limit = 100) {
+  const safeLimit = Math.max(1, Math.min(500, Number(limit) || 100));
+  const { store } = await readStoreWithMeta();
+  const queue = Array.isArray(store.analyticsEvents) ? store.analyticsEvents : [];
+  return queue.slice(-safeLimit).reverse();
+}
+
 async function enqueueEmailJob(payload) {
   return mutateStore((store) => {
     const job = {
@@ -1156,6 +1207,9 @@ async function getOperationalStats() {
     artifactTokens: {
       total: Object.keys(store.artifactTokens || {}).length,
     },
+    analyticsEvents: {
+      total: Array.isArray(store.analyticsEvents) ? store.analyticsEvents.length : 0,
+    },
   };
 }
 
@@ -1185,6 +1239,8 @@ module.exports = {
   markPaymentEventProcessed,
   markWebhookEventProcessed,
   getOperationalStats,
+  enqueueAnalyticsEvent,
+  listAnalyticsEvents,
   pruneOperationalData,
   takeRateLimitSlot,
   createArtifactToken,

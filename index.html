@@ -693,6 +693,27 @@
         let safeCvEmailTimer = null;
         let safeCvEmailAttempt = 0;
         let whishPayRetryAvailableAt = 0;
+        const analyticsSessionId = (() => {
+            const key = 'analytics_session_id';
+            const generate = () => `sess_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+            const readStorage = (storage) => {
+                try {
+                    return storage.getItem(key) || '';
+                } catch (_error) {
+                    return '';
+                }
+            };
+            const writeStorage = (storage, value) => {
+                try {
+                    storage.setItem(key, value);
+                } catch (_error) {}
+            };
+            const existing = readStorage(localStorage) || readStorage(sessionStorage);
+            const next = existing || generate();
+            writeStorage(localStorage, next);
+            writeStorage(sessionStorage, next);
+            return next;
+        })();
 
         const auditMountParent = auditSection ? auditSection.parentElement : null;
         const auditMountAnchor = document.createComment('audit-section-anchor');
@@ -739,6 +760,27 @@
                 localStorage.removeItem(key);
             } catch (error) {
                 console.warn('Unable to clear local storage.', error);
+            }
+        }
+
+        async function trackEvent(eventName, context = {}) {
+            const safeEventName = String(eventName || '').trim().toLowerCase();
+            if (!safeEventName) return;
+            const payload = {
+                eventName: safeEventName,
+                sessionId: analyticsSessionId,
+                runId: String(currentRunId || '').trim() || undefined,
+                context: context && typeof context === 'object' ? context : {},
+            };
+            try {
+                await fetch('/.netlify/functions/track-event', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    keepalive: true,
+                });
+            } catch (_error) {
+                // best-effort telemetry; never block user flows
             }
         }
 
@@ -850,6 +892,11 @@
         }
 
         function setPaidState(type, value) {
+            const wasPaid = type === 'cv'
+                ? hasPaidCV
+                : type === 'linkedin'
+                    ? hasPaidLinkedIn
+                    : hasPaidCoverLetter;
             if (type === 'cv') {
                 hasPaidCV = value;
             } else if (type === 'linkedin') {
@@ -859,6 +906,9 @@
             }
             syncPaidSessionState();
             syncAuditVisibility();
+            if (!wasPaid && value) {
+                trackEvent('payment_succeeded', { productType: type });
+            }
         }
 
         function warmUpCheckoutExperience() {
@@ -1377,6 +1427,7 @@
                 fileNameDisplay.textContent = file.name;
                 auditButton.disabled = false;
                 hideError();
+                trackEvent('cv_file_selected', { fileKind, fileSizeBytes: Number(file.size) || 0 });
             } else {
                 cvFile = null;
                 cvFileKind = '';
@@ -1499,6 +1550,7 @@
         if (shouldStartFreshVisit()) {
             resetRunStateForNewAudit({ clearAuditArtifacts: true });
         }
+        trackEvent('landing_viewed');
 
         if (headerHomeLink) {
             headerHomeLink.addEventListener('click', (event) => {
@@ -1563,6 +1615,7 @@
         
         auditButton.addEventListener('click', async () => {
             if (!cvFile) return;
+            trackEvent('audit_started', { fileKind: cvFileKind || 'unknown' });
 
             uploadSection.classList.add('hidden');
             loadingSection.classList.remove('hidden');
@@ -1607,6 +1660,7 @@
                 initializePayPalButtons();
                 initializeWhishPayCheckout();
                 warmUpCheckoutExperience();
+                trackEvent('audit_completed', { fileKind: cvFileKind || 'unknown' });
 
             } catch (error) {
                 if (error.name === 'AbortError') {
@@ -1617,6 +1671,7 @@
                 loadingSection.classList.add('hidden');
                 uploadSection.classList.remove('hidden');
                 showError(error.message || "An unexpected error occurred during the audit.");
+                trackEvent('audit_failed', { message: String(error?.message || 'unknown').slice(0, 180) });
             }
         });
 
