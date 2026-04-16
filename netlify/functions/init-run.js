@@ -1,4 +1,10 @@
-const { createRunId, linkRunToUser, upsertRun } = require('./run-store');
+const {
+  createRunId,
+  getUserEntitlements,
+  linkRunToUser,
+  listUserRuns,
+  upsertRun,
+} = require('./run-store');
 const { badRequest, parseJsonBody } = require('./http-400');
 const { getUserIdFromSessionCookie } = require('./user-session-auth');
 
@@ -39,6 +45,26 @@ exports.handler = async (event) => {
     }
 
     const runId = createRunId();
+    const userId = getUserIdFromSessionCookie(event);
+    if (userId) {
+      const entitlements = await getUserEntitlements(userId);
+      const hasUnlimitedAudits = Boolean(entitlements?.canUseUnlimitedAudits);
+      if (!hasUnlimitedAudits) {
+        const existingRuns = await listUserRuns(userId, 1000);
+        const freeAuditLimit = Math.max(1, Number(process.env.FREE_TIER_AUDIT_LIMIT || 3));
+        if (existingRuns.length >= freeAuditLimit) {
+          return {
+            statusCode: 402,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              error: `Free audit limit reached (${freeAuditLimit}). Upgrade to Pro for unlimited audits.`,
+              code: 'FREE_AUDIT_LIMIT_REACHED',
+            }),
+          };
+        }
+      }
+    }
+
     await upsertRun(runId, {
       original_cv_text: cvText,
       teaser_audit_status: 'teaser_audit_ready',
@@ -46,7 +72,6 @@ exports.handler = async (event) => {
       audit_preview_initialized_at: new Date().toISOString(),
       teaser_audit_ready_at: new Date().toISOString(),
     });
-    const userId = getUserIdFromSessionCookie(event);
     if (userId) {
       try {
         await linkRunToUser(userId, runId);
