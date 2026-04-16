@@ -40,6 +40,7 @@ This project includes a paid-fulfillment flow (PayPal/WhishPay), secure fulfillm
 
 - `URL` (or `DEPLOY_PRIME_URL` / `DEPLOY_URL` fallback): used to build absolute links for CV delivery and reissue endpoints.
 - `RUN_STORE_DURABLE_URL` and `RUN_STORE_DURABLE_TOKEN`: use durable run-store backend outside local/dev file-backed mode.
+- `USER_SESSION_SECRET`: required to sign authenticated user session cookies for `user-session` flows.
 
 ### Optional fulfillment/security tuning
 

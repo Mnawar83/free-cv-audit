@@ -133,6 +133,8 @@ function shouldUseDurableStore() {
 
 function getDefaultStore() {
   return {
+    users: {},
+    userRuns: {},
     runs: {},
     emailDownloads: {},
     emailDeliveries: {},
@@ -145,6 +147,10 @@ function getDefaultStore() {
     paymentEvents: {},
     artifactTokens: {},
   };
+}
+
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
 }
 
 function getDurableHeaders() {
@@ -560,6 +566,74 @@ async function upsertRun(runId, updates = {}) {
     store.runs[runId] = next;
     return { value: next };
   });
+}
+
+async function upsertUserByEmail(email, profile = {}) {
+  return mutateStore((store) => {
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) {
+      throw new Error('email is required.');
+    }
+    store.users = store.users && typeof store.users === 'object' ? store.users : {};
+    const existing = Object.values(store.users).find((item) => normalizeEmail(item?.email) === normalizedEmail);
+    const userId = existing?.user_id || `usr_${crypto.randomUUID()}`;
+    const previous = store.users[userId] || { user_id: userId, created_at: new Date().toISOString() };
+    const next = {
+      ...previous,
+      ...profile,
+      user_id: userId,
+      email: normalizedEmail,
+      updated_at: new Date().toISOString(),
+    };
+    store.users[userId] = next;
+    return { value: next };
+  });
+}
+
+async function getUserById(userId) {
+  const safeUserId = String(userId || '').trim();
+  if (!safeUserId) return null;
+  const { store } = await readStoreWithMeta();
+  return store.users?.[safeUserId] || null;
+}
+
+async function linkRunToUser(userId, runId) {
+  return mutateStore((store) => {
+    const safeUserId = String(userId || '').trim();
+    const safeRunId = String(runId || '').trim();
+    if (!safeUserId || !safeRunId) {
+      throw new Error('userId and runId are required.');
+    }
+    const run = store.runs?.[safeRunId];
+    if (!run) {
+      throw new Error('run not found.');
+    }
+    store.userRuns = store.userRuns && typeof store.userRuns === 'object' ? store.userRuns : {};
+    const existing = Array.isArray(store.userRuns[safeUserId]) ? store.userRuns[safeUserId] : [];
+    if (!existing.includes(safeRunId)) {
+      existing.push(safeRunId);
+    }
+    store.userRuns[safeUserId] = existing;
+    store.runs[safeRunId] = {
+      ...run,
+      user_id: safeUserId,
+      updated_at: new Date().toISOString(),
+    };
+    return { value: { userId: safeUserId, runId: safeRunId } };
+  });
+}
+
+async function listUserRuns(userId, limit = 20) {
+  const safeUserId = String(userId || '').trim();
+  if (!safeUserId) return [];
+  const safeLimit = Math.max(1, Math.min(100, Number(limit) || 20));
+  const { store } = await readStoreWithMeta();
+  const runIds = Array.isArray(store.userRuns?.[safeUserId]) ? store.userRuns[safeUserId] : [];
+  return runIds
+    .slice(-safeLimit)
+    .reverse()
+    .map((runId) => store.runs?.[runId])
+    .filter(Boolean);
 }
 
 async function getRun(runId) {
@@ -1234,6 +1308,7 @@ module.exports = {
   getEmailDownload,
   getArtifactToken,
   getRun,
+  getUserById,
   incrementArtifactTokenDownload,
   isWebhookEventProcessed,
   markPaymentEventProcessed,
@@ -1241,6 +1316,7 @@ module.exports = {
   getOperationalStats,
   enqueueAnalyticsEvent,
   listAnalyticsEvents,
+  listUserRuns,
   pruneOperationalData,
   takeRateLimitSlot,
   createArtifactToken,
@@ -1249,6 +1325,8 @@ module.exports = {
   updateFulfillment,
   upsertEmailDelivery,
   upsertEmailDownload,
+  upsertUserByEmail,
   upsertRun,
+  linkRunToUser,
   updateRun,
 };
