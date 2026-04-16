@@ -1,5 +1,6 @@
-const { createRunId, upsertRun } = require('./run-store');
+const { createRunId, linkRunToUser, upsertRun } = require('./run-store');
 const { badRequest, parseJsonBody } = require('./http-400');
+const { getUserIdFromSessionCookie } = require('./user-session-auth');
 
 exports.handler = async (event) => {
   const functionName = 'init-run';
@@ -45,6 +46,14 @@ exports.handler = async (event) => {
       audit_preview_initialized_at: new Date().toISOString(),
       teaser_audit_ready_at: new Date().toISOString(),
     });
+    const userId = getUserIdFromSessionCookie(event);
+    if (userId) {
+      try {
+        await linkRunToUser(userId, runId);
+      } catch (error) {
+        console.warn('Unable to link run to user session.', { runId, userId, error: error?.message || error });
+      }
+    }
 
     return {
       statusCode: 200,
