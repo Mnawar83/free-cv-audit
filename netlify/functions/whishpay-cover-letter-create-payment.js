@@ -8,6 +8,7 @@ const {
 } = require('./whishpay-utils');
 const { COVER_LETTER_STATUS, getRun, updateRun } = require('./run-store');
 const { COVER_LETTER_PRICE_STRING } = require('./cover-letter-constants');
+const { badRequest, parseJsonBody } = require('./http-400');
 
 function generateExternalId() {
   return crypto.randomInt(1_000_000_000_000, 9_999_999_999_999);
@@ -25,6 +26,8 @@ function appendExternalId(urlString, externalId) {
 }
 
 exports.handler = async (event) => {
+  const functionName = 'whishpay-cover-letter-create-payment';
+  const route = '/.netlify/functions/whishpay-cover-letter-create-payment';
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
@@ -33,9 +36,11 @@ exports.handler = async (event) => {
     const functionStart = Date.now();
     console.info('[timing] whishpay-cover-letter-create-payment start', { at: functionStart });
     assertWhishPayConfigured();
-    const payload = JSON.parse(event.body || '{}');
+    const parsed = parseJsonBody(event, { functionName, route });
+    if (!parsed.ok) return parsed.response;
+    const payload = parsed.body;
     const runId = payload.runId;
-    if (!runId) return { statusCode: 400, body: JSON.stringify({ error: 'runId is required.' }) };
+    if (!runId) return badRequest({ event, functionName, route, message: 'Missing runId.', payload, missingFields: ['runId'] });
 
     let run = await getRun(runId);
     if (!run) {

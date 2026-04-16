@@ -5,6 +5,7 @@ function json(statusCode, payload) {
     body: JSON.stringify(payload),
   };
 }
+const { badRequest, parseJsonBody } = require('./http-400');
 
 function toSafeText(value, fallback = '') {
   const trimmed = String(value || '').trim();
@@ -44,6 +45,8 @@ function getHtml({ name, pdfUrl, isResend }) {
 
 exports.handler = async (event) => {
   const timing = { start: Date.now() };
+  const functionName = 'send-cover-letter-email';
+  const route = '/.netlify/functions/send-cover-letter-email';
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') {
@@ -56,14 +59,16 @@ exports.handler = async (event) => {
       return json(500, { error: 'RESEND_API_KEY is missing.' });
     }
 
-    const payload = JSON.parse(event.body || '{}');
+    const parsed = parseJsonBody(event, { functionName, route });
+    if (!parsed.ok) return parsed.response;
+    const payload = parsed.body;
     const email = toSafeText(payload.email).toLowerCase();
     const pdfUrl = toSafeText(payload.pdfUrl);
     const name = toSafeText(payload.name);
     const isResend = Boolean(payload.resend);
 
-    if (!email) return json(400, { error: 'email is required.' });
-    if (!pdfUrl) return json(400, { error: 'pdfUrl is required.' });
+    if (!email) return badRequest({ event, functionName, route, message: 'Missing email.', payload, missingFields: ['email'] });
+    if (!pdfUrl) return badRequest({ event, functionName, route, message: 'Missing cover letter PDF URL.', payload, missingFields: ['pdfUrl'] });
 
     const subject = isResend ? 'Here Is Your Cover Letter Again' : 'Your Cover Letter is Ready';
     const from = 'FreeCVAudit <noreply@freecvaudit.com>';

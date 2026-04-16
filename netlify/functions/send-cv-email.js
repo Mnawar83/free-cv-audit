@@ -11,6 +11,7 @@ const {
 } = require('./run-store');
 const { triggerEmailQueueProcessing } = require('./queue-trigger');
 const crypto = require('crypto');
+const { badRequest, parseJsonBody } = require('./http-400');
 const QUALITY_FLOOR_DISABLED_VALUES = new Set(['0', 'false', 'off', 'no']);
 
 function isQualityFloorEnabled() {
@@ -195,6 +196,8 @@ function getHtml({ name, cvUrl, isResend, hasAttachment }) {
 
 exports.handler = async (event) => {
   const timing = { start: Date.now() };
+  const functionName = 'send-cv-email';
+  const route = '/.netlify/functions/send-cv-email';
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') {
@@ -208,7 +211,9 @@ exports.handler = async (event) => {
       return json(500, { error: 'RESEND_API_KEY is missing.' });
     }
 
-    const payload = JSON.parse(event.body || '{}');
+    const parsed = parseJsonBody(event, { functionName, route });
+    if (!parsed.ok) return parsed.response;
+    const payload = parsed.body;
     const email = toSafeText(payload.email).toLowerCase();
     const cvUrl = toSafeText(payload.cvUrl);
     const name = toSafeText(payload.name);
@@ -219,14 +224,18 @@ exports.handler = async (event) => {
     const clientPdfBase64 = toSafeText(payload.pdfBase64);
     const clientCvText = toSafeText(payload.cvText);
 
-    if (!email) return json(400, { error: 'email is required.' });
-    if (!cvUrl) return json(400, { error: 'cvUrl is required.' });
-    if (!runId) return json(400, { error: 'runId is required to create a reliable download link.' });
+    if (!email) return badRequest({ event, functionName, route, message: 'Missing email.', payload, missingFields: ['email'] });
+    if (!cvUrl) return badRequest({ event, functionName, route, message: 'Missing CV file URL.', payload, missingFields: ['cvUrl'] });
+    if (!runId) return badRequest({ event, functionName, route, message: 'Missing runId for CV delivery.', payload, missingFields: ['runId'] });
 
     // ---- Fast path: fulfillment queue already resolved all artifacts ----
     // When forceSync + pdfBase64 + artifactToken are all provided, skip redundant
     // store lookups (fulfillment, run, artifact token) since the caller already
     // validated payment, generated the CV, and created the artifact token.
+    if (forceSync && clientPdfBase64 && !payload.artifactToken) {
+      return badRequest({ event, functionName, route, message: 'Missing artifact token.', payload, missingFields: ['artifactToken'] });
+    }
+
     if (forceSync && clientPdfBase64 && payload.artifactToken) {
       const fastPdf = normalizeBase64Pdf(clientPdfBase64);
       const fastToken = toSafeText(payload.artifactToken);

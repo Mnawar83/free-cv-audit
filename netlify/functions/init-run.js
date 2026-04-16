@@ -1,6 +1,9 @@
 const { createRunId, upsertRun } = require('./run-store');
+const { badRequest, parseJsonBody } = require('./http-400');
 
 exports.handler = async (event) => {
+  const functionName = 'init-run';
+  const route = '/.netlify/functions/init-run';
   try { require('@netlify/blobs').connectLambda(event); } catch (e) {}
 
   if (event.httpMethod !== 'POST') {
@@ -11,16 +14,9 @@ exports.handler = async (event) => {
     };
   }
 
-  let parsedBody;
-  try {
-    parsedBody = JSON.parse(event.body || '{}');
-  } catch (error) {
-    return {
-      statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Invalid JSON body.' }),
-    };
-  }
+  const parsed = parseJsonBody(event, { functionName, route });
+  if (!parsed.ok) return parsed.response;
+  const parsedBody = parsed.body;
 
   try {
     const cvText = String(
@@ -30,11 +26,15 @@ exports.handler = async (event) => {
       || ''
     );
     if (!cvText || cvText.trim().length < 50) {
-      return {
-        statusCode: 400,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'cvText is required.' }),
-      };
+      return badRequest({
+        event,
+        functionName,
+        route,
+        message: 'Missing cvText (minimum 50 characters required).',
+        payload: parsedBody,
+        missingFields: ['cvText'],
+        invalidFields: ['cvText'],
+      });
     }
 
     const runId = createRunId();

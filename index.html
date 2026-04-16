@@ -562,6 +562,7 @@
         
         let cvFile = null;
         let cvFileKind = '';
+        const MAX_CV_UPLOAD_BYTES = 5 * 1024 * 1024;
         let paypalSdkLoading = null;
         let paypalButtonsRendered = false;
         let paypalButtonsInitializing = false;
@@ -1366,8 +1367,10 @@
         function handleFile(file) {
             const fileKind = detectCvFileKind(file);
             const isAcceptedFile = Boolean(file) && Boolean(fileKind);
+            const isEmptyFile = !file || typeof file.size !== 'number' || file.size <= 0;
+            const isOversizedFile = Boolean(file) && Number(file.size) > MAX_CV_UPLOAD_BYTES;
 
-            if (isAcceptedFile) {
+            if (isAcceptedFile && !isEmptyFile && !isOversizedFile) {
                 resetRunStateForNewAudit({ clearAuditArtifacts: true });
                 cvFile = file;
                 cvFileKind = fileKind;
@@ -1379,7 +1382,13 @@
                 cvFileKind = '';
                 fileNameDisplay.textContent = '';
                 auditButton.disabled = true;
-                showError("Invalid file type. Please upload a PDF or DOCX file.");
+                if (isEmptyFile) {
+                    showError('Missing CV file. Please upload a PDF or DOCX file.');
+                } else if (isOversizedFile) {
+                    showError('CV file is too large. Please upload a file smaller than 5 MB.');
+                } else {
+                    showError('Unsupported file type. Please upload a PDF or DOCX file.');
+                }
             }
         }
 
@@ -1684,10 +1693,17 @@
         function getApiErrorMessage(payload, fallbackMessage) {
             if (!payload || typeof payload !== 'object') return fallbackMessage;
             if (typeof payload.error === 'string' && payload.error.trim()) {
+                const rawError = payload.error.trim();
+                if (rawError.toLowerCase().includes('unsupported content-type')) return 'Request format is not supported. Please refresh and try again.';
+                if (rawError.toLowerCase().includes('invalid json')) return 'We could not process your request. Please refresh and try again.';
+                if (rawError.toLowerCase().includes('missing email')) return 'Please enter your email address.';
+                if (rawError.toLowerCase().includes('missing cv file')) return 'Please upload your CV again.';
+                if (rawError.toLowerCase().includes('missing payment session id')) return 'Payment verification is incomplete. Please retry your payment.';
+                if (rawError.toLowerCase().includes('missing artifact token')) return 'Your secure download token is missing. Please request a new email.';
                 if (typeof payload.details === 'string' && payload.details.trim()) {
-                    return `${payload.error} ${payload.details}`;
+                    return `${rawError} ${payload.details}`;
                 }
-                return payload.error;
+                return rawError;
             }
             return fallbackMessage;
         }

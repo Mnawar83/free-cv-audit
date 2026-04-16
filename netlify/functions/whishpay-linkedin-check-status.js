@@ -5,8 +5,11 @@ const {
   getWhishPayStatusUrl,
 } = require('./whishpay-utils');
 const { LINKEDIN_UPSELL_STATUS, getRun, updateRun } = require('./run-store');
+const { badRequest, parseJsonBody } = require('./http-400');
 
 exports.handler = async (event) => {
+  const functionName = 'whishpay-linkedin-check-status';
+  const route = '/.netlify/functions/whishpay-linkedin-check-status';
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') {
@@ -15,10 +18,16 @@ exports.handler = async (event) => {
 
   try {
     assertWhishPayConfigured();
-    const payload = JSON.parse(event.body || '{}');
+    const parsed = parseJsonBody(event, { functionName, route });
+    if (!parsed.ok) return parsed.response;
+    const payload = parsed.body;
     const { runId, externalId } = payload;
     if (!runId || !externalId) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'runId and externalId are required.' }) };
+      return badRequest({
+        event, functionName, route, payload,
+        message: !runId ? 'Missing runId.' : 'Missing payment session id (externalId).',
+        missingFields: !runId ? ['runId'] : ['externalId'],
+      });
     }
 
     const run = await getRun(runId);

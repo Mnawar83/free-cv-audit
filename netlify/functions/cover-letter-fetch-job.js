@@ -1,7 +1,10 @@
 const { getRun, updateRun } = require('./run-store');
 const { fetchJobPageWithPuppeteer } = require('./job-page-fetcher');
+const { badRequest, parseJsonBody } = require('./http-400');
 
 exports.handler = async (event) => {
+  const functionName = 'cover-letter-fetch-job';
+  const route = '/.netlify/functions/cover-letter-fetch-job';
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') {
@@ -9,9 +12,11 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { runId, jobLink } = JSON.parse(event.body || '{}');
+    const parsed = parseJsonBody(event, { functionName, route });
+    if (!parsed.ok) return parsed.response;
+    const { runId, jobLink } = parsed.body;
     if (!runId || !jobLink) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'runId and jobLink are required.' }) };
+      return badRequest({ event, functionName, route, message: !runId ? 'Missing runId.' : 'Missing jobLink.', payload: parsed.body, missingFields: !runId ? ['runId'] : ['jobLink'] });
     }
     const run = await getRun(runId);
     if (!run) return { statusCode: 404, body: JSON.stringify({ error: 'Run not found.' }) };

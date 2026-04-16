@@ -1,6 +1,9 @@
 const { LINKEDIN_UPSELL_STATUS, getRun, updateRun } = require('./run-store');
+const { badRequest, parseJsonBody } = require('./http-400');
 
 exports.handler = async (event) => {
+  const functionName = 'linkedin-upsell-init';
+  const route = '/.netlify/functions/linkedin-upsell-init';
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
 
   if (event.httpMethod !== 'POST') {
@@ -8,12 +11,9 @@ exports.handler = async (event) => {
   }
 
   try {
-    let parsedBody;
-    try {
-      parsedBody = JSON.parse(event.body || '{}');
-    } catch (error) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON body.' }) };
-    }
+    const parsed = parseJsonBody(event, { functionName, route });
+    if (!parsed.ok) return parsed.response;
+    const parsedBody = parsed.body;
     const runId = String(parsedBody?.runId || '').trim();
     const providedLinkedInUrl = String(
       parsedBody?.providedLinkedInUrl
@@ -24,7 +24,14 @@ exports.handler = async (event) => {
     ).trim();
 
     if (!runId || !providedLinkedInUrl) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'runId and providedLinkedInUrl are required.' }) };
+      return badRequest({
+        event,
+        functionName,
+        route,
+        message: !runId ? 'Missing runId.' : 'Missing providedLinkedInUrl.',
+        payload: parsedBody,
+        missingFields: !runId ? ['runId'] : ['providedLinkedInUrl'],
+      });
     }
 
     const run = await getRun(runId);
@@ -43,8 +50,6 @@ exports.handler = async (event) => {
 
     return { statusCode: 200, body: JSON.stringify({ status: next.linkedin_upsell_status }) };
   } catch (error) {
-    const statusCode = error instanceof SyntaxError ? 400 : 500;
-    const fallback = statusCode === 400 ? 'Invalid JSON body.' : 'Init failed.';
-    return { statusCode, body: JSON.stringify({ error: error.message || fallback }) };
+    return { statusCode: 500, body: JSON.stringify({ error: error.message || 'Init failed.' }) };
   }
 };
