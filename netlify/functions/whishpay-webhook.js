@@ -101,7 +101,7 @@ exports.handler = async (event) => {
           paidAt: queuedAtIso,
         });
         await updateFulfillment(fulfillment.fulfillment_id, {
-          processing_status: 'full_audit_queued',
+          processing_status: 'cv_generation_queued',
           queue_enqueued_at: queuedAtIso,
         });
         const queuedJob = await enqueueFulfillmentJob({
