@@ -137,6 +137,7 @@ function getDefaultStore() {
     userRuns: {},
     subscriptions: {},
     entitlements: {},
+    userSessionCodes: {},
     runs: {},
     emailDownloads: {},
     emailDeliveries: {},
@@ -153,6 +154,10 @@ function getDefaultStore() {
 
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+function hashSessionCode(code) {
+  return crypto.createHash('sha256').update(String(code || '').trim()).digest('hex');
 }
 
 function getDurableHeaders() {
@@ -721,6 +726,72 @@ async function getUserEntitlements(userId) {
   if (!safeUserId) return null;
   const { store } = await readStoreWithMeta();
   return store.entitlements?.[safeUserId] || null;
+}
+
+async function saveUserSessionCode(email, code, expiresAt, metadata = {}) {
+  return mutateStore((store) => {
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) throw new Error('email is required.');
+    const safeCode = String(code || '').trim();
+    if (!safeCode) throw new Error('code is required.');
+    const safeExpiresAt = String(expiresAt || '').trim();
+    if (!safeExpiresAt) throw new Error('expiresAt is required.');
+    const expiresAtMs = new Date(safeExpiresAt).getTime();
+    if (!Number.isFinite(expiresAtMs)) throw new Error('expiresAt is invalid.');
+    store.userSessionCodes = store.userSessionCodes && typeof store.userSessionCodes === 'object'
+      ? store.userSessionCodes
+      : {};
+    store.userSessionCodes[normalizedEmail] = {
+      email: normalizedEmail,
+      code_hash: hashSessionCode(safeCode),
+      expires_at: safeExpiresAt,
+      attempts: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      metadata: metadata && typeof metadata === 'object' ? metadata : {},
+    };
+    return { value: { email: normalizedEmail, expires_at: safeExpiresAt } };
+  });
+}
+
+async function consumeUserSessionCode(email, code, options = {}) {
+  return mutateStore((store) => {
+    const normalizedEmail = normalizeEmail(email);
+    const safeCode = String(code || '').trim();
+    if (!normalizedEmail || !safeCode) {
+      return { value: { ok: false, reason: 'MISSING_FIELDS' }, skipWrite: true };
+    }
+    store.userSessionCodes = store.userSessionCodes && typeof store.userSessionCodes === 'object'
+      ? store.userSessionCodes
+      : {};
+    const current = store.userSessionCodes[normalizedEmail];
+    if (!current) return { value: { ok: false, reason: 'CODE_NOT_FOUND' }, skipWrite: true };
+
+    const maxAttempts = Math.max(1, Number(options.maxAttempts || process.env.USER_SESSION_CODE_MAX_ATTEMPTS || 5));
+    if ((Number(current.attempts) || 0) >= maxAttempts) {
+      delete store.userSessionCodes[normalizedEmail];
+      return { value: { ok: false, reason: 'TOO_MANY_ATTEMPTS' } };
+    }
+
+    const expiresAtMs = new Date(String(current.expires_at || '')).getTime();
+    if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+      delete store.userSessionCodes[normalizedEmail];
+      return { value: { ok: false, reason: 'EXPIRED' } };
+    }
+
+    const candidateHash = hashSessionCode(safeCode);
+    const expectedHash = String(current.code_hash || '');
+    if (!expectedHash || expectedHash.length !== candidateHash.length
+      || !crypto.timingSafeEqual(Buffer.from(expectedHash, 'utf8'), Buffer.from(candidateHash, 'utf8'))) {
+      current.attempts = (Number(current.attempts) || 0) + 1;
+      current.updated_at = new Date().toISOString();
+      store.userSessionCodes[normalizedEmail] = current;
+      return { value: { ok: false, reason: 'INVALID_CODE', attempts: current.attempts } };
+    }
+
+    delete store.userSessionCodes[normalizedEmail];
+    return { value: { ok: true } };
+  });
 }
 
 async function getRun(runId) {
@@ -1398,6 +1469,7 @@ module.exports = {
   getUserById,
   getUserEntitlements,
   getUserSubscriptions,
+  consumeUserSessionCode,
   incrementArtifactTokenDownload,
   isWebhookEventProcessed,
   markPaymentEventProcessed,
@@ -1416,6 +1488,7 @@ module.exports = {
   upsertEmailDownload,
   upsertUserByEmail,
   upsertSubscription,
+  saveUserSessionCode,
   upsertRun,
   linkRunToUser,
   refreshUserEntitlements,

@@ -58,7 +58,15 @@ exports.handler = async (event) => {
   if (!parsed.ok) return parsed.response;
   const body = parsed.body || {};
 
-  const userId = resolveUserId(event, body);
+  const sessionUserId = String(getUserIdFromSessionCookie(event) || '').trim();
+  const requestedUserId = String(body.userId || body.user_id || '').trim();
+  if (!sessionUserId && !requestedUserId) {
+    return json(401, { error: 'No active user session.' });
+  }
+  if (sessionUserId && requestedUserId && sessionUserId !== requestedUserId) {
+    return json(403, { error: 'Session user does not match requested user.' });
+  }
+  const userId = sessionUserId || requestedUserId;
   if (!userId) {
     return badRequest({
       event,

@@ -199,6 +199,12 @@
                     <button id="account-signin-button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">Sign In</button>
                     <button id="account-signout-button" class="rounded-md border border-slate-500 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700">Sign Out</button>
                 </div>
+                <div class="mt-2 grid gap-2 md:grid-cols-[1fr_auto_auto]">
+                    <input id="account-code-input" type="text" inputmode="numeric" maxlength="6" class="w-full rounded-md border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-400" placeholder="Enter 6-digit code" />
+                    <button id="account-verify-button" class="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500">Verify Code</button>
+                    <button id="account-resend-button" class="rounded-md border border-slate-500 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700">Resend</button>
+                </div>
+                <p id="account-code-status" class="mt-1 text-xs text-slate-400"></p>
                 <p id="account-plan-badge" class="mt-2 text-xs text-emerald-300"></p>
             </div>
         </header>
@@ -572,7 +578,11 @@
         const accountEmailInput = document.getElementById('account-email-input');
         const accountSignInButton = document.getElementById('account-signin-button');
         const accountSignOutButton = document.getElementById('account-signout-button');
+        const accountCodeInput = document.getElementById('account-code-input');
+        const accountVerifyButton = document.getElementById('account-verify-button');
+        const accountResendButton = document.getElementById('account-resend-button');
         const accountStatus = document.getElementById('account-status');
+        const accountCodeStatus = document.getElementById('account-code-status');
         const accountPlanBadge = document.getElementById('account-plan-badge');
         
         let cvFile = null;
@@ -710,6 +720,7 @@
         let whishPayRetryAvailableAt = 0;
         let currentUser = null;
         let currentEntitlements = null;
+        let accountCodeExpiresAt = '';
         const analyticsSessionId = (() => {
             const key = 'analytics_session_id';
             const generate = () => `sess_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
@@ -823,6 +834,11 @@
             if (accountEmailInput) {
                 accountEmailInput.value = email || accountEmailInput.value || '';
             }
+            if (accountCodeStatus && accountCodeExpiresAt) {
+                accountCodeStatus.textContent = `Verification code sent. Expires at ${new Date(accountCodeExpiresAt).toLocaleTimeString()}.`;
+            } else if (accountCodeStatus && !email) {
+                accountCodeStatus.textContent = '';
+            }
         }
 
         async function refreshAccountSession() {
@@ -852,7 +868,7 @@
                 showError('Please enter your email to sign in.');
                 return;
             }
-            const response = await fetch('/.netlify/functions/user-session', {
+            const response = await fetch('/.netlify/functions/user-session-request-code', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email }),
@@ -862,7 +878,35 @@
                 showError(payload?.error || 'Unable to sign in right now.');
                 return;
             }
+            accountCodeExpiresAt = String(payload?.expiresAt || '');
+            if (accountCodeStatus) {
+                const debugCode = payload?.debugCode ? ` Debug code: ${payload.debugCode}` : '';
+                accountCodeStatus.textContent = `Code sent to ${email}.${debugCode}`;
+            }
+            hideError();
+        }
+
+        async function verifyAccountCode() {
+            const email = String(accountEmailInput?.value || '').trim().toLowerCase();
+            const code = String(accountCodeInput?.value || '').trim();
+            if (!email || !code) {
+                showError('Please enter both email and verification code.');
+                return;
+            }
+            const response = await fetch('/.netlify/functions/user-session-verify-code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, code }),
+            });
+            const payload = await readJsonSafely(response);
+            if (!response.ok) {
+                showError(payload?.error || 'Verification failed.');
+                return;
+            }
             currentUser = payload?.user || null;
+            accountCodeExpiresAt = '';
+            if (accountCodeInput) accountCodeInput.value = '';
+            if (accountCodeStatus) accountCodeStatus.textContent = 'Verification successful.';
             await refreshAccountSession();
             hideError();
         }
@@ -871,6 +915,9 @@
             await fetch('/.netlify/functions/user-session', { method: 'DELETE' });
             currentUser = null;
             currentEntitlements = null;
+            accountCodeExpiresAt = '';
+            if (accountCodeInput) accountCodeInput.value = '';
+            if (accountCodeStatus) accountCodeStatus.textContent = '';
             updateAccountUi();
         }
 
@@ -965,6 +1012,16 @@
         });
         if (accountSignInButton) {
             accountSignInButton.addEventListener('click', async () => {
+                await signInAccount();
+            });
+        }
+        if (accountVerifyButton) {
+            accountVerifyButton.addEventListener('click', async () => {
+                await verifyAccountCode();
+            });
+        }
+        if (accountResendButton) {
+            accountResendButton.addEventListener('click', async () => {
                 await signInAccount();
             });
         }

@@ -63,6 +63,13 @@ async function run() {
   });
   assert.strictEqual(noSessionResponse.statusCode, 401);
 
+  const mismatchResponse = await subscription.handler({
+    httpMethod: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ userId: 'usr_other', plan: 'team' }),
+  });
+  assert.strictEqual(mismatchResponse.statusCode, 403);
+
   console.log('subscription test passed');
 }
 
