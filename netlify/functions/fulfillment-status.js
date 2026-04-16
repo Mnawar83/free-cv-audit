@@ -1,12 +1,22 @@
 const { doesFulfillmentAccessTokenMatch, getFulfillment, takeRateLimitSlot } = require('./run-store');
-const { clearFulfillmentSessionCookie, getAccessTokenFromSessionCookie, validateCsrfOrigin } = require('./fulfillment-auth');
+const {
+  clearFulfillmentSessionCookie,
+  getAccessTokenFromSessionCookie,
+  getSetCookieValues,
+  validateCsrfOrigin,
+} = require('./fulfillment-auth');
 
-function json(statusCode, payload, extraHeaders = {}) {
-  return {
+function json(statusCode, payload, extraHeaders = {}, setCookies = []) {
+  const response = {
     statusCode,
     headers: { 'Content-Type': 'application/json', ...extraHeaders },
     body: JSON.stringify(payload),
   };
+  if (Array.isArray(setCookies) && setCookies.length > 0) {
+    response.headers['Set-Cookie'] = setCookies[0];
+    response.multiValueHeaders = { 'Set-Cookie': setCookies };
+  }
+  return response;
 }
 
 exports.handler = async (event) => {
@@ -41,7 +51,12 @@ exports.handler = async (event) => {
       return json(404, { error: 'fulfillment was not found.' });
     }
     if (!doesFulfillmentAccessTokenMatch(fulfillment, accessToken)) {
-      return json(403, { error: 'fulfillment access token is invalid.' }, { 'Set-Cookie': clearFulfillmentSessionCookie(fulfillmentId) });
+      return json(
+        403,
+        { error: 'fulfillment access token is invalid.' },
+        {},
+        getSetCookieValues(event, clearFulfillmentSessionCookie(fulfillmentId))
+      );
     }
 
     return json(200, {

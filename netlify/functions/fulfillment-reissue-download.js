@@ -16,15 +16,21 @@ const {
   clearFulfillmentSessionCookie,
   createFulfillmentSessionCookie,
   getAccessTokenFromSessionCookie,
+  getSetCookieValues,
   validateCsrfOrigin,
 } = require('./fulfillment-auth');
 
-function json(statusCode, payload, extraHeaders = {}) {
-  return {
+function json(statusCode, payload, extraHeaders = {}, setCookies = []) {
+  const response = {
     statusCode,
     headers: { 'Content-Type': 'application/json', ...extraHeaders },
     body: JSON.stringify(payload),
   };
+  if (Array.isArray(setCookies) && setCookies.length > 0) {
+    response.headers['Set-Cookie'] = setCookies[0];
+    response.multiValueHeaders = { 'Set-Cookie': setCookies };
+  }
+  return response;
 }
 
 function resolveBaseUrl() {
@@ -58,7 +64,12 @@ exports.handler = async (event) => {
     const fulfillment = await getFulfillment(fulfillmentId);
     if (!fulfillment) return json(404, { error: 'fulfillment was not found.' });
     if (!doesFulfillmentAccessTokenMatch(fulfillment, accessToken)) {
-      return json(403, { error: 'fulfillment access token is invalid.' }, { 'Set-Cookie': clearFulfillmentSessionCookie(fulfillmentId) });
+      return json(
+        403,
+        { error: 'fulfillment access token is invalid.' },
+        {},
+        getSetCookieValues(event, clearFulfillmentSessionCookie(fulfillmentId))
+      );
     }
     if (String(fulfillment.payment_status || '').toUpperCase() !== 'PAID') {
       return json(409, { error: 'Payment is not confirmed yet for this fulfillment.' });
@@ -103,7 +114,7 @@ exports.handler = async (event) => {
     });
 
     const downloadUrl = new URL(`/.netlify/functions/cv-email-download?token=${encodeURIComponent(token)}`, resolveBaseUrl()).toString();
-    return json(200, { ok: true, token, downloadUrl, expiresAt }, setCookie ? { 'Set-Cookie': setCookie } : {});
+    return json(200, { ok: true, token, downloadUrl, expiresAt }, {}, getSetCookieValues(event, setCookie));
   } catch (error) {
     return json(500, { error: error.message || 'Unable to reissue download link.' });
   }
