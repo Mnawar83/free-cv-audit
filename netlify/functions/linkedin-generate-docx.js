@@ -2,6 +2,7 @@ const { Document, Packer, Paragraph, TextRun, HeadingLevel } = require('docx');
 const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { LINKEDIN_UPSELL_STATUS, getRun, updateRun } = require('./run-store');
 const { badRequest } = require('./http-400');
+const { requireRunOwnerSession } = require('./entitlement-access');
 
 const RATE_LIMIT_MS = 20_000;
 
@@ -55,6 +56,8 @@ exports.handler = async (event) => {
 
     const run = await getRun(runId);
     if (!run) return { statusCode: 404, body: JSON.stringify({ error: 'Run not found.' }) };
+    const access = requireRunOwnerSession(event, run);
+    if (!access.ok) return access.response;
     if (![LINKEDIN_UPSELL_STATUS.PAID, LINKEDIN_UPSELL_STATUS.GENERATED].includes(run.linkedin_upsell_status)) {
       return { statusCode: 403, body: JSON.stringify({ error: 'Payment is required before generation.' }) };
     }

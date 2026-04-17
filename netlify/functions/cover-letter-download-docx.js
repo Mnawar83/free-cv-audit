@@ -1,4 +1,5 @@
 const { getRun } = require('./run-store');
+const { requireRunOwnerSession } = require('./entitlement-access');
 
 exports.handler = async (event) => {
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
@@ -11,6 +12,8 @@ exports.handler = async (event) => {
     const runId = event.queryStringParameters?.runId;
     if (!runId) return { statusCode: 400, body: JSON.stringify({ error: 'runId is required.' }) };
     const run = await getRun(runId);
+    const access = requireRunOwnerSession(event, run);
+    if (!access.ok) return access.response;
     if (!run?.cover_letter_docx_base64) {
       return { statusCode: 404, body: JSON.stringify({ error: 'Cover letter docx not found.' }) };
     }

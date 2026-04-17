@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pricing | Free CV Audit</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <main class="mx-auto max-w-5xl px-4 py-10">
+    <a href="/index.html#account" class="text-sm text-blue-300 hover:text-blue-200">← Back to account</a>
+    <h1 class="mt-3 text-3xl font-bold">Choose your plan</h1>
+    <p id="pricing-experiment-copy" class="mt-2 text-sm text-slate-300">Experiment variant loading…</p>
+
+    <div class="mt-5 flex flex-wrap items-center gap-3 rounded-lg border border-slate-700 bg-slate-900/70 p-4">
+      <label class="text-sm">Billing package</label>
+      <select id="pricing-billing-cycle" class="rounded border border-slate-600 bg-slate-900 px-3 py-2 text-sm">
+        <option value="monthly">Monthly</option>
+        <option value="annual">Annual (save more)</option>
+      </select>
+      <label class="text-sm">Promo code</label>
+      <input id="pricing-promo-code" type="text" class="rounded border border-slate-600 bg-slate-900 px-3 py-2 text-sm" placeholder="WELCOME20" />
+      <button id="pricing-apply-promo" class="rounded border border-emerald-500 px-3 py-2 text-xs font-semibold text-emerald-300">Apply promo</button>
+      <span id="pricing-promo-status" class="text-xs text-slate-300"></span>
+    </div>
+
+    <section id="pro" class="mt-8 rounded-xl border border-blue-500/40 bg-blue-950/20 p-5">
+      <p class="text-xs uppercase tracking-wide text-blue-300">Pro</p>
+      <h2 class="mt-1 text-2xl font-semibold">For individual job seekers</h2>
+      <p class="mt-2 text-sm text-blue-100">Unlimited audits and optimized CV generation.</p>
+      <ul class="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-200">
+        <li>Unlimited ATS audits</li>
+        <li>Faster generation queue</li>
+        <li>Export + insights dashboard</li>
+      </ul>
+      <button data-plan="pro" class="pricing-cta mt-4 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold">Upgrade to Pro</button>
+    </section>
+
+    <p id="pricing-status" class="mt-6 text-sm text-slate-300"></p>
+  </main>
+
+  <script>
+    const pricingExperimentKey = 'pricing_experiment_variant_v1';
+    const billingCycleInput = document.getElementById('pricing-billing-cycle');
+    const promoCodeInput = document.getElementById('pricing-promo-code');
+    const pricingStatus = document.getElementById('pricing-status');
+    const promoStatus = document.getElementById('pricing-promo-status');
+    const experimentCopy = document.getElementById('pricing-experiment-copy');
+
+    function readSearchParam(key) {
+      try {
+        return String(new URL(window.location.href).searchParams.get(key) || '').trim();
+      } catch (_error) {
+        return '';
+      }
+    }
+
+    function resolveExperimentVariant() {
+      const explicit = readSearchParam('exp');
+      if (explicit === 'monthly_default' || explicit === 'annual_default') {
+        localStorage.setItem(pricingExperimentKey, explicit);
+        return explicit;
+      }
+      const existing = localStorage.getItem(pricingExperimentKey);
+      if (existing === 'monthly_default' || existing === 'annual_default') return existing;
+      const assigned = Math.random() < 0.5 ? 'monthly_default' : 'annual_default';
+      localStorage.setItem(pricingExperimentKey, assigned);
+      return assigned;
+    }
+
+    function applyExperimentCopy(variant) {
+      const annualDefault = variant === 'annual_default';
+      billingCycleInput.value = annualDefault ? 'annual' : 'monthly';
+      experimentCopy.textContent = annualDefault
+        ? 'Experiment B: annual package is preselected for stronger retention and upfront value framing.'
+        : 'Experiment A: monthly package is preselected to reduce signup friction.';
+    }
+
+    function preloadPromo() {
+      const queryPromo = readSearchParam('promo');
+      const storedPromo = localStorage.getItem('pricing_promo_code') || '';
+      const promo = String(queryPromo || storedPromo || '').trim().toUpperCase();
+      if (promo) {
+        promoCodeInput.value = promo;
+        promoStatus.textContent = `Promo ready: ${promo}`;
+      }
+    }
+
+    async function beginCheckout(plan) {
+      const safePlan = 'pro';
+      const billingCycle = String(billingCycleInput.value || 'monthly').trim().toLowerCase() === 'annual' ? 'annual' : 'monthly';
+      const promoCode = String(promoCodeInput.value || '').trim().toUpperCase();
+      const experiment = resolveExperimentVariant();
+      const returnUrl = readSearchParam('returnUrl') || '/index.html#account';
+      const query = new URLSearchParams({
+        plan: safePlan,
+        returnUrl,
+        billingCycle,
+        exp: experiment,
+      });
+      if (promoCode) query.set('promo', promoCode);
+
+      pricingStatus.textContent = 'Starting secure checkout…';
+      const response = await fetch(`/.netlify/functions/subscription-checkout?${query.toString()}`, { method: 'GET' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.checkoutUrl) {
+        pricingStatus.textContent = payload?.error || 'Unable to start checkout. Sign in first from account page.';
+        return;
+      }
+      window.location.assign(payload.checkoutUrl);
+    }
+
+    document.querySelectorAll('.pricing-cta').forEach((button) => {
+      button.addEventListener('click', async () => {
+        await beginCheckout(button.dataset.plan || 'pro');
+      });
+    });
+
+    document.getElementById('pricing-apply-promo')?.addEventListener('click', () => {
+      const promo = String(promoCodeInput.value || '').trim().toUpperCase();
+      if (!promo) {
+        promoStatus.textContent = 'Enter a promo code first.';
+        return;
+      }
+      localStorage.setItem('pricing_promo_code', promo);
+      promoStatus.textContent = `Promo ${promo} will be applied at checkout.`;
+    });
+
+    const variant = resolveExperimentVariant();
+    applyExperimentCopy(variant);
+    preloadPromo();
+  </script>
+</body>
+</html>
