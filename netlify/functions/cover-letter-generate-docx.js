@@ -4,6 +4,7 @@ const { COVER_LETTER_STATUS, getRun, updateRun } = require('./run-store');
 const { badRequest } = require('./http-400');
 const { fetchJobPageWithPuppeteer } = require('./job-page-fetcher');
 const { COVER_LETTER_AI_JOB_TEXT_MAX, COVER_LETTER_JOB_TEXT_THRESHOLD } = require('./cover-letter-constants');
+const { requireRunOwnerSession } = require('./entitlement-access');
 
 function buildPrompt(revisedCvText, jobPageText, jobPageTextLength) {
   if (jobPageTextLength >= COVER_LETTER_JOB_TEXT_THRESHOLD) {
@@ -99,6 +100,8 @@ exports.handler = async (event) => {
 
     const run = await getRun(runId);
     if (!run) return { statusCode: 404, body: JSON.stringify({ error: 'Run not found.' }) };
+    const access = requireRunOwnerSession(event, run);
+    if (!access.ok) return access.response;
     if (![COVER_LETTER_STATUS.PAID, COVER_LETTER_STATUS.GENERATED].includes(run.cover_letter_status)) {
       return { statusCode: 403, body: JSON.stringify({ error: 'Payment is required before generation.' }) };
     }

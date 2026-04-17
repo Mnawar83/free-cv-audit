@@ -1,6 +1,7 @@
 const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
-const { getRun, upsertRun } = require('./run-store');
+const { getRun, getUserEntitlements, upsertRun } = require('./run-store');
 const { badRequest, parseJsonBody } = require('./http-400');
+const { getUserIdFromSessionCookie } = require('./user-session-auth');
 
 const FULL_AUDIT_PROMPT = `You are a senior ATS CV auditor and rewrite strategist.
 Return strict JSON only with this schema:
@@ -139,6 +140,24 @@ exports.handler = async (event) => {
     }
     const run = await getRun(runId);
     if (!run?.original_cv_text) return { statusCode: 404, body: JSON.stringify({ error: 'run not found or missing CV text.' }) };
+
+    const userIdFromSession = getUserIdFromSessionCookie(event);
+    const userIdForCheck = String(userIdFromSession || run.user_id || '').trim();
+    if (userIdForCheck) {
+      const entitlements = await getUserEntitlements(userIdForCheck);
+      const hasUnlimitedAudits = Boolean(entitlements?.canUseUnlimitedAudits);
+      const paidLikeStatus = new Set(['cv_ready', 'artifact_persisted', 'email_sending', 'email_sent', 'full_audit_completed']);
+      const runStatus = String(run.fulfillment_status || '').trim().toLowerCase();
+      if (!hasUnlimitedAudits && !paidLikeStatus.has(runStatus)) {
+        return {
+          statusCode: 402,
+          body: JSON.stringify({
+            error: 'Full audit requires an active Pro/Team entitlement or paid fulfillment.',
+            code: 'FULL_AUDIT_NOT_ENTITLED',
+          }),
+        };
+      }
+    }
 
     const audit = await runFullAudit(runId, run.original_cv_text, run.audit_result || '');
     await upsertRun(runId, {
