@@ -191,6 +191,41 @@
             </a>
 
             <p class="text-lg md:text-xl text-slate-400 mt-2">Get Your Free, Instant ATS-Friendly CV Audit</p>
+            <div id="account-panel" class="mx-auto mt-4 max-w-xl rounded-lg border border-slate-700 bg-slate-800/70 p-4 text-left">
+                <p class="text-sm font-semibold text-slate-200">Account (Phase 1)</p>
+                <p id="account-status" class="mt-1 text-xs text-slate-400">Not signed in. Free tier includes limited audits.</p>
+                <div class="mt-3 grid gap-2 md:grid-cols-[1fr_auto_auto]">
+                    <input id="account-email-input" type="email" class="w-full rounded-md border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-400" placeholder="you@example.com" />
+                    <button id="account-signin-button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">Sign In</button>
+                    <button id="account-signout-button" class="rounded-md border border-slate-500 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700">Sign Out</button>
+                </div>
+                <div class="mt-2 grid gap-2 md:grid-cols-[1fr_auto_auto]">
+                    <input id="account-code-input" type="text" inputmode="numeric" maxlength="6" class="w-full rounded-md border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-400" placeholder="Enter 6-digit code" />
+                    <button id="account-verify-button" class="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500">Verify Code</button>
+                    <button id="account-resend-button" class="rounded-md border border-slate-500 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700">Resend</button>
+                </div>
+                <p id="account-code-status" class="mt-1 text-xs text-slate-400"></p>
+                <p id="account-plan-badge" class="mt-2 text-xs text-emerald-300"></p>
+                <div class="mt-2 grid gap-2 md:grid-cols-4">
+                    <button id="plan-upgrade-pro-button" class="rounded-md border border-blue-500 px-3 py-2 text-xs font-semibold text-blue-300 hover:bg-blue-900/30">Upgrade Pro</button>
+                    <button id="plan-upgrade-team-button" class="rounded-md border border-violet-500 px-3 py-2 text-xs font-semibold text-violet-300 hover:bg-violet-900/30">Upgrade Team</button>
+                    <button id="plan-cancel-button" class="rounded-md border border-rose-500 px-3 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-900/30">Cancel Plan</button>
+                    <button id="plan-reactivate-button" class="rounded-md border border-emerald-500 px-3 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-900/30">Reactivate</button>
+                </div>
+                <div class="mt-2">
+                    <button id="open-billing-portal-button" class="rounded-md border border-slate-500 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-700">Open Billing Portal</button>
+                    <p id="billing-portal-status" class="mt-1 text-xs text-slate-400"></p>
+                </div>
+                <div class="mt-3 rounded-md border border-slate-700 p-3">
+                    <p class="text-xs font-semibold text-slate-200">Team Workspace</p>
+                    <div class="mt-2 grid gap-2 md:grid-cols-[1fr_auto]">
+                        <input id="workspace-invite-email-input" type="email" class="w-full rounded-md border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-400" placeholder="teammate@example.com" />
+                        <button id="workspace-invite-button" class="rounded-md bg-violet-600 px-4 py-2 text-xs font-semibold text-white hover:bg-violet-500">Invite</button>
+                    </div>
+                    <p id="workspace-status" class="mt-1 text-xs text-slate-400"></p>
+                    <ul id="workspace-members-list" class="mt-2 space-y-1 text-xs text-slate-300"></ul>
+                </div>
+            </div>
         </header>
 
         <main class="max-w-4xl mx-auto">
@@ -559,6 +594,25 @@
         const errorBox = document.getElementById('error-box');
         const errorMessage = document.getElementById('error-message');
         const headerHomeLink = document.getElementById('header-home-link');
+        const accountEmailInput = document.getElementById('account-email-input');
+        const accountSignInButton = document.getElementById('account-signin-button');
+        const accountSignOutButton = document.getElementById('account-signout-button');
+        const accountCodeInput = document.getElementById('account-code-input');
+        const accountVerifyButton = document.getElementById('account-verify-button');
+        const accountResendButton = document.getElementById('account-resend-button');
+        const accountStatus = document.getElementById('account-status');
+        const accountCodeStatus = document.getElementById('account-code-status');
+        const accountPlanBadge = document.getElementById('account-plan-badge');
+        const planUpgradeProButton = document.getElementById('plan-upgrade-pro-button');
+        const planUpgradeTeamButton = document.getElementById('plan-upgrade-team-button');
+        const planCancelButton = document.getElementById('plan-cancel-button');
+        const planReactivateButton = document.getElementById('plan-reactivate-button');
+        const openBillingPortalButton = document.getElementById('open-billing-portal-button');
+        const billingPortalStatus = document.getElementById('billing-portal-status');
+        const workspaceInviteEmailInput = document.getElementById('workspace-invite-email-input');
+        const workspaceInviteButton = document.getElementById('workspace-invite-button');
+        const workspaceStatus = document.getElementById('workspace-status');
+        const workspaceMembersList = document.getElementById('workspace-members-list');
         
         let cvFile = null;
         let cvFileKind = '';
@@ -693,6 +747,30 @@
         let safeCvEmailTimer = null;
         let safeCvEmailAttempt = 0;
         let whishPayRetryAvailableAt = 0;
+        let currentUser = null;
+        let currentEntitlements = null;
+        let accountCodeExpiresAt = '';
+        const analyticsSessionId = (() => {
+            const key = 'analytics_session_id';
+            const generate = () => `sess_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+            const readStorage = (storage) => {
+                try {
+                    return storage.getItem(key) || '';
+                } catch (_error) {
+                    return '';
+                }
+            };
+            const writeStorage = (storage, value) => {
+                try {
+                    storage.setItem(key, value);
+                } catch (_error) {}
+            };
+            const existing = readStorage(localStorage) || readStorage(sessionStorage);
+            const next = existing || generate();
+            writeStorage(localStorage, next);
+            writeStorage(sessionStorage, next);
+            return next;
+        })();
 
         const auditMountParent = auditSection ? auditSection.parentElement : null;
         const auditMountAnchor = document.createComment('audit-section-anchor');
@@ -740,6 +818,286 @@
             } catch (error) {
                 console.warn('Unable to clear local storage.', error);
             }
+        }
+
+        async function trackEvent(eventName, context = {}) {
+            const safeEventName = String(eventName || '').trim().toLowerCase();
+            if (!safeEventName) return;
+            const payload = {
+                eventName: safeEventName,
+                sessionId: analyticsSessionId,
+                runId: String(currentRunId || '').trim() || undefined,
+                context: context && typeof context === 'object' ? context : {},
+            };
+            try {
+                await fetch('/.netlify/functions/track-event', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    keepalive: true,
+                });
+            } catch (_error) {
+                // best-effort telemetry; never block user flows
+            }
+        }
+
+        function updateAccountUi() {
+            const email = String(currentUser?.email || '').trim();
+            const plan = String(currentEntitlements?.plan || 'free').trim().toLowerCase();
+            const signedIn = Boolean(email);
+            const isTeamPlan = plan === 'team';
+            if (accountStatus) {
+                accountStatus.textContent = email
+                    ? `Signed in as ${email}`
+                    : 'Not signed in. Free tier includes limited audits.';
+            }
+            if (accountPlanBadge) {
+                if (!email) {
+                    accountPlanBadge.textContent = '';
+                } else if (plan === 'team') {
+                    accountPlanBadge.textContent = 'Plan: TEAM · Team workspace + priority queue enabled';
+                } else if (plan === 'pro') {
+                    accountPlanBadge.textContent = 'Plan: PRO · Unlimited audits enabled';
+                } else {
+                    accountPlanBadge.textContent = 'Plan: FREE · Limited audits';
+                }
+            }
+            if (accountEmailInput) {
+                accountEmailInput.value = email || accountEmailInput.value || '';
+            }
+            if (accountCodeStatus && accountCodeExpiresAt) {
+                accountCodeStatus.textContent = `Verification code sent. Expires at ${new Date(accountCodeExpiresAt).toLocaleTimeString()}.`;
+            } else if (accountCodeStatus && !email) {
+                accountCodeStatus.textContent = '';
+            }
+            if (planUpgradeProButton) {
+                planUpgradeProButton.disabled = !signedIn || plan === 'pro';
+                planUpgradeProButton.classList.toggle('opacity-60', planUpgradeProButton.disabled);
+            }
+            if (planUpgradeTeamButton) {
+                planUpgradeTeamButton.disabled = !signedIn || isTeamPlan;
+                planUpgradeTeamButton.classList.toggle('opacity-60', planUpgradeTeamButton.disabled);
+            }
+            if (planCancelButton) {
+                planCancelButton.disabled = !signedIn || plan === 'free';
+                planCancelButton.classList.toggle('opacity-60', planCancelButton.disabled);
+            }
+            if (planReactivateButton) {
+                planReactivateButton.disabled = !signedIn;
+                planReactivateButton.classList.toggle('opacity-60', planReactivateButton.disabled);
+            }
+            if (openBillingPortalButton) {
+                openBillingPortalButton.disabled = !signedIn;
+                openBillingPortalButton.classList.toggle('opacity-60', openBillingPortalButton.disabled);
+            }
+            if (workspaceInviteEmailInput) {
+                workspaceInviteEmailInput.disabled = !signedIn || !isTeamPlan;
+            }
+            if (workspaceInviteButton) {
+                workspaceInviteButton.disabled = !signedIn || !isTeamPlan;
+                workspaceInviteButton.classList.toggle('opacity-60', workspaceInviteButton.disabled);
+            }
+        }
+
+        function renderWorkspaceMembers(members = []) {
+            if (!workspaceMembersList) return;
+            workspaceMembersList.innerHTML = '';
+            if (!Array.isArray(members) || members.length === 0) {
+                const placeholder = document.createElement('li');
+                placeholder.className = 'text-slate-500';
+                placeholder.textContent = 'No workspace members yet.';
+                workspaceMembersList.appendChild(placeholder);
+                return;
+            }
+            members.forEach((member) => {
+                const email = String(member?.email || '').trim().toLowerCase();
+                if (!email) return;
+                const status = String(member?.status || 'INVITED').trim().toUpperCase();
+                const role = String(member?.role || 'member').trim().toLowerCase();
+                const item = document.createElement('li');
+                item.className = 'flex items-center justify-between gap-2 rounded border border-slate-700 px-2 py-1';
+                item.innerHTML = `
+                    <span class="truncate">${email} <span class="text-slate-500">(${role}, ${status})</span></span>
+                    <button type="button" data-workspace-remove="${email}" class="rounded border border-slate-600 px-2 py-0.5 text-[11px] text-slate-300 hover:bg-slate-700">Remove</button>
+                `;
+                workspaceMembersList.appendChild(item);
+            });
+        }
+
+        async function refreshWorkspaceMembers() {
+            if (!workspaceMembersList || !workspaceStatus) return;
+            const plan = String(currentEntitlements?.plan || 'free').trim().toLowerCase();
+            const signedIn = Boolean(String(currentUser?.email || '').trim());
+            if (!signedIn || plan !== 'team') {
+                workspaceStatus.textContent = signedIn ? 'Upgrade to Team to invite collaborators.' : 'Sign in to manage workspace members.';
+                renderWorkspaceMembers([]);
+                return;
+            }
+            workspaceStatus.textContent = 'Loading workspace members…';
+            try {
+                const response = await fetch('/.netlify/functions/workspace', { method: 'GET' });
+                const payload = await readJsonSafely(response);
+                if (!response.ok) {
+                    workspaceStatus.textContent = payload?.error || 'Unable to load workspace members.';
+                    return;
+                }
+                workspaceStatus.textContent = `Workspace members: ${Array.isArray(payload?.members) ? payload.members.length : 0}`;
+                renderWorkspaceMembers(payload?.members || []);
+            } catch (_error) {
+                workspaceStatus.textContent = 'Unable to load workspace members right now.';
+            }
+        }
+
+        async function updateSubscription(plan, status = 'ACTIVE', successMessage = '') {
+            if (!currentUser?.id) {
+                showError('Please sign in first.');
+                return;
+            }
+            const response = await fetch('/.netlify/functions/subscription', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plan, status, provider: 'internal' }),
+            });
+            const payload = await readJsonSafely(response);
+            if (!response.ok) {
+                showError(payload?.error || 'Unable to update your subscription.');
+                return;
+            }
+            currentEntitlements = payload?.entitlements || currentEntitlements;
+            if (billingPortalStatus) {
+                billingPortalStatus.textContent = successMessage || 'Subscription updated.';
+            }
+            updateAccountUi();
+            await refreshWorkspaceMembers();
+        }
+
+        async function openBillingPortal() {
+            if (!currentUser?.id) {
+                showError('Please sign in first.');
+                return;
+            }
+            if (billingPortalStatus) billingPortalStatus.textContent = 'Preparing billing portal…';
+            const returnUrl = encodeURIComponent(window.location.href);
+            const response = await fetch(`/.netlify/functions/subscription-billing-portal?returnUrl=${returnUrl}`, { method: 'GET' });
+            const payload = await readJsonSafely(response);
+            if (!response.ok || !payload?.billingPortalUrl) {
+                if (billingPortalStatus) billingPortalStatus.textContent = payload?.error || 'Unable to open billing portal.';
+                return;
+            }
+            if (billingPortalStatus) billingPortalStatus.textContent = 'Redirecting to billing portal…';
+            window.location.assign(payload.billingPortalUrl);
+        }
+
+        async function inviteWorkspaceMember() {
+            const email = String(workspaceInviteEmailInput?.value || '').trim().toLowerCase();
+            if (!email) {
+                showError('Enter a teammate email to send an invite.');
+                return;
+            }
+            const response = await fetch('/.netlify/functions/workspace', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, role: 'member', status: 'INVITED' }),
+            });
+            const payload = await readJsonSafely(response);
+            if (!response.ok) {
+                workspaceStatus.textContent = payload?.error || 'Unable to invite workspace member.';
+                return;
+            }
+            if (workspaceInviteEmailInput) workspaceInviteEmailInput.value = '';
+            workspaceStatus.textContent = `Invite sent to ${email}.`;
+            renderWorkspaceMembers(payload?.members || []);
+        }
+
+        async function refreshAccountSession() {
+            try {
+                const sessionResponse = await fetch('/.netlify/functions/user-session', { method: 'GET' });
+                if (!sessionResponse.ok) {
+                    currentUser = null;
+                    currentEntitlements = null;
+                    updateAccountUi();
+                    return;
+                }
+                const sessionPayload = await readJsonSafely(sessionResponse);
+                currentUser = sessionPayload?.user || null;
+                const subResponse = await fetch('/.netlify/functions/subscription', { method: 'GET' });
+                const subPayload = await readJsonSafely(subResponse);
+                currentEntitlements = subResponse.ok ? (subPayload?.entitlements || null) : null;
+            } catch (_error) {
+                currentUser = null;
+                currentEntitlements = null;
+            }
+            updateAccountUi();
+            await refreshWorkspaceMembers();
+        }
+
+        async function signInAccount() {
+            const email = String(accountEmailInput?.value || '').trim().toLowerCase();
+            if (!email) {
+                showError('Please enter your email to sign in.');
+                return;
+            }
+            const response = await fetch('/.netlify/functions/user-session-request-code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email }),
+            });
+            const payload = await readJsonSafely(response);
+            if (!response.ok) {
+                showError(payload?.error || 'Unable to sign in right now.');
+                return;
+            }
+            accountCodeExpiresAt = String(payload?.expiresAt || '');
+            if (accountCodeStatus) {
+                const debugCode = payload?.debugCode ? ` Debug code: ${payload.debugCode}` : '';
+                accountCodeStatus.textContent = `Code sent to ${email}.${debugCode}`;
+            }
+            hideError();
+        }
+
+        async function verifyAccountCode() {
+            const email = String(accountEmailInput?.value || '').trim().toLowerCase();
+            const code = String(accountCodeInput?.value || '').trim();
+            if (!email || !code) {
+                showError('Please enter both email and verification code.');
+                return;
+            }
+            const response = await fetch('/.netlify/functions/user-session-verify-code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, code }),
+            });
+            const payload = await readJsonSafely(response);
+            if (!response.ok) {
+                showError(payload?.error || 'Verification failed.');
+                return;
+            }
+            currentUser = payload?.user || null;
+            accountCodeExpiresAt = '';
+            if (accountCodeInput) accountCodeInput.value = '';
+            if (accountCodeStatus) accountCodeStatus.textContent = 'Verification successful.';
+            await refreshAccountSession();
+            hideError();
+        }
+
+        async function signOutAccount() {
+            await fetch('/.netlify/functions/user-session', { method: 'DELETE' });
+            currentUser = null;
+            currentEntitlements = null;
+            accountCodeExpiresAt = '';
+            if (accountCodeInput) accountCodeInput.value = '';
+            if (accountCodeStatus) accountCodeStatus.textContent = '';
+            if (billingPortalStatus) billingPortalStatus.textContent = '';
+            if (workspaceStatus) workspaceStatus.textContent = '';
+            renderWorkspaceMembers([]);
+            updateAccountUi();
+        }
+
+        function canStartAudit() {
+            const plan = String(currentEntitlements?.plan || 'free').trim().toLowerCase();
+            if (plan === 'pro' || plan === 'team') return true;
+            const freeAuditCount = Number(localStorage.getItem('free_audit_count') || '0') || 0;
+            return freeAuditCount < 3;
         }
 
         const storedCvText = getStoredValue('cvText');
@@ -824,6 +1182,79 @@
         if (paymentModal) paymentModal.addEventListener('click', (event) => {
             if (event.target === paymentModal) closePaymentModal();
         });
+        if (accountSignInButton) {
+            accountSignInButton.addEventListener('click', async () => {
+                await signInAccount();
+            });
+        }
+        if (accountVerifyButton) {
+            accountVerifyButton.addEventListener('click', async () => {
+                await verifyAccountCode();
+            });
+        }
+        if (accountResendButton) {
+            accountResendButton.addEventListener('click', async () => {
+                await signInAccount();
+            });
+        }
+        if (accountSignOutButton) {
+            accountSignOutButton.addEventListener('click', async () => {
+                await signOutAccount();
+            });
+        }
+        if (planUpgradeProButton) {
+            planUpgradeProButton.addEventListener('click', async () => {
+                await updateSubscription('pro', 'ACTIVE', 'Pro plan activated.');
+            });
+        }
+        if (planUpgradeTeamButton) {
+            planUpgradeTeamButton.addEventListener('click', async () => {
+                await updateSubscription('team', 'ACTIVE', 'Team plan activated.');
+            });
+        }
+        if (planCancelButton) {
+            planCancelButton.addEventListener('click', async () => {
+                await updateSubscription('free', 'CANCELED', 'Plan canceled. You are now on Free.');
+            });
+        }
+        if (planReactivateButton) {
+            planReactivateButton.addEventListener('click', async () => {
+                const currentPlan = String(currentEntitlements?.plan || 'pro').trim().toLowerCase();
+                const nextPlan = currentPlan === 'team' ? 'team' : 'pro';
+                await updateSubscription(nextPlan, 'ACTIVE', `${nextPlan.toUpperCase()} plan reactivated.`);
+            });
+        }
+        if (openBillingPortalButton) {
+            openBillingPortalButton.addEventListener('click', async () => {
+                await openBillingPortal();
+            });
+        }
+        if (workspaceInviteButton) {
+            workspaceInviteButton.addEventListener('click', async () => {
+                await inviteWorkspaceMember();
+            });
+        }
+        if (workspaceMembersList) {
+            workspaceMembersList.addEventListener('click', async (event) => {
+                const target = event.target;
+                if (!(target instanceof HTMLElement)) return;
+                const email = String(target.dataset.workspaceRemove || '').trim().toLowerCase();
+                if (!email) return;
+                const response = await fetch('/.netlify/functions/workspace', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email }),
+                });
+                const payload = await readJsonSafely(response);
+                if (!response.ok) {
+                    workspaceStatus.textContent = payload?.error || 'Unable to remove workspace member.';
+                    return;
+                }
+                workspaceStatus.textContent = `Removed ${email} from workspace.`;
+                renderWorkspaceMembers(payload?.members || []);
+            });
+        }
+        refreshAccountSession().catch(() => {});
 
         if (linkedinEmailInput) {
             linkedinEmailInput.value = localStorage.getItem('cv_email') || '';
@@ -850,6 +1281,11 @@
         }
 
         function setPaidState(type, value) {
+            const wasPaid = type === 'cv'
+                ? hasPaidCV
+                : type === 'linkedin'
+                    ? hasPaidLinkedIn
+                    : hasPaidCoverLetter;
             if (type === 'cv') {
                 hasPaidCV = value;
             } else if (type === 'linkedin') {
@@ -859,6 +1295,9 @@
             }
             syncPaidSessionState();
             syncAuditVisibility();
+            if (!wasPaid && value) {
+                trackEvent('payment_succeeded', { productType: type });
+            }
         }
 
         function warmUpCheckoutExperience() {
@@ -1377,6 +1816,7 @@
                 fileNameDisplay.textContent = file.name;
                 auditButton.disabled = false;
                 hideError();
+                trackEvent('cv_file_selected', { fileKind, fileSizeBytes: Number(file.size) || 0 });
             } else {
                 cvFile = null;
                 cvFileKind = '';
@@ -1499,6 +1939,7 @@
         if (shouldStartFreshVisit()) {
             resetRunStateForNewAudit({ clearAuditArtifacts: true });
         }
+        trackEvent('landing_viewed');
 
         if (headerHomeLink) {
             headerHomeLink.addEventListener('click', (event) => {
@@ -1563,6 +2004,11 @@
         
         auditButton.addEventListener('click', async () => {
             if (!cvFile) return;
+            if (!canStartAudit()) {
+                showError('Free audit limit reached. Sign in and upgrade to Pro for unlimited audits.');
+                return;
+            }
+            trackEvent('audit_started', { fileKind: cvFileKind || 'unknown' });
 
             uploadSection.classList.add('hidden');
             loadingSection.classList.remove('hidden');
@@ -1607,6 +2053,12 @@
                 initializePayPalButtons();
                 initializeWhishPayCheckout();
                 warmUpCheckoutExperience();
+                trackEvent('audit_completed', { fileKind: cvFileKind || 'unknown' });
+                const plan = String(currentEntitlements?.plan || 'free').trim().toLowerCase();
+                if (plan !== 'pro' && plan !== 'team') {
+                    const currentCount = Number(localStorage.getItem('free_audit_count') || '0') || 0;
+                    localStorage.setItem('free_audit_count', String(currentCount + 1));
+                }
 
             } catch (error) {
                 if (error.name === 'AbortError') {
@@ -1617,6 +2069,7 @@
                 loadingSection.classList.add('hidden');
                 uploadSection.classList.remove('hidden');
                 showError(error.message || "An unexpected error occurred during the audit.");
+                trackEvent('audit_failed', { message: String(error?.message || 'unknown').slice(0, 180) });
             }
         });
 

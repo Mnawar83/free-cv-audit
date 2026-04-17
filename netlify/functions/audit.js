@@ -1,6 +1,7 @@
 const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
-const { createRunId, upsertRun } = require('./run-store');
+const { createRunId, getUserEntitlements, linkRunToUser, listUserRuns, upsertRun } = require('./run-store');
 const { badRequest, parseJsonBody } = require('./http-400');
+const { getUserIdFromSessionCookie } = require('./user-session-auth');
 
 const AUDIT_SYSTEM_PROMPT = `You are a senior ATS CV auditor for Work Waves Career Services.
 
@@ -97,6 +98,25 @@ exports.handler = async (event) => {
         payload: parsedBody,
         missingFields: ['cvText'],
       });
+    }
+    const userId = getUserIdFromSessionCookie(event);
+    if (userId) {
+      const entitlements = await getUserEntitlements(userId);
+      const hasUnlimitedAudits = Boolean(entitlements?.canUseUnlimitedAudits);
+      if (!hasUnlimitedAudits) {
+        const existingRuns = await listUserRuns(userId, 1000);
+        const freeAuditLimit = Math.max(1, Number(process.env.FREE_TIER_AUDIT_LIMIT || 3));
+        if (existingRuns.length >= freeAuditLimit) {
+          return {
+            statusCode: 402,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              error: `Free audit limit reached (${freeAuditLimit}). Upgrade to Pro for unlimited audits.`,
+              code: 'FREE_AUDIT_LIMIT_REACHED',
+            }),
+          };
+        }
+      }
     }
     const runId = createRunId();
 
@@ -216,6 +236,9 @@ exports.handler = async (event) => {
           await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
         }
         await upsertRun(runId, runPayload);
+        if (userId) {
+          await linkRunToUser(userId, runId);
+        }
         stored = true;
       } catch (storeError) {
         lastStoreErrorMessage = storeError?.message || String(storeError || '');
