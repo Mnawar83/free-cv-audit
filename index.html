@@ -750,6 +750,7 @@
         let currentUser = null;
         let currentEntitlements = null;
         let accountCodeExpiresAt = '';
+        let isAccountActionPending = false;
         const analyticsSessionId = (() => {
             const key = 'analytics_session_id';
             const generate = () => `sess_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
@@ -846,6 +847,7 @@
             const plan = String(currentEntitlements?.plan || 'free').trim().toLowerCase();
             const signedIn = Boolean(email);
             const isTeamPlan = plan === 'team';
+            const controlsLocked = isAccountActionPending;
             if (accountStatus) {
                 accountStatus.textContent = email
                     ? `Signed in as ${email}`
@@ -871,31 +873,49 @@
                 accountCodeStatus.textContent = '';
             }
             if (planUpgradeProButton) {
-                planUpgradeProButton.disabled = !signedIn || plan === 'pro';
+                planUpgradeProButton.disabled = !signedIn || plan === 'pro' || controlsLocked;
                 planUpgradeProButton.classList.toggle('opacity-60', planUpgradeProButton.disabled);
             }
             if (planUpgradeTeamButton) {
-                planUpgradeTeamButton.disabled = !signedIn || isTeamPlan;
+                planUpgradeTeamButton.disabled = !signedIn || isTeamPlan || controlsLocked;
                 planUpgradeTeamButton.classList.toggle('opacity-60', planUpgradeTeamButton.disabled);
             }
             if (planCancelButton) {
-                planCancelButton.disabled = !signedIn || plan === 'free';
+                planCancelButton.disabled = !signedIn || plan === 'free' || controlsLocked;
                 planCancelButton.classList.toggle('opacity-60', planCancelButton.disabled);
             }
             if (planReactivateButton) {
-                planReactivateButton.disabled = !signedIn;
+                planReactivateButton.disabled = !signedIn || controlsLocked;
                 planReactivateButton.classList.toggle('opacity-60', planReactivateButton.disabled);
             }
             if (openBillingPortalButton) {
-                openBillingPortalButton.disabled = !signedIn;
+                openBillingPortalButton.disabled = !signedIn || controlsLocked;
                 openBillingPortalButton.classList.toggle('opacity-60', openBillingPortalButton.disabled);
             }
             if (workspaceInviteEmailInput) {
-                workspaceInviteEmailInput.disabled = !signedIn || !isTeamPlan;
+                workspaceInviteEmailInput.disabled = !signedIn || !isTeamPlan || controlsLocked;
             }
             if (workspaceInviteButton) {
-                workspaceInviteButton.disabled = !signedIn || !isTeamPlan;
+                workspaceInviteButton.disabled = !signedIn || !isTeamPlan || controlsLocked;
                 workspaceInviteButton.classList.toggle('opacity-60', workspaceInviteButton.disabled);
+            }
+            if (accountEmailInput) accountEmailInput.disabled = controlsLocked;
+            if (accountCodeInput) accountCodeInput.disabled = controlsLocked;
+            if (accountSignInButton) accountSignInButton.disabled = controlsLocked;
+            if (accountVerifyButton) accountVerifyButton.disabled = controlsLocked;
+            if (accountResendButton) accountResendButton.disabled = controlsLocked;
+            if (accountSignOutButton) accountSignOutButton.disabled = controlsLocked;
+        }
+
+        async function runAccountAction(task) {
+            if (isAccountActionPending) return;
+            isAccountActionPending = true;
+            updateAccountUi();
+            try {
+                await task();
+            } finally {
+                isAccountActionPending = false;
+                updateAccountUi();
             }
         }
 
@@ -1203,73 +1223,90 @@
         });
         if (accountSignInButton) {
             accountSignInButton.addEventListener('click', async () => {
-                await signInAccount();
+                await runAccountAction(signInAccount);
             });
         }
         if (accountVerifyButton) {
             accountVerifyButton.addEventListener('click', async () => {
-                await verifyAccountCode();
+                await runAccountAction(verifyAccountCode);
             });
         }
         if (accountResendButton) {
             accountResendButton.addEventListener('click', async () => {
-                await signInAccount();
+                await runAccountAction(signInAccount);
             });
         }
         if (accountSignOutButton) {
             accountSignOutButton.addEventListener('click', async () => {
-                await signOutAccount();
+                await runAccountAction(signOutAccount);
             });
         }
         if (planUpgradeProButton) {
             planUpgradeProButton.addEventListener('click', async () => {
-                await updateSubscription('pro', 'ACTIVE', 'Pro plan activated.');
+                await runAccountAction(async () => {
+                    await updateSubscription('pro', 'ACTIVE', 'Pro plan activated.');
+                });
             });
         }
         if (planUpgradeTeamButton) {
             planUpgradeTeamButton.addEventListener('click', async () => {
-                await updateSubscription('team', 'ACTIVE', 'Team plan activated.');
+                await runAccountAction(async () => {
+                    await updateSubscription('team', 'ACTIVE', 'Team plan activated.');
+                });
             });
         }
         if (planCancelButton) {
             planCancelButton.addEventListener('click', async () => {
-                await updateSubscription('free', 'CANCELED', 'Plan canceled. You are now on Free.');
+                await runAccountAction(async () => {
+                    await updateSubscription('free', 'CANCELED', 'Plan canceled. You are now on Free.');
+                });
             });
         }
         if (planReactivateButton) {
             planReactivateButton.addEventListener('click', async () => {
-                const nextPlan = await resolveReactivationPlan();
-                await updateSubscription(nextPlan, 'ACTIVE', `${nextPlan.toUpperCase()} plan reactivated.`);
+                await runAccountAction(async () => {
+                    const nextPlan = await resolveReactivationPlan();
+                    await updateSubscription(nextPlan, 'ACTIVE', `${nextPlan.toUpperCase()} plan reactivated.`);
+                });
             });
         }
         if (openBillingPortalButton) {
             openBillingPortalButton.addEventListener('click', async () => {
-                await openBillingPortal();
+                await runAccountAction(openBillingPortal);
             });
         }
         if (workspaceInviteButton) {
             workspaceInviteButton.addEventListener('click', async () => {
-                await inviteWorkspaceMember();
+                await runAccountAction(inviteWorkspaceMember);
+            });
+        }
+        if (workspaceInviteEmailInput) {
+            workspaceInviteEmailInput.addEventListener('keydown', async (event) => {
+                if (event.key !== 'Enter') return;
+                event.preventDefault();
+                await runAccountAction(inviteWorkspaceMember);
             });
         }
         if (workspaceMembersList) {
             workspaceMembersList.addEventListener('click', async (event) => {
-                const target = event.target;
-                if (!(target instanceof HTMLElement)) return;
-                const email = String(target.dataset.workspaceRemove || '').trim().toLowerCase();
-                if (!email) return;
-                const response = await fetch('/.netlify/functions/workspace', {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email }),
+                await runAccountAction(async () => {
+                    const target = event.target;
+                    if (!(target instanceof HTMLElement)) return;
+                    const email = String(target.dataset.workspaceRemove || '').trim().toLowerCase();
+                    if (!email) return;
+                    const response = await fetch('/.netlify/functions/workspace', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email }),
+                    });
+                    const payload = await readJsonSafely(response);
+                    if (!response.ok) {
+                        workspaceStatus.textContent = payload?.error || 'Unable to remove workspace member.';
+                        return;
+                    }
+                    workspaceStatus.textContent = `Removed ${email} from workspace.`;
+                    renderWorkspaceMembers(payload?.members || []);
                 });
-                const payload = await readJsonSafely(response);
-                if (!response.ok) {
-                    workspaceStatus.textContent = payload?.error || 'Unable to remove workspace member.';
-                    return;
-                }
-                workspaceStatus.textContent = `Removed ${email} from workspace.`;
-                renderWorkspaceMembers(payload?.members || []);
             });
         }
         refreshAccountSession().catch(() => {});
