@@ -32,10 +32,14 @@ async function run() {
   assert.ok(html.includes("trackEvent('account_activity_exported'"));
   assert.ok(html.includes('id="acquisition-funnel-card"'));
   assert.ok(html.includes('id="funnel-start-audit-button"'));
+  assert.ok(html.includes('id="funnel-free-cta-button"'));
+  assert.ok(html.includes('id="funnel-pro-cta-button"'));
+  assert.ok(html.includes('id="funnel-team-cta-button"'));
   assert.ok(html.includes('id="funnel-open-account-button"'));
   assert.ok(html.includes('id="account-route-section" class="hidden'));
   assert.ok(html.includes("function isAccountRoute() {"));
   assert.ok(html.includes("function applySurfaceRoute(options = {}) {"));
+  assert.ok(html.includes('async function handleFunnelPlanSelection(plan) {'));
   assert.ok(html.includes("window.location.hash = 'account';"));
 
   console.log('browser account controls e2e test passed');
