@@ -41,6 +41,11 @@ async function run() {
   assert.ok(html.includes("function applySurfaceRoute(options = {}) {"));
   assert.ok(html.includes('async function handleFunnelPlanSelection(plan) {'));
   assert.ok(html.includes("window.location.hash = 'account';"));
+  assert.ok(html.includes('What happens after payment?'));
+  assert.ok(html.includes('~30s:'));
+  assert.ok(html.includes('~2m:'));
+  assert.ok(html.includes('Refund/guarantee:'));
+  assert.ok(html.includes('<p class="text-[11px] font-semibold text-slate-200">FAQ</p>'));
 
   console.log('browser account controls e2e test passed');
 }
