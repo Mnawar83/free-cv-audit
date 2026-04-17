@@ -30,6 +30,13 @@ async function run() {
   assert.ok(html.includes('/.netlify/functions/account-activity-export?format='));
   assert.ok(html.includes("trackEvent('account_dashboard_refreshed'"));
   assert.ok(html.includes("trackEvent('account_activity_exported'"));
+  assert.ok(html.includes('id="acquisition-funnel-card"'));
+  assert.ok(html.includes('id="funnel-start-audit-button"'));
+  assert.ok(html.includes('id="funnel-open-account-button"'));
+  assert.ok(html.includes('id="account-route-section" class="hidden'));
+  assert.ok(html.includes("function isAccountRoute() {"));
+  assert.ok(html.includes("function applySurfaceRoute(options = {}) {"));
+  assert.ok(html.includes("window.location.hash = 'account';"));
 
   console.log('browser account controls e2e test passed');
 }

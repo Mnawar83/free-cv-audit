@@ -191,8 +191,25 @@
             </a>
 
             <p class="text-lg md:text-xl text-slate-400 mt-2">Get Your Free, Instant ATS-Friendly CV Audit</p>
-            <div id="account-panel" class="mx-auto mt-4 max-w-xl rounded-lg border border-slate-700 bg-slate-800/70 p-4 text-left">
+            <div id="acquisition-funnel-card" class="mx-auto mt-4 max-w-3xl rounded-lg border border-blue-500/40 bg-slate-800/70 p-5 text-left">
+                <p class="text-sm font-semibold text-blue-300">3-Step ATS Funnel</p>
+                <ol class="mt-3 space-y-2 text-sm text-slate-200">
+                    <li><span class="font-semibold text-white">1.</span> Upload your CV to run an instant ATS scan.</li>
+                    <li><span class="font-semibold text-white">2.</span> See immediate teaser insights and your match quality.</li>
+                    <li><span class="font-semibold text-white">3.</span> Unlock the full optimized CV + full audit with one checkout CTA.</li>
+                </ol>
+                <div class="mt-4 grid gap-2 md:grid-cols-2">
+                    <button id="funnel-start-audit-button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">Start Free Audit</button>
+                    <button id="funnel-open-account-button" class="rounded-md border border-slate-500 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700">Go to Account</button>
+                </div>
+                <p class="mt-2 text-xs text-slate-400">Single CTA after teaser: <span class="font-semibold text-slate-200">Get full optimized CV + full audit</span>.</p>
+            </div>
+            <div id="account-route-section" class="hidden mx-auto mt-4 max-w-xl">
+            <div id="account-panel" class="rounded-lg border border-slate-700 bg-slate-800/70 p-4 text-left">
                 <p class="text-sm font-semibold text-slate-200">Account (Phase 2)</p>
+                <div class="mt-2 text-right">
+                    <button id="account-back-home-button" class="rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700">Back to Funnel</button>
+                </div>
                 <p id="account-status" class="mt-1 text-xs text-slate-400">Not signed in. Free tier includes limited audits.</p>
                 <div class="mt-3 grid gap-2 md:grid-cols-[1fr_auto_auto]">
                     <input id="account-email-input" type="email" class="w-full rounded-md border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-400" placeholder="you@example.com" />
@@ -265,6 +282,7 @@
                         <button id="account-dashboard-runs-next-button" class="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700">Next runs</button>
                     </div>
                 </div>
+            </div>
             </div>
         </header>
 
@@ -633,7 +651,13 @@
         const auditOutput = document.getElementById('audit-output');
         const errorBox = document.getElementById('error-box');
         const errorMessage = document.getElementById('error-message');
+        const mainCard = document.getElementById('main-card');
         const headerHomeLink = document.getElementById('header-home-link');
+        const acquisitionFunnelCard = document.getElementById('acquisition-funnel-card');
+        const funnelStartAuditButton = document.getElementById('funnel-start-audit-button');
+        const funnelOpenAccountButton = document.getElementById('funnel-open-account-button');
+        const accountRouteSection = document.getElementById('account-route-section');
+        const accountBackHomeButton = document.getElementById('account-back-home-button');
         const accountEmailInput = document.getElementById('account-email-input');
         const accountSignInButton = document.getElementById('account-signin-button');
         const accountSignOutButton = document.getElementById('account-signout-button');
@@ -874,6 +898,24 @@
                 localStorage.removeItem(key);
             } catch (error) {
                 console.warn('Unable to clear local storage.', error);
+            }
+        }
+
+        function isAccountRoute() {
+            return String(window.location.hash || '').trim().toLowerCase() === '#account';
+        }
+
+        function applySurfaceRoute(options = {}) {
+            const shouldScroll = Boolean(options?.scroll);
+            const accountMode = isAccountRoute();
+            if (acquisitionFunnelCard) acquisitionFunnelCard.classList.toggle('hidden', accountMode);
+            if (accountRouteSection) accountRouteSection.classList.toggle('hidden', !accountMode);
+            if (mainCard) mainCard.classList.toggle('hidden', accountMode);
+            if (accountMode && shouldScroll && accountRouteSection) {
+                accountRouteSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            if (!accountMode && shouldScroll && uploadSection) {
+                uploadSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
         }
 
@@ -2295,14 +2337,44 @@
             resetRunStateForNewAudit({ clearAuditArtifacts: true });
         }
         trackEvent('landing_viewed');
+        applySurfaceRoute({ scroll: false });
+
+        if (funnelStartAuditButton) {
+            funnelStartAuditButton.addEventListener('click', () => {
+                if (window.location.hash) {
+                    window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+                }
+                applySurfaceRoute({ scroll: true });
+            });
+        }
+
+        if (funnelOpenAccountButton) {
+            funnelOpenAccountButton.addEventListener('click', () => {
+                window.location.hash = 'account';
+                applySurfaceRoute({ scroll: true });
+            });
+        }
+
+        if (accountBackHomeButton) {
+            accountBackHomeButton.addEventListener('click', () => {
+                window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+                applySurfaceRoute({ scroll: true });
+            });
+        }
+
+        window.addEventListener('hashchange', () => {
+            applySurfaceRoute({ scroll: false });
+        });
 
         if (headerHomeLink) {
             headerHomeLink.addEventListener('click', (event) => {
                 event.preventDefault();
+                window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
                 resetRunStateForNewAudit({ clearAuditArtifacts: true });
                 loadingSection.classList.add('hidden');
                 resultsSection.classList.add('hidden');
                 uploadSection.classList.remove('hidden');
+                applySurfaceRoute({ scroll: false });
                 auditOutput.innerHTML = '';
                 hideError();
                 try {
