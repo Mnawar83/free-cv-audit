@@ -17,6 +17,34 @@ function createCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
+async function sendUserSessionCodeEmail({ email, code }) {
+  const shouldSend = String(process.env.USER_SESSION_CODE_SEND || 'true').trim().toLowerCase() !== 'false';
+  if (!shouldSend) return { ok: true };
+
+  const apiKey = String(process.env.RESEND_API_KEY || '').trim();
+  if (!apiKey) return { ok: false, error: 'RESEND_API_KEY is required to deliver verification codes.' };
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: 'FreeCVAudit <noreply@freecvaudit.com>',
+      to: [email],
+      subject: 'Your FreeCVAudit account verification code',
+      html: `<p>Your verification code is <strong>${code}</strong>.</p><p>This code expires in 10 minutes.</p>`,
+    }),
+  });
+
+  if (!response.ok) {
+    const details = await response.text();
+    return { ok: false, error: details || 'Unable to deliver verification code.' };
+  }
+  return { ok: true };
+}
+
 function getClientIp(event) {
   return String(
     event?.headers?.['x-nf-client-connection-ip']
@@ -65,6 +93,10 @@ exports.handler = async (event) => {
   const ttlMs = Math.max(60_000, Number(process.env.USER_SESSION_CODE_TTL_MS || 10 * 60 * 1000));
   const expiresAt = new Date(Date.now() + ttlMs).toISOString();
   await saveUserSessionCode(email, code, expiresAt, { requested_at: new Date().toISOString() });
+  const sent = await sendUserSessionCodeEmail({ email, code });
+  if (!sent.ok) {
+    return json(502, { error: sent.error || 'Unable to deliver verification code.' });
+  }
 
   const debugMode = String(process.env.USER_SESSION_RETURN_DEBUG_CODE || '').trim().toLowerCase() === 'true';
   return json(200, {

@@ -16,6 +16,7 @@ async function run() {
   setupIsolatedRunStoreEnv('user-session-code.test');
   process.env.USER_SESSION_SECRET = 'test-user-session-secret';
   process.env.USER_SESSION_RETURN_DEBUG_CODE = 'true';
+  process.env.USER_SESSION_CODE_SEND = 'false';
 
   clearModule('../netlify/functions/run-store');
   clearModule('../netlify/functions/user-session-request-code');

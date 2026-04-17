@@ -1,5 +1,6 @@
 const { getRun } = require('./run-store');
 const { buildPdfBuffer, pdfResponse } = require('./pdf-builder');
+const { requireRunOwnerSession } = require('./entitlement-access');
 
 exports.handler = async (event) => {
   try { require('@netlify/blobs').connectLambda(event); } catch(e){}
@@ -15,6 +16,8 @@ exports.handler = async (event) => {
     }
 
     const run = await getRun(runId);
+    const access = requireRunOwnerSession(event, run);
+    if (!access.ok) return access.response;
     if (!run?.cover_letter_pdf_text) {
       return { statusCode: 404, body: JSON.stringify({ error: 'Cover letter PDF not found.' }) };
     }
