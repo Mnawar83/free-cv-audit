@@ -15,6 +15,32 @@ function json(statusCode, payload) {
   };
 }
 
+function toInt(value, fallback, min, max) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+function normalizeStatusFilter(value) {
+  const safe = String(value || '').trim().toUpperCase();
+  if (!safe || safe === 'ALL') return '';
+  return safe;
+}
+
+function normalizeSubscriptionMetadata(item = {}) {
+  const lastSuccessfulPaymentAt = item.last_successful_payment_at
+    || item.last_payment_at
+    || item.last_paid_at
+    || item.paid_at
+    || null;
+  const nextRenewalAt = item.next_renewal_at
+    || item.next_billing_at
+    || item.current_period_end
+    || item.renews_at
+    || null;
+  return { lastSuccessfulPaymentAt, nextRenewalAt };
+}
+
 exports.handler = async (event) => {
   try { require('@netlify/blobs').connectLambda(event); } catch (_ignored) {}
 
@@ -33,6 +59,23 @@ exports.handler = async (event) => {
     listWorkspaceMembers(userId),
   ]);
 
+  const subOffset = toInt(event.queryStringParameters?.subOffset, 0, 0, 10_000);
+  const subLimit = toInt(event.queryStringParameters?.subLimit, 5, 1, 50);
+  const subStatusFilter = normalizeStatusFilter(event.queryStringParameters?.subStatus);
+  const runOffset = toInt(event.queryStringParameters?.runOffset, 0, 0, 10_000);
+  const runLimit = toInt(event.queryStringParameters?.runLimit, 5, 1, 50);
+  const runStatusFilter = normalizeStatusFilter(event.queryStringParameters?.runStatus);
+
+  const filteredSubscriptions = subStatusFilter
+    ? subscriptions.filter((item) => String(item?.status || '').toUpperCase() === subStatusFilter)
+    : subscriptions;
+  const filteredRuns = runStatusFilter
+    ? recentRuns.filter((run) => String(run?.status || '').toUpperCase() === runStatusFilter)
+    : recentRuns;
+
+  const pagedSubscriptions = filteredSubscriptions.slice(subOffset, subOffset + subLimit);
+  const pagedRuns = filteredRuns.slice(runOffset, runOffset + runLimit);
+
   return json(200, {
     ok: true,
     user: {
@@ -42,14 +85,15 @@ exports.handler = async (event) => {
       createdAt: user.created_at || null,
     },
     entitlements: entitlements || null,
-    subscriptions: (subscriptions || []).slice(0, 5).map((item) => ({
+    subscriptions: (pagedSubscriptions || []).map((item) => ({
       subscriptionId: item.subscription_id,
       plan: item.plan,
       status: item.status,
       provider: item.provider,
       updatedAt: item.updated_at || item.created_at || null,
+      ...normalizeSubscriptionMetadata(item),
     })),
-    recentRuns: (recentRuns || []).map((run) => ({
+    recentRuns: (pagedRuns || []).map((run) => ({
       runId: run.runId || run.id,
       status: run.status,
       score: run.score,
@@ -58,6 +102,20 @@ exports.handler = async (event) => {
     workspace: {
       memberCount: Array.isArray(workspaceMembers) ? workspaceMembers.length : 0,
       members: (workspaceMembers || []).slice(0, 10),
+    },
+    pagination: {
+      subscriptions: {
+        offset: subOffset,
+        limit: subLimit,
+        total: filteredSubscriptions.length,
+        nextOffset: subOffset + subLimit < filteredSubscriptions.length ? subOffset + subLimit : null,
+      },
+      runs: {
+        offset: runOffset,
+        limit: runLimit,
+        total: filteredRuns.length,
+        nextOffset: runOffset + runLimit < filteredRuns.length ? runOffset + runLimit : null,
+      },
     },
   });
 };

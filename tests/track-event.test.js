@@ -55,6 +55,13 @@ async function run() {
   });
   assert.strictEqual(dashboardEventResponse.statusCode, 202);
 
+  const exportEventResponse = await handler({
+    httpMethod: 'POST',
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': '6.6.6.6' },
+    body: JSON.stringify({ eventName: 'account_activity_exported', context: { format: 'csv' } }),
+  });
+  assert.strictEqual(exportEventResponse.statusCode, 202);
+
   const missingNameResponse = await handler({
     httpMethod: 'POST',
     headers: { 'content-type': 'application/json', 'x-forwarded-for': '3.3.3.3' },

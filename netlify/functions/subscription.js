@@ -93,6 +93,9 @@ exports.handler = async (event) => {
     plan,
     status,
     provider,
+    last_successful_payment_at: body.lastSuccessfulPaymentAt || body.last_successful_payment_at || null,
+    next_renewal_at: body.nextRenewalAt || body.next_renewal_at || null,
+    current_period_end: body.currentPeriodEnd || body.current_period_end || null,
   });
 
   const entitlements = await refreshUserEntitlements(userId);

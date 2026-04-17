@@ -20,9 +20,16 @@ async function run() {
   assert.ok(html.includes("trackEvent('workspace_member_updated'"));
   assert.ok(html.includes("trackEvent('workspace_member_removed'"));
   assert.ok(html.includes("const accountDashboardRefreshButton = document.getElementById('account-dashboard-refresh-button');"));
+  assert.ok(html.includes("const accountDashboardExportJsonButton = document.getElementById('account-dashboard-export-json-button');"));
+  assert.ok(html.includes("const accountDashboardExportCsvButton = document.getElementById('account-dashboard-export-csv-button');"));
+  assert.ok(html.includes("const accountDashboardSubscriptionsFilter = document.getElementById('account-dashboard-subscriptions-filter');"));
+  assert.ok(html.includes("const accountDashboardRunsFilter = document.getElementById('account-dashboard-runs-filter');"));
   assert.ok(html.includes('async function refreshAccountDashboard() {'));
+  assert.ok(html.includes("async function exportAccountActivity(format = 'json') {"));
   assert.ok(html.includes('/.netlify/functions/account-dashboard'));
+  assert.ok(html.includes('/.netlify/functions/account-activity-export?format='));
   assert.ok(html.includes("trackEvent('account_dashboard_refreshed'"));
+  assert.ok(html.includes("trackEvent('account_activity_exported'"));
 
   console.log('browser account controls e2e test passed');
 }

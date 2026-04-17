@@ -228,12 +228,42 @@
                 <div class="mt-3 rounded-md border border-slate-700 p-3">
                     <div class="flex items-center justify-between gap-2">
                         <p class="text-xs font-semibold text-slate-200">Account Dashboard (Phase 3)</p>
-                        <button id="account-dashboard-refresh-button" class="rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-700">Refresh</button>
+                        <div class="flex items-center gap-2">
+                            <button id="account-dashboard-export-json-button" class="rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-700">Export JSON</button>
+                            <button id="account-dashboard-export-csv-button" class="rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-700">Export CSV</button>
+                            <button id="account-dashboard-refresh-button" class="rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-700">Refresh</button>
+                        </div>
                     </div>
                     <p id="account-dashboard-status" class="mt-1 text-xs text-slate-400"></p>
                     <p id="account-dashboard-summary" class="mt-1 text-xs text-slate-300"></p>
+                    <div class="mt-2 grid gap-2 md:grid-cols-2">
+                        <label class="text-[11px] text-slate-400">Subscription filter
+                            <select id="account-dashboard-subscriptions-filter" class="mt-1 w-full rounded border border-slate-600 bg-slate-900/70 px-2 py-1 text-xs text-slate-100">
+                                <option value="ALL">All</option>
+                                <option value="ACTIVE">Active</option>
+                                <option value="CANCELED">Canceled</option>
+                                <option value="PAST_DUE">Past due</option>
+                            </select>
+                        </label>
+                        <label class="text-[11px] text-slate-400">Run filter
+                            <select id="account-dashboard-runs-filter" class="mt-1 w-full rounded border border-slate-600 bg-slate-900/70 px-2 py-1 text-xs text-slate-100">
+                                <option value="ALL">All</option>
+                                <option value="COMPLETED">Completed</option>
+                                <option value="FAILED">Failed</option>
+                                <option value="PROCESSING">Processing</option>
+                            </select>
+                        </label>
+                    </div>
                     <ul id="account-dashboard-subscriptions" class="mt-2 space-y-1 text-xs text-slate-300"></ul>
+                    <div class="mt-1 flex items-center justify-between">
+                        <button id="account-dashboard-subscriptions-prev-button" class="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700">Prev subs</button>
+                        <button id="account-dashboard-subscriptions-next-button" class="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700">Next subs</button>
+                    </div>
                     <ul id="account-dashboard-runs" class="mt-2 space-y-1 text-xs text-slate-300"></ul>
+                    <div class="mt-1 flex items-center justify-between">
+                        <button id="account-dashboard-runs-prev-button" class="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700">Prev runs</button>
+                        <button id="account-dashboard-runs-next-button" class="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700">Next runs</button>
+                    </div>
                 </div>
             </div>
         </header>
@@ -624,10 +654,18 @@
         const workspaceStatus = document.getElementById('workspace-status');
         const workspaceMembersList = document.getElementById('workspace-members-list');
         const accountDashboardRefreshButton = document.getElementById('account-dashboard-refresh-button');
+        const accountDashboardExportJsonButton = document.getElementById('account-dashboard-export-json-button');
+        const accountDashboardExportCsvButton = document.getElementById('account-dashboard-export-csv-button');
         const accountDashboardStatus = document.getElementById('account-dashboard-status');
         const accountDashboardSummary = document.getElementById('account-dashboard-summary');
         const accountDashboardSubscriptions = document.getElementById('account-dashboard-subscriptions');
         const accountDashboardRuns = document.getElementById('account-dashboard-runs');
+        const accountDashboardSubscriptionsFilter = document.getElementById('account-dashboard-subscriptions-filter');
+        const accountDashboardRunsFilter = document.getElementById('account-dashboard-runs-filter');
+        const accountDashboardSubscriptionsPrevButton = document.getElementById('account-dashboard-subscriptions-prev-button');
+        const accountDashboardSubscriptionsNextButton = document.getElementById('account-dashboard-subscriptions-next-button');
+        const accountDashboardRunsPrevButton = document.getElementById('account-dashboard-runs-prev-button');
+        const accountDashboardRunsNextButton = document.getElementById('account-dashboard-runs-next-button');
         
         let cvFile = null;
         let cvFileKind = '';
@@ -766,6 +804,9 @@
         let currentEntitlements = null;
         let accountCodeExpiresAt = '';
         let isAccountActionPending = false;
+        let dashboardSubOffset = 0;
+        let dashboardRunOffset = 0;
+        const DASHBOARD_PAGE_SIZE = 5;
         const analyticsSessionId = (() => {
             const key = 'analytics_session_id';
             const generate = () => `sess_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
@@ -921,6 +962,14 @@
             if (accountResendButton) accountResendButton.disabled = controlsLocked;
             if (accountSignOutButton) accountSignOutButton.disabled = controlsLocked;
             if (accountDashboardRefreshButton) accountDashboardRefreshButton.disabled = controlsLocked;
+            if (accountDashboardExportJsonButton) accountDashboardExportJsonButton.disabled = controlsLocked;
+            if (accountDashboardExportCsvButton) accountDashboardExportCsvButton.disabled = controlsLocked;
+            if (accountDashboardSubscriptionsFilter) accountDashboardSubscriptionsFilter.disabled = controlsLocked;
+            if (accountDashboardRunsFilter) accountDashboardRunsFilter.disabled = controlsLocked;
+            if (accountDashboardSubscriptionsPrevButton) accountDashboardSubscriptionsPrevButton.disabled = controlsLocked;
+            if (accountDashboardSubscriptionsNextButton) accountDashboardSubscriptionsNextButton.disabled = controlsLocked;
+            if (accountDashboardRunsPrevButton) accountDashboardRunsPrevButton.disabled = controlsLocked;
+            if (accountDashboardRunsNextButton) accountDashboardRunsNextButton.disabled = controlsLocked;
         }
 
         async function runAccountAction(task) {
@@ -1027,7 +1076,17 @@
                 return;
             }
             accountDashboardStatus.textContent = 'Loading dashboard…';
-            const response = await fetch('/.netlify/functions/account-dashboard', { method: 'GET' });
+            const subStatus = String(accountDashboardSubscriptionsFilter?.value || 'ALL').trim().toUpperCase();
+            const runStatus = String(accountDashboardRunsFilter?.value || 'ALL').trim().toUpperCase();
+            const query = new URLSearchParams({
+                subOffset: String(dashboardSubOffset),
+                subLimit: String(DASHBOARD_PAGE_SIZE),
+                subStatus,
+                runOffset: String(dashboardRunOffset),
+                runLimit: String(DASHBOARD_PAGE_SIZE),
+                runStatus,
+            });
+            const response = await fetch(`/.netlify/functions/account-dashboard?${query.toString()}`, { method: 'GET' });
             const payload = await readJsonSafely(response);
             if (!response.ok) {
                 accountDashboardStatus.textContent = payload?.error || 'Unable to load dashboard.';
@@ -1039,11 +1098,19 @@
             const workspaceMembers = Number(payload?.workspace?.memberCount || 0);
             accountDashboardStatus.textContent = 'Dashboard updated.';
             if (accountDashboardSummary) {
-                accountDashboardSummary.textContent = `Plan ${plan} · ${subCount} subscription records · ${runCount} recent runs · ${workspaceMembers} workspace members`;
+                const renewal = String(payload?.subscriptions?.[0]?.nextRenewalAt || '').trim();
+                const lastPayment = String(payload?.subscriptions?.[0]?.lastSuccessfulPaymentAt || '').trim();
+                const renewalText = renewal ? ` · Next renewal ${new Date(renewal).toLocaleDateString()}` : '';
+                const paymentText = lastPayment ? ` · Last payment ${new Date(lastPayment).toLocaleDateString()}` : '';
+                accountDashboardSummary.textContent = `Plan ${plan} · ${subCount} subscriptions in view · ${runCount} runs in view · ${workspaceMembers} workspace members${paymentText}${renewalText}`;
             }
             renderDashboardList(
                 accountDashboardSubscriptions,
-                (payload?.subscriptions || []).map((item) => `${String(item.plan || 'free').toUpperCase()} · ${item.status || 'UNKNOWN'} · ${item.provider || 'internal'}`),
+                (payload?.subscriptions || []).map((item) => {
+                    const renewal = item?.nextRenewalAt ? ` · renews ${new Date(item.nextRenewalAt).toLocaleDateString()}` : '';
+                    const paid = item?.lastSuccessfulPaymentAt ? ` · paid ${new Date(item.lastSuccessfulPaymentAt).toLocaleDateString()}` : '';
+                    return `${String(item.plan || 'free').toUpperCase()} · ${item.status || 'UNKNOWN'} · ${item.provider || 'internal'}${paid}${renewal}`;
+                }),
                 'No subscriptions yet.',
             );
             renderDashboardList(
@@ -1051,7 +1118,35 @@
                 (payload?.recentRuns || []).map((run) => `${run.runId} · ${String(run.status || 'unknown').toUpperCase()}${Number.isFinite(Number(run.score)) ? ` · score ${run.score}` : ''}`),
                 'No linked runs yet.',
             );
+            if (accountDashboardSubscriptionsPrevButton) accountDashboardSubscriptionsPrevButton.disabled = Number(payload?.pagination?.subscriptions?.offset || 0) <= 0;
+            if (accountDashboardSubscriptionsNextButton) accountDashboardSubscriptionsNextButton.disabled = payload?.pagination?.subscriptions?.nextOffset == null;
+            if (accountDashboardRunsPrevButton) accountDashboardRunsPrevButton.disabled = Number(payload?.pagination?.runs?.offset || 0) <= 0;
+            if (accountDashboardRunsNextButton) accountDashboardRunsNextButton.disabled = payload?.pagination?.runs?.nextOffset == null;
             trackEvent('account_dashboard_refreshed', { runCount, subCount, workspaceMembers }).catch(() => {});
+        }
+
+        async function exportAccountActivity(format = 'json') {
+            if (!currentUser?.id) {
+                showError('Please sign in first.');
+                return;
+            }
+            const safeFormat = String(format || 'json').trim().toLowerCase() === 'csv' ? 'csv' : 'json';
+            const response = await fetch(`/.netlify/functions/account-activity-export?format=${safeFormat}`, { method: 'GET' });
+            if (!response.ok) {
+                const payload = await readJsonSafely(response);
+                showError(payload?.error || 'Unable to export account activity.');
+                return;
+            }
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `account-activity.${safeFormat}`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            trackEvent('account_activity_exported', { format: safeFormat }).catch(() => {});
         }
 
         async function updateSubscription(plan, status = 'ACTIVE', successMessage = '') {
@@ -1164,6 +1259,8 @@
                 if (!sessionResponse.ok) {
                     currentUser = null;
                     currentEntitlements = null;
+                    dashboardSubOffset = 0;
+                    dashboardRunOffset = 0;
                     updateAccountUi();
                     return;
                 }
@@ -1235,6 +1332,8 @@
             currentUser = null;
             currentEntitlements = null;
             accountCodeExpiresAt = '';
+            dashboardSubOffset = 0;
+            dashboardRunOffset = 0;
             if (accountCodeInput) accountCodeInput.value = '';
             if (accountCodeStatus) accountCodeStatus.textContent = '';
             if (billingPortalStatus) billingPortalStatus.textContent = '';
@@ -1411,6 +1510,56 @@
         }
         if (accountDashboardRefreshButton) {
             accountDashboardRefreshButton.addEventListener('click', async () => {
+                await runAccountAction(refreshAccountDashboard);
+            });
+        }
+        if (accountDashboardExportJsonButton) {
+            accountDashboardExportJsonButton.addEventListener('click', async () => {
+                await runAccountAction(async () => {
+                    await exportAccountActivity('json');
+                });
+            });
+        }
+        if (accountDashboardExportCsvButton) {
+            accountDashboardExportCsvButton.addEventListener('click', async () => {
+                await runAccountAction(async () => {
+                    await exportAccountActivity('csv');
+                });
+            });
+        }
+        if (accountDashboardSubscriptionsFilter) {
+            accountDashboardSubscriptionsFilter.addEventListener('change', async () => {
+                dashboardSubOffset = 0;
+                await runAccountAction(refreshAccountDashboard);
+            });
+        }
+        if (accountDashboardRunsFilter) {
+            accountDashboardRunsFilter.addEventListener('change', async () => {
+                dashboardRunOffset = 0;
+                await runAccountAction(refreshAccountDashboard);
+            });
+        }
+        if (accountDashboardSubscriptionsPrevButton) {
+            accountDashboardSubscriptionsPrevButton.addEventListener('click', async () => {
+                dashboardSubOffset = Math.max(0, dashboardSubOffset - DASHBOARD_PAGE_SIZE);
+                await runAccountAction(refreshAccountDashboard);
+            });
+        }
+        if (accountDashboardSubscriptionsNextButton) {
+            accountDashboardSubscriptionsNextButton.addEventListener('click', async () => {
+                dashboardSubOffset += DASHBOARD_PAGE_SIZE;
+                await runAccountAction(refreshAccountDashboard);
+            });
+        }
+        if (accountDashboardRunsPrevButton) {
+            accountDashboardRunsPrevButton.addEventListener('click', async () => {
+                dashboardRunOffset = Math.max(0, dashboardRunOffset - DASHBOARD_PAGE_SIZE);
+                await runAccountAction(refreshAccountDashboard);
+            });
+        }
+        if (accountDashboardRunsNextButton) {
+            accountDashboardRunsNextButton.addEventListener('click', async () => {
+                dashboardRunOffset += DASHBOARD_PAGE_SIZE;
                 await runAccountAction(refreshAccountDashboard);
             });
         }

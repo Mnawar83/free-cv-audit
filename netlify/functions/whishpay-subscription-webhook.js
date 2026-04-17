@@ -45,6 +45,8 @@ exports.handler = async (event) => {
       plan,
       status,
       current_period_end: payload.currentPeriodEnd || payload.current_period_end || null,
+      next_renewal_at: payload.nextRenewalAt || payload.next_renewal_at || payload.currentPeriodEnd || payload.current_period_end || null,
+      last_successful_payment_at: payload.lastSuccessfulPaymentAt || payload.last_successful_payment_at || payload.lastPaymentAt || null,
     });
     const entitlements = await refreshUserEntitlements(userId);
     return json(200, { ok: true, subscription, entitlements });

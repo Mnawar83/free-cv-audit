@@ -47,6 +47,11 @@ exports.handler = async (event) => {
       plan,
       status: mapStatus(eventType, resource.status),
       current_period_end: resource.billing_info?.next_billing_time || null,
+      next_renewal_at: resource.billing_info?.next_billing_time || null,
+      last_successful_payment_at:
+        resource.billing_info?.last_payment?.time
+        || resource.billing_info?.last_payment?.date
+        || null,
     });
     const entitlements = await refreshUserEntitlements(userId);
     return json(200, { ok: true, subscription, entitlements });

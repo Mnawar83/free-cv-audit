@@ -63,6 +63,8 @@ exports.handler = async (event) => {
     status,
     billing_cycle_anchor: body.billingCycleAnchor || body.billing_cycle_anchor || null,
     current_period_end: body.currentPeriodEnd || body.current_period_end || null,
+    last_successful_payment_at: body.lastSuccessfulPaymentAt || body.last_successful_payment_at || null,
+    next_renewal_at: body.nextRenewalAt || body.next_renewal_at || body.currentPeriodEnd || body.current_period_end || null,
     canceled_at: status === 'CANCELED' ? new Date().toISOString() : null,
   });
 
