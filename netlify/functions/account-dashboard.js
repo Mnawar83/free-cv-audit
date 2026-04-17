@@ -41,6 +41,126 @@ function normalizeSubscriptionMetadata(item = {}) {
   return { lastSuccessfulPaymentAt, nextRenewalAt };
 }
 
+function parseDateMs(value) {
+  const timestamp = new Date(value || 0).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function getMonthKey(dateLike) {
+  const date = new Date(dateLike || Date.now());
+  if (!Number.isFinite(date.getTime())) return '';
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function normalizeWeaknessToken(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function collectWeaknesses(run = {}) {
+  const fullAudit = run?.full_audit_result && typeof run.full_audit_result === 'object' ? run.full_audit_result : null;
+  if (!fullAudit) return [];
+  const findings = []
+    .concat(Array.isArray(fullAudit.auditFindings) ? fullAudit.auditFindings : [])
+    .concat(Array.isArray(fullAudit.improvementNotes) ? fullAudit.improvementNotes : [])
+    .concat(Array.isArray(fullAudit.atsKeywordSuggestions) ? fullAudit.atsKeywordSuggestions : []);
+  return findings
+    .map(normalizeWeaknessToken)
+    .filter(Boolean);
+}
+
+function buildDashboardInsights({ runs = [], subscriptions = [], workspaceMembers = [] } = {}) {
+  const now = new Date();
+  const nowMs = now.getTime();
+  const currentMonth = getMonthKey(nowMs);
+  const previousMonth = getMonthKey(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  const completedLike = new Set(['COMPLETED', 'CV_READY', 'EMAIL_SENT', 'FULL_AUDIT_COMPLETED']);
+  const passThreshold = Math.max(50, Number(process.env.DASHBOARD_PASS_THRESHOLD || 75));
+  const minutesSavedPerRun = Math.max(5, Number(process.env.DASHBOARD_MINUTES_SAVED_PER_RUN || 18));
+
+  const monthBuckets = {
+    [currentMonth]: { completed: 0, passed: 0, total: 0 },
+    [previousMonth]: { completed: 0, passed: 0, total: 0 },
+  };
+
+  const weaknessCounts = new Map();
+  for (const run of runs) {
+    const updatedMs = parseDateMs(run?.updated_at || run?.created_at);
+    const status = String(run?.status || '').trim().toUpperCase();
+    const score = Number(run?.score);
+    const monthKey = getMonthKey(updatedMs || nowMs);
+    if (!monthBuckets[monthKey]) {
+      monthBuckets[monthKey] = { completed: 0, passed: 0, total: 0 };
+    }
+    monthBuckets[monthKey].total += 1;
+    if (completedLike.has(status)) monthBuckets[monthKey].completed += 1;
+    if (Number.isFinite(score) && score >= passThreshold) monthBuckets[monthKey].passed += 1;
+
+    for (const weakness of collectWeaknesses(run)) {
+      weaknessCounts.set(weakness, (weaknessCounts.get(weakness) || 0) + 1);
+    }
+  }
+
+  const currentStats = monthBuckets[currentMonth] || { completed: 0, passed: 0, total: 0 };
+  const previousStats = monthBuckets[previousMonth] || { completed: 0, passed: 0, total: 0 };
+  const renewalCandidates = subscriptions
+    .map((item) => normalizeSubscriptionMetadata(item))
+    .filter((item) => item.nextRenewalAt)
+    .map((item) => ({ ...item, renewalMs: parseDateMs(item.nextRenewalAt) }))
+    .filter((item) => item.renewalMs > 0)
+    .sort((a, b) => a.renewalMs - b.renewalMs);
+  const nextRenewal = renewalCandidates[0] || null;
+  const renewalDays = nextRenewal ? Math.ceil((nextRenewal.renewalMs - nowMs) / (24 * 60 * 60 * 1000)) : null;
+  const hasPastDue = subscriptions.some((item) => String(item?.status || '').trim().toUpperCase() === 'PAST_DUE');
+  const riskLevel = hasPastDue ? 'HIGH' : (typeof renewalDays === 'number' && renewalDays <= 7 ? 'MEDIUM' : 'LOW');
+
+  const teamSnapshot = {
+    totalMembers: Array.isArray(workspaceMembers) ? workspaceMembers.length : 0,
+    invited: (workspaceMembers || []).filter((item) => String(item?.status || '').trim().toUpperCase() === 'INVITED').length,
+    active: (workspaceMembers || []).filter((item) => String(item?.status || '').trim().toUpperCase() === 'ACTIVE').length,
+    suspended: (workspaceMembers || []).filter((item) => String(item?.status || '').trim().toUpperCase() === 'SUSPENDED').length,
+  };
+
+  const mostCommonWeaknesses = Array.from(weaknessCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([label, count]) => ({ label, count }));
+
+  return {
+    timeSavedThisMonthMinutes: currentStats.completed * minutesSavedPerRun,
+    timeSavedThisMonthHours: Number(((currentStats.completed * minutesSavedPerRun) / 60).toFixed(1)),
+    completedRunsTrend: {
+      month: currentMonth,
+      completed: currentStats.completed,
+      previousMonth,
+      previousCompleted: previousStats.completed,
+      delta: currentStats.completed - previousStats.completed,
+    },
+    passRateTrend: {
+      passThreshold,
+      month: currentMonth,
+      passed: currentStats.passed,
+      total: currentStats.total,
+      rate: currentStats.total ? Number((currentStats.passed / currentStats.total).toFixed(2)) : 0,
+      previousMonth,
+      previousPassed: previousStats.passed,
+      previousTotal: previousStats.total,
+      previousRate: previousStats.total ? Number((previousStats.passed / previousStats.total).toFixed(2)) : 0,
+    },
+    mostCommonWeaknesses,
+    teamActivity: teamSnapshot,
+    alerts: {
+      nextRenewalAt: nextRenewal?.nextRenewalAt || null,
+      renewalDays,
+      hasPastDue,
+      riskLevel,
+    },
+  };
+}
+
 exports.handler = async (event) => {
   try { require('@netlify/blobs').connectLambda(event); } catch (_ignored) {}
 
@@ -52,10 +172,10 @@ exports.handler = async (event) => {
   const user = await getUserById(userId);
   if (!user) return json(404, { error: 'User not found.' });
 
-  const [entitlements, subscriptions, recentRuns, workspaceMembers] = await Promise.all([
+  const [entitlements, subscriptions, allRuns, workspaceMembers] = await Promise.all([
     getUserEntitlements(userId),
     getUserSubscriptions(userId),
-    listUserRuns(userId, 10),
+    listUserRuns(userId, 100),
     listWorkspaceMembers(userId),
   ]);
 
@@ -70,11 +190,12 @@ exports.handler = async (event) => {
     ? subscriptions.filter((item) => String(item?.status || '').toUpperCase() === subStatusFilter)
     : subscriptions;
   const filteredRuns = runStatusFilter
-    ? recentRuns.filter((run) => String(run?.status || '').toUpperCase() === runStatusFilter)
-    : recentRuns;
+    ? allRuns.filter((run) => String(run?.status || '').toUpperCase() === runStatusFilter)
+    : allRuns;
 
   const pagedSubscriptions = filteredSubscriptions.slice(subOffset, subOffset + subLimit);
   const pagedRuns = filteredRuns.slice(runOffset, runOffset + runLimit);
+  const insights = buildDashboardInsights({ runs: allRuns, subscriptions, workspaceMembers });
 
   return json(200, {
     ok: true,
@@ -103,6 +224,7 @@ exports.handler = async (event) => {
       memberCount: Array.isArray(workspaceMembers) ? workspaceMembers.length : 0,
       members: (workspaceMembers || []).slice(0, 10),
     },
+    insights,
     pagination: {
       subscriptions: {
         offset: subOffset,

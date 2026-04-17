@@ -58,6 +58,17 @@ async function run() {
     }),
   });
   assert.strictEqual(canceledSubResponse.statusCode, 200);
+  const pastDueSubResponse = await subscription.handler({
+    httpMethod: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({
+      plan: 'pro',
+      status: 'PAST_DUE',
+      provider: 'internal',
+      nextRenewalAt: '2026-02-03T00:00:00.000Z',
+    }),
+  });
+  assert.strictEqual(pastDueSubResponse.statusCode, 200);
 
   const inviteResponse = await workspace.handler({
     httpMethod: 'POST',
@@ -66,7 +77,15 @@ async function run() {
   });
   assert.strictEqual(inviteResponse.statusCode, 200);
 
-  await runStore.upsertRun('run_dashboard_1', { status: 'completed', score: 84 });
+  await runStore.upsertRun('run_dashboard_1', {
+    status: 'completed',
+    score: 84,
+    full_audit_result: {
+      auditFindings: ['Weak summary statement'],
+      improvementNotes: ['Weak summary statement'],
+      atsKeywordSuggestions: ['missing sql'],
+    },
+  });
   await runStore.upsertRun('run_dashboard_2', { status: 'failed', score: 41 });
   await runStore.linkRunToUser(userId, 'run_dashboard_1');
   await runStore.linkRunToUser(userId, 'run_dashboard_2');
@@ -82,10 +101,17 @@ async function run() {
   assert.strictEqual(payload.user.userId, userId);
   assert.strictEqual(payload.entitlements.plan, 'team');
   assert.strictEqual(payload.workspace.memberCount, 1);
-  assert.strictEqual(payload.subscriptions.length, 2);
+  assert.strictEqual(payload.subscriptions.length, 3);
   assert.strictEqual(payload.recentRuns.length, 2);
   assert.strictEqual(payload.recentRuns[0].runId, 'run_dashboard_2');
   assert.ok(payload.pagination);
+  assert.ok(payload.insights);
+  assert.ok(Number.isFinite(Number(payload.insights.timeSavedThisMonthMinutes)));
+  assert.strictEqual(payload.insights.alerts.hasPastDue, true);
+  assert.strictEqual(payload.insights.alerts.riskLevel, 'HIGH');
+  assert.ok(Array.isArray(payload.insights.mostCommonWeaknesses));
+  assert.strictEqual(payload.insights.mostCommonWeaknesses[0].label, 'weak summary statement');
+  assert.strictEqual(payload.insights.mostCommonWeaknesses[0].count, 2);
 
   const pagedResponse = await dashboard.handler({
     httpMethod: 'GET',

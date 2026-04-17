@@ -287,6 +287,7 @@
                     </div>
                     <p id="account-dashboard-status" class="mt-1 text-xs text-slate-400"></p>
                     <p id="account-dashboard-summary" class="mt-1 text-xs text-slate-300"></p>
+                    <div id="account-dashboard-insight-tiles" class="mt-2 grid gap-2 md:grid-cols-2"></div>
                     <div class="mt-2 grid gap-2 md:grid-cols-2">
                         <label class="text-[11px] text-slate-400">Subscription filter
                             <select id="account-dashboard-subscriptions-filter" class="mt-1 w-full rounded border border-slate-600 bg-slate-900/70 px-2 py-1 text-xs text-slate-100">
@@ -737,6 +738,7 @@
         const accountDashboardExportCsvButton = document.getElementById('account-dashboard-export-csv-button');
         const accountDashboardStatus = document.getElementById('account-dashboard-status');
         const accountDashboardSummary = document.getElementById('account-dashboard-summary');
+        const accountDashboardInsightTiles = document.getElementById('account-dashboard-insight-tiles');
         const accountDashboardSubscriptions = document.getElementById('account-dashboard-subscriptions');
         const accountDashboardRuns = document.getElementById('account-dashboard-runs');
         const accountDashboardSubscriptionsFilter = document.getElementById('account-dashboard-subscriptions-filter');
@@ -1163,11 +1165,75 @@
             });
         }
 
+        function escapeHtml(value) {
+            return String(value || '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        }
+
+        function formatTrendDelta(delta) {
+            const numericDelta = Number(delta || 0);
+            if (numericDelta > 0) return `↑ ${numericDelta}`;
+            if (numericDelta < 0) return `↓ ${Math.abs(numericDelta)}`;
+            return '↔ 0';
+        }
+
+        function renderInsightTiles(insights = {}) {
+            if (!accountDashboardInsightTiles) return;
+            const timeHours = Number(insights?.timeSavedThisMonthHours || 0).toFixed(1);
+            const completedTrend = insights?.completedRunsTrend || {};
+            const passRate = insights?.passRateTrend || {};
+            const passPercent = `${Math.round(Number(passRate?.rate || 0) * 100)}%`;
+            const previousPassPercent = `${Math.round(Number(passRate?.previousRate || 0) * 100)}%`;
+            const weaknesses = Array.isArray(insights?.mostCommonWeaknesses) ? insights.mostCommonWeaknesses : [];
+            const weaknessText = weaknesses.length
+                ? weaknesses.slice(0, 3).map((item) => `${escapeHtml(item.label)} (${item.count})`).join(' · ')
+                : 'No recurring weakness data yet.';
+            const team = insights?.teamActivity || {};
+            const alerts = insights?.alerts || {};
+            const renewalDays = Number.isFinite(Number(alerts?.renewalDays)) ? Number(alerts.renewalDays) : null;
+            const renewalText = renewalDays == null
+                ? 'No renewal date on file'
+                : (renewalDays < 0 ? `Renewal overdue by ${Math.abs(renewalDays)} day(s)` : `Renews in ${renewalDays} day(s)`);
+            const riskTone = String(alerts?.riskLevel || 'LOW').toUpperCase();
+            const riskClass = riskTone === 'HIGH' ? 'text-rose-300' : riskTone === 'MEDIUM' ? 'text-amber-300' : 'text-emerald-300';
+
+            accountDashboardInsightTiles.innerHTML = `
+                <div class="rounded-md border border-emerald-500/40 bg-emerald-900/20 p-3">
+                    <p class="text-[11px] uppercase tracking-wide text-emerald-200">Time Saved This Month</p>
+                    <p class="mt-1 text-lg font-semibold text-emerald-100">${timeHours} hrs</p>
+                    <p class="mt-1 text-[11px] text-emerald-200">Based on completed runs this month.</p>
+                </div>
+                <div class="rounded-md border border-blue-500/40 bg-blue-900/20 p-3">
+                    <p class="text-[11px] uppercase tracking-wide text-blue-200">Runs & Pass Trend</p>
+                    <p class="mt-1 text-sm font-semibold text-blue-100">${completedTrend.completed || 0} completed (${formatTrendDelta(completedTrend.delta)})</p>
+                    <p class="mt-1 text-[11px] text-blue-200">Pass ≥ ${passRate.passThreshold || 75}: ${passPercent} (prev ${previousPassPercent})</p>
+                </div>
+                <div class="rounded-md border border-violet-500/40 bg-violet-900/20 p-3 md:col-span-2">
+                    <p class="text-[11px] uppercase tracking-wide text-violet-200">Most Common CV Weaknesses</p>
+                    <p class="mt-1 text-xs text-violet-100">${weaknessText}</p>
+                </div>
+                <div class="rounded-md border border-slate-600 bg-slate-900/60 p-3">
+                    <p class="text-[11px] uppercase tracking-wide text-slate-300">Team Activity Snapshot</p>
+                    <p class="mt-1 text-xs text-slate-200">${Number(team.totalMembers || 0)} members · ${Number(team.active || 0)} active · ${Number(team.invited || 0)} invited · ${Number(team.suspended || 0)} suspended</p>
+                </div>
+                <div class="rounded-md border border-amber-500/40 bg-amber-900/20 p-3">
+                    <p class="text-[11px] uppercase tracking-wide text-amber-200">Billing Alert</p>
+                    <p class="mt-1 text-xs ${riskClass}">${renewalText}</p>
+                    <p class="mt-1 text-[11px] text-amber-100">Risk level: ${escapeHtml(riskTone)}${alerts?.hasPastDue ? ' · past due detected' : ''}</p>
+                </div>
+            `;
+        }
+
         async function refreshAccountDashboard() {
             if (!accountDashboardStatus) return;
             if (!currentUser?.id) {
                 accountDashboardStatus.textContent = 'Sign in to view your dashboard.';
                 if (accountDashboardSummary) accountDashboardSummary.textContent = '';
+                if (accountDashboardInsightTiles) accountDashboardInsightTiles.innerHTML = '';
                 renderDashboardList(accountDashboardSubscriptions, [], 'No subscriptions yet.');
                 renderDashboardList(accountDashboardRuns, [], 'No linked runs yet.');
                 return;
@@ -1195,12 +1261,13 @@
             const workspaceMembers = Number(payload?.workspace?.memberCount || 0);
             accountDashboardStatus.textContent = 'Dashboard updated.';
             if (accountDashboardSummary) {
-                const renewal = String(payload?.subscriptions?.[0]?.nextRenewalAt || '').trim();
+                const renewal = String(payload?.insights?.alerts?.nextRenewalAt || payload?.subscriptions?.[0]?.nextRenewalAt || '').trim();
                 const lastPayment = String(payload?.subscriptions?.[0]?.lastSuccessfulPaymentAt || '').trim();
                 const renewalText = renewal ? ` · Next renewal ${new Date(renewal).toLocaleDateString()}` : '';
                 const paymentText = lastPayment ? ` · Last payment ${new Date(lastPayment).toLocaleDateString()}` : '';
-                accountDashboardSummary.textContent = `Plan ${plan} · ${subCount} subscriptions in view · ${runCount} runs in view · ${workspaceMembers} workspace members${paymentText}${renewalText}`;
+                accountDashboardSummary.textContent = `Plan ${plan} · ${subCount} subscriptions in view · ${runCount} runs in view · ${workspaceMembers} workspace members${paymentText}${renewalText} · Decision-focused insights ready`;
             }
+            renderInsightTiles(payload?.insights || {});
             renderDashboardList(
                 accountDashboardSubscriptions,
                 (payload?.subscriptions || []).map((item) => {
