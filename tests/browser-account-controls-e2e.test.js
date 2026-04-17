@@ -15,6 +15,9 @@ async function run() {
   assert.ok(html.includes("const winbackDiscountButton = document.getElementById('winback-discount-button');"));
   assert.ok(html.includes("const winbackDowngradeButton = document.getElementById('winback-downgrade-button');"));
   assert.ok(html.includes('id="winback-cancel-anyway-button"'));
+  assert.ok(html.includes("const accountRetentionLoopCard = document.getElementById('account-retention-loop-card');"));
+  assert.ok(html.includes("const retentionSendWeeklyEmailButton = document.getElementById('retention-send-weekly-email-button');"));
+  assert.ok(html.includes("const retentionEmailStatus = document.getElementById('retention-email-status');"));
   assert.ok(html.includes('async function beginPlanCheckout(plan, options = {}) {'));
   assert.ok(html.includes('/.netlify/functions/subscription-checkout?${query.toString()}'));
   assert.ok(html.includes('function openPricingPage(preferredPlan = \'pro\') {'));
@@ -22,6 +25,9 @@ async function run() {
   assert.ok(html.includes('function applyWinbackPause() {'));
   assert.ok(html.includes('function applyWinbackDiscount() {'));
   assert.ok(html.includes('function applyWinbackDowngrade() {'));
+  assert.ok(html.includes('function renderRetentionLoops(retention = {}) {'));
+  assert.ok(html.includes("async function sendWeeklyRetentionEmail() {"));
+  assert.ok(html.includes('/.netlify/functions/retention-email'));
 
   assert.ok(html.includes('data-workspace-role'));
   assert.ok(html.includes('data-workspace-status'));

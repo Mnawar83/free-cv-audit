@@ -106,7 +106,12 @@ async function run() {
   assert.strictEqual(payload.recentRuns[0].runId, 'run_dashboard_2');
   assert.ok(payload.pagination);
   assert.ok(payload.insights);
+  assert.ok(payload.retention);
   assert.ok(Number.isFinite(Number(payload.insights.timeSavedThisMonthMinutes)));
+  assert.ok(Number.isFinite(Number(payload.retention.weeklyHealthScore)));
+  assert.ok(Array.isArray(payload.retention.roleTargetedSuggestions));
+  assert.ok(String(payload.retention.workspaceNudge || '').length > 0);
+  assert.ok(String(payload.retention.renewalReminder || '').length > 0);
   assert.strictEqual(payload.insights.alerts.hasPastDue, true);
   assert.strictEqual(payload.insights.alerts.riskLevel, 'HIGH');
   assert.ok(Array.isArray(payload.insights.mostCommonWeaknesses));

@@ -337,6 +337,15 @@
                     <p id="account-dashboard-status" class="mt-1 text-xs text-slate-400"></p>
                     <p id="account-dashboard-summary" class="mt-1 text-xs text-slate-300"></p>
                     <div id="account-dashboard-insight-tiles" class="mt-2 grid gap-2 md:grid-cols-2"></div>
+                    <div id="account-retention-loop-card" class="mt-2 rounded-md border border-emerald-500/40 bg-emerald-900/15 p-3">
+                        <p class="text-[11px] font-semibold uppercase tracking-wide text-emerald-200">Retention loops</p>
+                        <p id="retention-health-score" class="mt-1 text-xs text-emerald-100"></p>
+                        <ul id="retention-role-suggestions" class="mt-1 list-disc space-y-1 pl-4 text-xs text-emerald-100"></ul>
+                        <p id="retention-workspace-nudge" class="mt-1 text-xs text-emerald-100"></p>
+                        <p id="retention-renewal-recap" class="mt-1 text-xs text-emerald-200"></p>
+                        <button id="retention-send-weekly-email-button" class="mt-2 rounded border border-emerald-400 px-3 py-1 text-[11px] font-semibold text-emerald-100 hover:bg-emerald-900/40">Send weekly CV health email</button>
+                        <p id="retention-email-status" class="mt-1 text-[11px] text-emerald-200"></p>
+                    </div>
                     <div class="mt-2 grid gap-2 md:grid-cols-2">
                         <label class="text-[11px] text-slate-400">Subscription filter
                             <select id="account-dashboard-subscriptions-filter" class="mt-1 w-full rounded border border-slate-600 bg-slate-900/70 px-2 py-1 text-xs text-slate-100">
@@ -804,6 +813,13 @@
         const accountDashboardStatus = document.getElementById('account-dashboard-status');
         const accountDashboardSummary = document.getElementById('account-dashboard-summary');
         const accountDashboardInsightTiles = document.getElementById('account-dashboard-insight-tiles');
+        const accountRetentionLoopCard = document.getElementById('account-retention-loop-card');
+        const retentionHealthScore = document.getElementById('retention-health-score');
+        const retentionRoleSuggestions = document.getElementById('retention-role-suggestions');
+        const retentionWorkspaceNudge = document.getElementById('retention-workspace-nudge');
+        const retentionRenewalRecap = document.getElementById('retention-renewal-recap');
+        const retentionSendWeeklyEmailButton = document.getElementById('retention-send-weekly-email-button');
+        const retentionEmailStatus = document.getElementById('retention-email-status');
         const accountDashboardSubscriptions = document.getElementById('account-dashboard-subscriptions');
         const accountDashboardRuns = document.getElementById('account-dashboard-runs');
         const accountDashboardSubscriptionsFilter = document.getElementById('account-dashboard-subscriptions-filter');
@@ -1480,12 +1496,36 @@
             `;
         }
 
+        function renderRetentionLoops(retention = {}) {
+            if (!accountRetentionLoopCard) return;
+            const weeklyHealthScore = Number(retention?.weeklyHealthScore || 0);
+            if (retentionHealthScore) {
+                retentionHealthScore.textContent = `Weekly CV health score: ${weeklyHealthScore || 'N/A'} / 100`;
+            }
+            if (retentionRoleSuggestions) {
+                retentionRoleSuggestions.innerHTML = '';
+                const suggestions = Array.isArray(retention?.roleTargetedSuggestions) ? retention.roleTargetedSuggestions : [];
+                suggestions.slice(0, 3).forEach((text) => {
+                    const li = document.createElement('li');
+                    li.textContent = text;
+                    retentionRoleSuggestions.appendChild(li);
+                });
+            }
+            if (retentionWorkspaceNudge) {
+                retentionWorkspaceNudge.textContent = String(retention?.workspaceNudge || '');
+            }
+            if (retentionRenewalRecap) {
+                retentionRenewalRecap.textContent = String(retention?.renewalReminder || '');
+            }
+        }
+
         async function refreshAccountDashboard() {
             if (!accountDashboardStatus) return;
             if (!currentUser?.id) {
                 accountDashboardStatus.textContent = 'Sign in to view your dashboard.';
                 if (accountDashboardSummary) accountDashboardSummary.textContent = '';
                 if (accountDashboardInsightTiles) accountDashboardInsightTiles.innerHTML = '';
+                renderRetentionLoops({});
                 renderDashboardList(accountDashboardSubscriptions, [], 'No subscriptions yet.');
                 renderDashboardList(accountDashboardRuns, [], 'No linked runs yet.');
                 return;
@@ -1529,6 +1569,7 @@
                 accountDashboardSummary.textContent = `Plan ${plan} · ${subCount} subscriptions in view · ${runCount} runs in view · ${workspaceMembers} workspace members${paymentText}${renewalText} · Decision-focused insights ready`;
             }
             renderInsightTiles(payload?.insights || {});
+            renderRetentionLoops(payload?.retention || {});
             renderDashboardList(
                 accountDashboardSubscriptions,
                 (payload?.subscriptions || []).map((item) => {
@@ -1701,6 +1742,21 @@
             await updateSubscription('pro', 'ACTIVE', 'Downgraded to PRO to keep unlimited audits.', { winbackChoice: 'downgrade_pro' });
             if (winbackStatus) winbackStatus.textContent = 'Downgrade applied: now on PRO plan.';
             trackEvent('account_subscription_winback_selected', { choice: 'downgrade_pro' }).catch(() => {});
+        }
+
+        async function sendWeeklyRetentionEmail() {
+            if (!currentUser?.id) {
+                showError('Please sign in first.');
+                return;
+            }
+            if (retentionEmailStatus) retentionEmailStatus.textContent = 'Sending weekly CV health recap…';
+            const response = await fetch('/.netlify/functions/retention-email', { method: 'POST' });
+            const payload = await readJsonSafely(response);
+            if (!response.ok) {
+                if (retentionEmailStatus) retentionEmailStatus.textContent = payload?.error || 'Unable to send weekly recap email.';
+                return;
+            }
+            if (retentionEmailStatus) retentionEmailStatus.textContent = payload?.message || 'Weekly recap email sent.';
         }
 
         async function openBillingPortal() {
@@ -2016,6 +2072,11 @@
         if (accountOpenPricingButton) {
             accountOpenPricingButton.addEventListener('click', () => {
                 openPricingPage('pro');
+            });
+        }
+        if (retentionSendWeeklyEmailButton) {
+            retentionSendWeeklyEmailButton.addEventListener('click', async () => {
+                await runAccountAction(sendWeeklyRetentionEmail);
             });
         }
         if (openBillingPortalButton) {

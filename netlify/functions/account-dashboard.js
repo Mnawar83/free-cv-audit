@@ -161,6 +161,62 @@ function buildDashboardInsights({ runs = [], subscriptions = [], workspaceMember
   };
 }
 
+function buildRetentionLoops({ runs = [], insights = null, subscriptions = [], workspaceMembers = [] } = {}) {
+  const now = Date.now();
+  const weekAgoMs = now - (7 * 24 * 60 * 60 * 1000);
+  const recentRuns = runs.filter((run) => parseDateMs(run?.updated_at || run?.created_at) >= weekAgoMs);
+  const scoreValues = recentRuns
+    .map((run) => Number(run?.score))
+    .filter((value) => Number.isFinite(value));
+  const weeklyHealthScore = scoreValues.length
+    ? Math.round(scoreValues.reduce((sum, score) => sum + score, 0) / scoreValues.length)
+    : 0;
+
+  const suggestionPool = [];
+  for (const run of runs.slice(0, 20)) {
+    const audit = run?.full_audit_result;
+    if (!audit || typeof audit !== 'object') continue;
+    const roleHints = []
+      .concat(Array.isArray(audit.summaryRecommendations) ? audit.summaryRecommendations : [])
+      .concat(Array.isArray(audit.experienceRecommendations) ? audit.experienceRecommendations : [])
+      .concat(Array.isArray(audit.skillsRecommendations) ? audit.skillsRecommendations : []);
+    roleHints.forEach((entry) => suggestionPool.push(String(entry || '').trim()));
+  }
+  const roleTargetedSuggestions = suggestionPool.filter(Boolean).slice(0, 3);
+
+  const memberCount = Array.isArray(workspaceMembers) ? workspaceMembers.length : 0;
+  const workspaceNudge = memberCount < 2
+    ? 'Invite a teammate to review this CV and accelerate feedback quality.'
+    : `Great collaboration momentum: ${memberCount} teammates are already in your workspace.`;
+
+  const renewalDays = Number(insights?.alerts?.renewalDays);
+  const valueRecap = {
+    timeSavedHours: Number(insights?.timeSavedThisMonthHours || 0),
+    completedRuns: Number(insights?.completedRunsTrend?.completed || 0),
+    weeklyHealthScore,
+  };
+  const renewalReminder = Number.isFinite(renewalDays)
+    ? (renewalDays <= 14
+      ? `Renewal in ${renewalDays} day(s). This month: ${valueRecap.completedRuns} completed runs, ${valueRecap.timeSavedHours}h saved.`
+      : `Next renewal in ${renewalDays} day(s). Keep building momentum before renewal.`)
+    : 'No renewal date on file yet.';
+
+  const nextRenewalAt = subscriptions
+    .map((item) => normalizeSubscriptionMetadata(item).nextRenewalAt)
+    .find(Boolean) || null;
+
+  return {
+    weeklyHealthScore,
+    roleTargetedSuggestions: roleTargetedSuggestions.length
+      ? roleTargetedSuggestions
+      : ['Focus your summary on target role outcomes and measurable impact.'],
+    workspaceNudge,
+    renewalReminder,
+    valueRecap,
+    nextRenewalAt,
+  };
+}
+
 exports.handler = async (event) => {
   try { require('@netlify/blobs').connectLambda(event); } catch (_ignored) {}
 
@@ -196,6 +252,7 @@ exports.handler = async (event) => {
   const pagedSubscriptions = filteredSubscriptions.slice(subOffset, subOffset + subLimit);
   const pagedRuns = filteredRuns.slice(runOffset, runOffset + runLimit);
   const insights = buildDashboardInsights({ runs: allRuns, subscriptions, workspaceMembers });
+  const retention = buildRetentionLoops({ runs: allRuns, insights, subscriptions, workspaceMembers });
 
   return json(200, {
     ok: true,
@@ -225,6 +282,7 @@ exports.handler = async (event) => {
       members: (workspaceMembers || []).slice(0, 10),
     },
     insights,
+    retention,
     pagination: {
       subscriptions: {
         offset: subOffset,
