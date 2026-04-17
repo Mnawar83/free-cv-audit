@@ -8,8 +8,20 @@ async function run() {
 
   assert.ok(html.includes("const planUpgradeProButton = document.getElementById('plan-upgrade-pro-button');"));
   assert.ok(html.includes("const planUpgradeTeamButton = document.getElementById('plan-upgrade-team-button');"));
-  assert.ok(html.includes('async function beginPlanCheckout(plan) {'));
-  assert.ok(html.includes('/.netlify/functions/subscription-checkout?plan='));
+  assert.ok(html.includes("const accountPromoCodeInput = document.getElementById('account-promo-code-input');"));
+  assert.ok(html.includes("const accountOpenPricingButton = document.getElementById('account-open-pricing-button');"));
+  assert.ok(html.includes("const winbackCard = document.getElementById('winback-card');"));
+  assert.ok(html.includes("const winbackPauseButton = document.getElementById('winback-pause-button');"));
+  assert.ok(html.includes("const winbackDiscountButton = document.getElementById('winback-discount-button');"));
+  assert.ok(html.includes("const winbackDowngradeButton = document.getElementById('winback-downgrade-button');"));
+  assert.ok(html.includes('id="winback-cancel-anyway-button"'));
+  assert.ok(html.includes('async function beginPlanCheckout(plan, options = {}) {'));
+  assert.ok(html.includes('/.netlify/functions/subscription-checkout?${query.toString()}'));
+  assert.ok(html.includes('function openPricingPage(preferredPlan = \'pro\') {'));
+  assert.ok(html.includes('pricing_experiment_variant_v1'));
+  assert.ok(html.includes('function applyWinbackPause() {'));
+  assert.ok(html.includes('function applyWinbackDiscount() {'));
+  assert.ok(html.includes('function applyWinbackDowngrade() {'));
 
   assert.ok(html.includes('data-workspace-role'));
   assert.ok(html.includes('data-workspace-status'));

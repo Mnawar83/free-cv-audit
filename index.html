@@ -292,11 +292,25 @@
                 </div>
                 <p id="account-code-status" class="mt-1 text-xs text-slate-400"></p>
                 <p id="account-plan-badge" class="mt-2 text-xs text-emerald-300"></p>
+                <div class="mt-2 grid gap-2 md:grid-cols-[1fr_auto]">
+                    <input id="account-promo-code-input" type="text" class="w-full rounded-md border border-slate-600 bg-slate-900/60 px-3 py-2 text-xs text-white placeholder-slate-400" placeholder="Promo code (optional)" />
+                    <button id="account-open-pricing-button" class="rounded-md border border-blue-500 px-3 py-2 text-xs font-semibold text-blue-200 hover:bg-blue-900/30">Open Pricing Page</button>
+                </div>
                 <div class="mt-2 grid gap-2 md:grid-cols-4">
                     <button id="plan-upgrade-pro-button" class="rounded-md border border-blue-500 px-3 py-2 text-xs font-semibold text-blue-300 hover:bg-blue-900/30">Upgrade Pro</button>
                     <button id="plan-upgrade-team-button" class="rounded-md border border-violet-500 px-3 py-2 text-xs font-semibold text-violet-300 hover:bg-violet-900/30">Upgrade Team</button>
                     <button id="plan-cancel-button" class="rounded-md border border-rose-500 px-3 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-900/30">Cancel Plan</button>
                     <button id="plan-reactivate-button" class="rounded-md border border-emerald-500 px-3 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-900/30">Reactivate</button>
+                </div>
+                <div id="winback-card" class="mt-2 hidden rounded-md border border-amber-500/40 bg-amber-900/20 p-3">
+                    <p class="text-xs font-semibold text-amber-100">Before you cancel, choose a win-back option</p>
+                    <div class="mt-2 grid gap-2 md:grid-cols-3">
+                        <button id="winback-pause-button" class="rounded border border-slate-500 px-2 py-1 text-[11px] text-slate-100 hover:bg-slate-700">Pause 30 days</button>
+                        <button id="winback-discount-button" class="rounded border border-emerald-500 px-2 py-1 text-[11px] text-emerald-200 hover:bg-emerald-900/30">Apply 20% discount</button>
+                        <button id="winback-downgrade-button" class="rounded border border-blue-500 px-2 py-1 text-[11px] text-blue-200 hover:bg-blue-900/30">Downgrade to Pro</button>
+                    </div>
+                    <button id="winback-cancel-anyway-button" class="mt-2 rounded border border-rose-500 px-2 py-1 text-[11px] text-rose-200 hover:bg-rose-900/30">Cancel anyway</button>
+                    <p id="winback-status" class="mt-1 text-[11px] text-amber-200"></p>
                 </div>
                 <div class="mt-2">
                     <button id="open-billing-portal-button" class="rounded-md border border-slate-500 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-700">Open Billing Portal</button>
@@ -758,6 +772,14 @@
         const accountStatus = document.getElementById('account-status');
         const accountCodeStatus = document.getElementById('account-code-status');
         const accountPlanBadge = document.getElementById('account-plan-badge');
+        const accountPromoCodeInput = document.getElementById('account-promo-code-input');
+        const accountOpenPricingButton = document.getElementById('account-open-pricing-button');
+        const winbackCard = document.getElementById('winback-card');
+        const winbackPauseButton = document.getElementById('winback-pause-button');
+        const winbackDiscountButton = document.getElementById('winback-discount-button');
+        const winbackDowngradeButton = document.getElementById('winback-downgrade-button');
+        const winbackCancelAnywayButton = document.getElementById('winback-cancel-anyway-button');
+        const winbackStatus = document.getElementById('winback-status');
         const onboardingStepBadgeUploaded = document.getElementById('onboarding-step-badge-uploaded');
         const onboardingStepBadgeReviewed = document.getElementById('onboarding-step-badge-reviewed');
         const onboardingStepBadgeOptimized = document.getElementById('onboarding-step-badge-optimized');
@@ -931,6 +953,7 @@
         let dashboardSubOffset = 0;
         let dashboardRunOffset = 0;
         const DASHBOARD_PAGE_SIZE = 5;
+        const PRICING_EXPERIMENT_KEY = 'pricing_experiment_variant_v1';
         const ONBOARDING_STORAGE_KEY = 'onboarding_state_v1';
         const ONBOARDING_TOOLTIP_SEEN_KEY = 'onboarding_tooltip_seen_v1';
         let onboardingCheckpoint = null;
@@ -1153,6 +1176,29 @@
             }
         }
 
+        function resolvePricingVariant() {
+            try {
+                const existing = localStorage.getItem(PRICING_EXPERIMENT_KEY);
+                if (existing === 'monthly_default' || existing === 'annual_default') return existing;
+                const next = Math.random() < 0.5 ? 'monthly_default' : 'annual_default';
+                localStorage.setItem(PRICING_EXPERIMENT_KEY, next);
+                return next;
+            } catch (_error) {
+                return 'monthly_default';
+            }
+        }
+
+        function getPromoCodeInputValue() {
+            const queryPromo = (() => {
+                try {
+                    return String(new URL(window.location.href).searchParams.get('promo') || '').trim();
+                } catch (_error) {
+                    return '';
+                }
+            })();
+            return String(accountPromoCodeInput?.value || queryPromo || '').trim().toUpperCase();
+        }
+
         function isAccountRoute() {
             return String(window.location.hash || '').trim().toLowerCase() === '#account';
         }
@@ -1251,11 +1297,17 @@
                 workspaceInviteButton.classList.toggle('opacity-60', workspaceInviteButton.disabled);
             }
             if (accountEmailInput) accountEmailInput.disabled = controlsLocked;
+            if (accountPromoCodeInput) accountPromoCodeInput.disabled = controlsLocked;
             if (accountCodeInput) accountCodeInput.disabled = controlsLocked;
             if (accountSignInButton) accountSignInButton.disabled = controlsLocked;
             if (accountVerifyButton) accountVerifyButton.disabled = controlsLocked;
             if (accountResendButton) accountResendButton.disabled = controlsLocked;
             if (accountSignOutButton) accountSignOutButton.disabled = controlsLocked;
+            if (accountOpenPricingButton) accountOpenPricingButton.disabled = controlsLocked;
+            if (winbackPauseButton) winbackPauseButton.disabled = controlsLocked;
+            if (winbackDiscountButton) winbackDiscountButton.disabled = controlsLocked;
+            if (winbackDowngradeButton) winbackDowngradeButton.disabled = controlsLocked;
+            if (winbackCancelAnywayButton) winbackCancelAnywayButton.disabled = controlsLocked;
             if (accountDashboardRefreshButton) accountDashboardRefreshButton.disabled = controlsLocked;
             if (accountDashboardExportJsonButton) accountDashboardExportJsonButton.disabled = controlsLocked;
             if (accountDashboardExportCsvButton) accountDashboardExportCsvButton.disabled = controlsLocked;
@@ -1522,7 +1574,7 @@
             trackEvent('account_activity_exported', { format: safeFormat }).catch(() => {});
         }
 
-        async function updateSubscription(plan, status = 'ACTIVE', successMessage = '') {
+        async function updateSubscription(plan, status = 'ACTIVE', successMessage = '', options = {}) {
             if (!currentUser?.id) {
                 showError('Please sign in first.');
                 return;
@@ -1531,7 +1583,14 @@
             const response = await fetch('/.netlify/functions/subscription', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ plan, status, provider: 'internal' }),
+                body: JSON.stringify({
+                    plan,
+                    status,
+                    provider: 'internal',
+                    promoCode: options?.promoCode || undefined,
+                    billingCycle: options?.billingCycle || undefined,
+                    winbackChoice: options?.winbackChoice || undefined,
+                }),
             });
             const payload = await readJsonSafely(response);
             if (!response.ok) {
@@ -1541,6 +1600,9 @@
             currentEntitlements = payload?.entitlements || currentEntitlements;
             if (billingPortalStatus) {
                 billingPortalStatus.textContent = successMessage || 'Subscription updated.';
+            }
+            if (winbackCard && status !== 'ACTIVE') {
+                winbackCard.classList.add('hidden');
             }
             trackEvent('account_subscription_updated', { plan, status }).catch(() => {});
             updateAccountUi();
@@ -1552,19 +1614,40 @@
             return host && host !== 'localhost' && host !== '127.0.0.1';
         }
 
-        async function beginPlanCheckout(plan) {
-            const returnUrl = encodeURIComponent(window.location.href);
-            const response = await fetch(`/.netlify/functions/subscription-checkout?plan=${encodeURIComponent(plan)}&returnUrl=${returnUrl}`, { method: 'GET' });
+        function openPricingPage(preferredPlan = 'pro') {
+            const safePlan = String(preferredPlan || 'pro').trim().toLowerCase() === 'team' ? 'team' : 'pro';
+            const params = new URLSearchParams();
+            const promoCode = getPromoCodeInputValue();
+            const variant = resolvePricingVariant();
+            if (promoCode) params.set('promo', promoCode);
+            params.set('exp', variant);
+            params.set('returnUrl', window.location.href);
+            window.location.assign(`/pricing.html?${params.toString()}#${safePlan}`);
+        }
+
+        async function beginPlanCheckout(plan, options = {}) {
+            const returnUrl = window.location.href;
+            const promoCode = String(options?.promoCode || getPromoCodeInputValue()).trim().toUpperCase();
+            const variant = String(options?.experiment || resolvePricingVariant()).trim().toLowerCase();
+            const billingCycle = String(options?.billingCycle || (variant === 'annual_default' ? 'annual' : 'monthly')).trim().toLowerCase();
+            const query = new URLSearchParams({
+                plan: plan,
+                returnUrl,
+                billingCycle,
+                exp: variant,
+            });
+            if (promoCode) query.set('promo', promoCode);
+            const response = await fetch(`/.netlify/functions/subscription-checkout?${query.toString()}`, { method: 'GET' });
             const payload = await readJsonSafely(response);
             if (!response.ok || !payload?.checkoutUrl) {
                 const unavailable = payload?.code === 'CHECKOUT_NOT_CONFIGURED';
                 if (unavailable && !shouldUseExternalCheckout()) {
-                    await updateSubscription(plan, 'ACTIVE', `${plan.toUpperCase()} plan activated.`);
+                    await updateSubscription(plan, 'ACTIVE', `${plan.toUpperCase()} plan activated.`, { promoCode, billingCycle });
                     return;
                 }
                 throw new Error(payload?.error || 'Checkout is unavailable right now.');
             }
-            trackEvent('account_checkout_started', { plan }).catch(() => {});
+            trackEvent('account_checkout_started', { plan, billingCycle, promoCode: promoCode || undefined, experiment: variant }).catch(() => {});
             window.location.assign(payload.checkoutUrl);
         }
 
@@ -1598,6 +1681,26 @@
             } catch (_error) {
                 return 'pro';
             }
+        }
+
+        async function applyWinbackPause() {
+            await updateSubscription('free', 'PAST_DUE', 'Subscription paused for 30 days. Resume anytime.', { winbackChoice: 'pause_30d' });
+            if (winbackStatus) winbackStatus.textContent = 'Pause applied: access remains limited until reactivation.';
+            trackEvent('account_subscription_winback_selected', { choice: 'pause_30d' }).catch(() => {});
+        }
+
+        async function applyWinbackDiscount() {
+            const promoCode = 'WINBACK20';
+            if (accountPromoCodeInput) accountPromoCodeInput.value = promoCode;
+            if (winbackStatus) winbackStatus.textContent = `Discount applied: use ${promoCode} during checkout.`;
+            trackEvent('account_subscription_winback_selected', { choice: 'discount_20', promoCode }).catch(() => {});
+            await beginPlanCheckout('pro', { promoCode, billingCycle: 'monthly' });
+        }
+
+        async function applyWinbackDowngrade() {
+            await updateSubscription('pro', 'ACTIVE', 'Downgraded to PRO to keep unlimited audits.', { winbackChoice: 'downgrade_pro' });
+            if (winbackStatus) winbackStatus.textContent = 'Downgrade applied: now on PRO plan.';
+            trackEvent('account_subscription_winback_selected', { choice: 'downgrade_pro' }).catch(() => {});
         }
 
         async function openBillingPortal() {
@@ -1864,8 +1967,40 @@
         if (planCancelButton) {
             planCancelButton.addEventListener('click', async () => {
                 await runAccountAction(async () => {
-                    await updateSubscription('free', 'CANCELED', 'Plan canceled. You are now on Free.');
-                    trackEvent('account_subscription_canceled', { plan: currentEntitlements?.plan || 'free' }).catch(() => {});
+                    if (winbackCard) {
+                        winbackCard.classList.remove('hidden');
+                        if (winbackStatus) winbackStatus.textContent = 'Choose a win-back path or cancel immediately.';
+                    }
+                });
+            });
+        }
+        if (winbackPauseButton) {
+            winbackPauseButton.addEventListener('click', async () => {
+                await runAccountAction(async () => {
+                    await applyWinbackPause();
+                });
+            });
+        }
+        if (winbackDiscountButton) {
+            winbackDiscountButton.addEventListener('click', async () => {
+                await runAccountAction(async () => {
+                    await applyWinbackDiscount();
+                });
+            });
+        }
+        if (winbackDowngradeButton) {
+            winbackDowngradeButton.addEventListener('click', async () => {
+                await runAccountAction(async () => {
+                    await applyWinbackDowngrade();
+                });
+            });
+        }
+        if (winbackCancelAnywayButton) {
+            winbackCancelAnywayButton.addEventListener('click', async () => {
+                await runAccountAction(async () => {
+                    await updateSubscription('free', 'CANCELED', 'Plan canceled. You are now on Free.', { winbackChoice: 'cancel_anyway' });
+                    if (winbackStatus) winbackStatus.textContent = 'Plan canceled.';
+                    trackEvent('account_subscription_canceled', { plan: currentEntitlements?.plan || 'free', winbackChoice: 'cancel_anyway' }).catch(() => {});
                 });
             });
         }
@@ -1876,6 +2011,11 @@
                     await updateSubscription(nextPlan, 'ACTIVE', `${nextPlan.toUpperCase()} plan reactivated.`);
                     trackEvent('account_subscription_reactivated', { plan: nextPlan }).catch(() => {});
                 });
+            });
+        }
+        if (accountOpenPricingButton) {
+            accountOpenPricingButton.addEventListener('click', () => {
+                openPricingPage('pro');
             });
         }
         if (openBillingPortalButton) {

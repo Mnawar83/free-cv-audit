@@ -12,6 +12,7 @@ const ALLOWED_EVENT_NAMES = new Set([
   'account_subscription_updated',
   'account_subscription_canceled',
   'account_subscription_reactivated',
+  'account_subscription_winback_selected',
   'account_billing_portal_opened',
   'account_dashboard_refreshed',
   'account_activity_exported',

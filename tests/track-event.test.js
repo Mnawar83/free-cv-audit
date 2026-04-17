@@ -62,6 +62,13 @@ async function run() {
   });
   assert.strictEqual(exportEventResponse.statusCode, 202);
 
+  const winbackEventResponse = await handler({
+    httpMethod: 'POST',
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': '7.7.7.7' },
+    body: JSON.stringify({ eventName: 'account_subscription_winback_selected', context: { choice: 'pause_30d' } }),
+  });
+  assert.strictEqual(winbackEventResponse.statusCode, 202);
+
   const missingNameResponse = await handler({
     httpMethod: 'POST',
     headers: { 'content-type': 'application/json', 'x-forwarded-for': '3.3.3.3' },

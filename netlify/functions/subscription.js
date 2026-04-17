@@ -86,6 +86,9 @@ exports.handler = async (event) => {
   const plan = normalizePlan(body.plan);
   const status = normalizeStatus(body.status);
   const provider = String(body.provider || 'internal').trim().toLowerCase();
+  const billingCycle = String(body.billingCycle || body.billing_cycle || '').trim().toLowerCase();
+  const promoCode = String(body.promoCode || body.promo_code || '').trim().toUpperCase();
+  const winbackChoice = String(body.winbackChoice || body.winback_choice || '').trim().toLowerCase();
 
   const subscription = await upsertSubscription({
     subscription_id: String(body.subscriptionId || body.subscription_id || '').trim() || undefined,
@@ -96,6 +99,9 @@ exports.handler = async (event) => {
     last_successful_payment_at: body.lastSuccessfulPaymentAt || body.last_successful_payment_at || null,
     next_renewal_at: body.nextRenewalAt || body.next_renewal_at || null,
     current_period_end: body.currentPeriodEnd || body.current_period_end || null,
+    billing_cycle: billingCycle || null,
+    promo_code: promoCode || null,
+    winback_choice: winbackChoice || null,
   });
 
   const entitlements = await refreshUserEntitlements(userId);
