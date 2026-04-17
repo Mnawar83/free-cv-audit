@@ -43,6 +43,8 @@ This project includes a paid-fulfillment flow (PayPal/WhishPay), secure fulfillm
 - `USER_SESSION_SECRET`: required to sign authenticated user session cookies for `user-session` flows.
 - `SUBSCRIPTION_WEBHOOK_SECRET`: required to authenticate `subscription-webhook` events.
 - `PAYPAL_WEBHOOK_SHARED_SECRET`, `WHISHPAY_WEBHOOK_SHARED_SECRET`: required to authenticate provider-specific subscription lifecycle webhooks.
+- `SUBSCRIPTION_PRO_CHECKOUT_URL`, `SUBSCRIPTION_TEAM_CHECKOUT_URL` (or `SUBSCRIPTION_CHECKOUT_URL_TEMPLATE`): used by `subscription-checkout` to route production upgrade actions to provider checkout.
+- `BILLING_PORTAL_URL_TEMPLATE`: optional template for account billing portal links (`{USER_ID}`, `{RETURN_URL}` placeholders supported).
 
 ### Optional fulfillment/security tuning
 

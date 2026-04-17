@@ -66,6 +66,17 @@ async function run() {
   assert.strictEqual(listPayload.members.length, 1);
   assert.strictEqual(listPayload.members[0].email, 'teammate@example.com');
 
+  const updateResponse = await workspace.handler({
+    httpMethod: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ email: 'teammate@example.com', role: 'admin', status: 'ACTIVE' }),
+  });
+  assert.strictEqual(updateResponse.statusCode, 200);
+  const updatePayload = JSON.parse(updateResponse.body || '{}');
+  assert.strictEqual(updatePayload.ok, true);
+  assert.strictEqual(updatePayload.members[0].role, 'admin');
+  assert.strictEqual(updatePayload.members[0].status, 'ACTIVE');
+
   const removeResponse = await workspace.handler({
     httpMethod: 'DELETE',
     headers: { 'content-type': 'application/json', cookie },

@@ -41,6 +41,13 @@ async function run() {
   });
   assert.strictEqual(invalidEventResponse.statusCode, 400);
 
+  const accountEventResponse = await handler({
+    httpMethod: 'POST',
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': '4.4.4.4' },
+    body: JSON.stringify({ eventName: 'account_subscription_updated', context: { plan: 'pro' } }),
+  });
+  assert.strictEqual(accountEventResponse.statusCode, 202);
+
   const missingNameResponse = await handler({
     httpMethod: 'POST',
     headers: { 'content-type': 'application/json', 'x-forwarded-for': '3.3.3.3' },

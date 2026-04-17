@@ -935,10 +935,26 @@
                 const status = String(member?.status || 'INVITED').trim().toUpperCase();
                 const role = String(member?.role || 'member').trim().toLowerCase();
                 const item = document.createElement('li');
-                item.className = 'flex items-center justify-between gap-2 rounded border border-slate-700 px-2 py-1';
+                item.className = 'space-y-2 rounded border border-slate-700 px-2 py-2';
+                item.dataset.workspaceEmail = email;
                 item.innerHTML = `
-                    <span class="truncate">${email} <span class="text-slate-500">(${role}, ${status})</span></span>
-                    <button type="button" data-workspace-remove="${email}" class="rounded border border-slate-600 px-2 py-0.5 text-[11px] text-slate-300 hover:bg-slate-700">Remove</button>
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="truncate">${email}</span>
+                        <span class="text-slate-500 text-[11px]">Current: ${role.toUpperCase()} · ${status}</span>
+                    </div>
+                    <div class="grid gap-2 md:grid-cols-[1fr_1fr_auto_auto]">
+                        <select data-workspace-role class="rounded border border-slate-600 bg-slate-900/70 px-2 py-1 text-[11px] text-slate-100">
+                            <option value="member"${role === 'member' ? ' selected' : ''}>Member</option>
+                            <option value="admin"${role === 'admin' ? ' selected' : ''}>Admin</option>
+                        </select>
+                        <select data-workspace-status class="rounded border border-slate-600 bg-slate-900/70 px-2 py-1 text-[11px] text-slate-100">
+                            <option value="INVITED"${status === 'INVITED' ? ' selected' : ''}>Invited</option>
+                            <option value="ACTIVE"${status === 'ACTIVE' ? ' selected' : ''}>Active</option>
+                            <option value="SUSPENDED"${status === 'SUSPENDED' ? ' selected' : ''}>Suspended</option>
+                        </select>
+                        <button type="button" data-workspace-update="${email}" class="rounded border border-emerald-700 px-2 py-1 text-[11px] text-emerald-300 hover:bg-emerald-900/30">Save</button>
+                        <button type="button" data-workspace-remove="${email}" class="rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700">Remove</button>
+                    </div>
                 `;
                 workspaceMembersList.appendChild(item);
             });
@@ -988,8 +1004,30 @@
             if (billingPortalStatus) {
                 billingPortalStatus.textContent = successMessage || 'Subscription updated.';
             }
+            trackEvent('account_subscription_updated', { plan, status }).catch(() => {});
             updateAccountUi();
             await refreshWorkspaceMembers();
+        }
+
+        function shouldUseExternalCheckout() {
+            const host = String(window.location?.hostname || '').toLowerCase();
+            return host && host !== 'localhost' && host !== '127.0.0.1';
+        }
+
+        async function beginPlanCheckout(plan) {
+            const returnUrl = encodeURIComponent(window.location.href);
+            const response = await fetch(`/.netlify/functions/subscription-checkout?plan=${encodeURIComponent(plan)}&returnUrl=${returnUrl}`, { method: 'GET' });
+            const payload = await readJsonSafely(response);
+            if (!response.ok || !payload?.checkoutUrl) {
+                const unavailable = payload?.code === 'CHECKOUT_NOT_CONFIGURED';
+                if (unavailable && !shouldUseExternalCheckout()) {
+                    await updateSubscription(plan, 'ACTIVE', `${plan.toUpperCase()} plan activated.`);
+                    return;
+                }
+                throw new Error(payload?.error || 'Checkout is unavailable right now.');
+            }
+            trackEvent('account_checkout_started', { plan }).catch(() => {});
+            window.location.assign(payload.checkoutUrl);
         }
 
         async function resolveReactivationPlan() {
@@ -1024,6 +1062,7 @@
                 return;
             }
             if (billingPortalStatus) billingPortalStatus.textContent = 'Redirecting to billing portal…';
+            trackEvent('account_billing_portal_opened', { plan: currentEntitlements?.plan || 'free' }).catch(() => {});
             window.location.assign(payload.billingPortalUrl);
         }
 
@@ -1045,6 +1084,7 @@
             }
             if (workspaceInviteEmailInput) workspaceInviteEmailInput.value = '';
             workspaceStatus.textContent = `Invite sent to ${email}.`;
+            trackEvent('workspace_member_invited', { email }).catch(() => {});
             renderWorkspaceMembers(payload?.members || []);
         }
 
@@ -1244,14 +1284,22 @@
         if (planUpgradeProButton) {
             planUpgradeProButton.addEventListener('click', async () => {
                 await runAccountAction(async () => {
-                    await updateSubscription('pro', 'ACTIVE', 'Pro plan activated.');
+                    try {
+                        await beginPlanCheckout('pro');
+                    } catch (error) {
+                        showError(error.message || 'Unable to start Pro checkout.');
+                    }
                 });
             });
         }
         if (planUpgradeTeamButton) {
             planUpgradeTeamButton.addEventListener('click', async () => {
                 await runAccountAction(async () => {
-                    await updateSubscription('team', 'ACTIVE', 'Team plan activated.');
+                    try {
+                        await beginPlanCheckout('team');
+                    } catch (error) {
+                        showError(error.message || 'Unable to start Team checkout.');
+                    }
                 });
             });
         }
@@ -1259,6 +1307,7 @@
             planCancelButton.addEventListener('click', async () => {
                 await runAccountAction(async () => {
                     await updateSubscription('free', 'CANCELED', 'Plan canceled. You are now on Free.');
+                    trackEvent('account_subscription_canceled', { plan: currentEntitlements?.plan || 'free' }).catch(() => {});
                 });
             });
         }
@@ -1267,6 +1316,7 @@
                 await runAccountAction(async () => {
                     const nextPlan = await resolveReactivationPlan();
                     await updateSubscription(nextPlan, 'ACTIVE', `${nextPlan.toUpperCase()} plan reactivated.`);
+                    trackEvent('account_subscription_reactivated', { plan: nextPlan }).catch(() => {});
                 });
             });
         }
@@ -1293,6 +1343,29 @@
                     const target = event.target;
                     if (!(target instanceof HTMLElement)) return;
                     const email = String(target.dataset.workspaceRemove || '').trim().toLowerCase();
+                    const updateEmail = String(target.dataset.workspaceUpdate || '').trim().toLowerCase();
+                    if (updateEmail) {
+                        const memberRow = target.closest('[data-workspace-email]');
+                        if (!(memberRow instanceof HTMLElement)) return;
+                        const roleField = memberRow.querySelector('[data-workspace-role]');
+                        const statusField = memberRow.querySelector('[data-workspace-status]');
+                        const role = String(roleField?.value || 'member').trim().toLowerCase();
+                        const status = String(statusField?.value || 'INVITED').trim().toUpperCase();
+                        const updateResponse = await fetch('/.netlify/functions/workspace', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email: updateEmail, role, status }),
+                        });
+                        const updatePayload = await readJsonSafely(updateResponse);
+                        if (!updateResponse.ok) {
+                            workspaceStatus.textContent = updatePayload?.error || 'Unable to update workspace member.';
+                            return;
+                        }
+                        workspaceStatus.textContent = `Updated ${updateEmail}.`;
+                        trackEvent('workspace_member_updated', { email: updateEmail, role, status }).catch(() => {});
+                        renderWorkspaceMembers(updatePayload?.members || []);
+                        return;
+                    }
                     if (!email) return;
                     const response = await fetch('/.netlify/functions/workspace', {
                         method: 'DELETE',
@@ -1305,6 +1378,7 @@
                         return;
                     }
                     workspaceStatus.textContent = `Removed ${email} from workspace.`;
+                    trackEvent('workspace_member_removed', { email }).catch(() => {});
                     renderWorkspaceMembers(payload?.members || []);
                 });
             });

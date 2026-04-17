@@ -8,6 +8,14 @@ const ALLOWED_EVENT_NAMES = new Set([
   'audit_completed',
   'audit_failed',
   'payment_succeeded',
+  'account_checkout_started',
+  'account_subscription_updated',
+  'account_subscription_canceled',
+  'account_subscription_reactivated',
+  'account_billing_portal_opened',
+  'workspace_member_invited',
+  'workspace_member_updated',
+  'workspace_member_removed',
 ]);
 
 function json(statusCode, payload) {
