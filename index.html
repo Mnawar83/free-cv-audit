@@ -603,6 +603,16 @@
         const accountStatus = document.getElementById('account-status');
         const accountCodeStatus = document.getElementById('account-code-status');
         const accountPlanBadge = document.getElementById('account-plan-badge');
+        const planUpgradeProButton = document.getElementById('plan-upgrade-pro-button');
+        const planUpgradeTeamButton = document.getElementById('plan-upgrade-team-button');
+        const planCancelButton = document.getElementById('plan-cancel-button');
+        const planReactivateButton = document.getElementById('plan-reactivate-button');
+        const openBillingPortalButton = document.getElementById('open-billing-portal-button');
+        const billingPortalStatus = document.getElementById('billing-portal-status');
+        const workspaceInviteEmailInput = document.getElementById('workspace-invite-email-input');
+        const workspaceInviteButton = document.getElementById('workspace-invite-button');
+        const workspaceStatus = document.getElementById('workspace-status');
+        const workspaceMembersList = document.getElementById('workspace-members-list');
         
         let cvFile = null;
         let cvFileKind = '';
@@ -834,6 +844,8 @@
         function updateAccountUi() {
             const email = String(currentUser?.email || '').trim();
             const plan = String(currentEntitlements?.plan || 'free').trim().toLowerCase();
+            const signedIn = Boolean(email);
+            const isTeamPlan = plan === 'team';
             if (accountStatus) {
                 accountStatus.textContent = email
                     ? `Signed in as ${email}`
@@ -858,6 +870,143 @@
             } else if (accountCodeStatus && !email) {
                 accountCodeStatus.textContent = '';
             }
+            if (planUpgradeProButton) {
+                planUpgradeProButton.disabled = !signedIn || plan === 'pro';
+                planUpgradeProButton.classList.toggle('opacity-60', planUpgradeProButton.disabled);
+            }
+            if (planUpgradeTeamButton) {
+                planUpgradeTeamButton.disabled = !signedIn || isTeamPlan;
+                planUpgradeTeamButton.classList.toggle('opacity-60', planUpgradeTeamButton.disabled);
+            }
+            if (planCancelButton) {
+                planCancelButton.disabled = !signedIn || plan === 'free';
+                planCancelButton.classList.toggle('opacity-60', planCancelButton.disabled);
+            }
+            if (planReactivateButton) {
+                planReactivateButton.disabled = !signedIn;
+                planReactivateButton.classList.toggle('opacity-60', planReactivateButton.disabled);
+            }
+            if (openBillingPortalButton) {
+                openBillingPortalButton.disabled = !signedIn;
+                openBillingPortalButton.classList.toggle('opacity-60', openBillingPortalButton.disabled);
+            }
+            if (workspaceInviteEmailInput) {
+                workspaceInviteEmailInput.disabled = !signedIn || !isTeamPlan;
+            }
+            if (workspaceInviteButton) {
+                workspaceInviteButton.disabled = !signedIn || !isTeamPlan;
+                workspaceInviteButton.classList.toggle('opacity-60', workspaceInviteButton.disabled);
+            }
+        }
+
+        function renderWorkspaceMembers(members = []) {
+            if (!workspaceMembersList) return;
+            workspaceMembersList.innerHTML = '';
+            if (!Array.isArray(members) || members.length === 0) {
+                const placeholder = document.createElement('li');
+                placeholder.className = 'text-slate-500';
+                placeholder.textContent = 'No workspace members yet.';
+                workspaceMembersList.appendChild(placeholder);
+                return;
+            }
+            members.forEach((member) => {
+                const email = String(member?.email || '').trim().toLowerCase();
+                if (!email) return;
+                const status = String(member?.status || 'INVITED').trim().toUpperCase();
+                const role = String(member?.role || 'member').trim().toLowerCase();
+                const item = document.createElement('li');
+                item.className = 'flex items-center justify-between gap-2 rounded border border-slate-700 px-2 py-1';
+                item.innerHTML = `
+                    <span class="truncate">${email} <span class="text-slate-500">(${role}, ${status})</span></span>
+                    <button type="button" data-workspace-remove="${email}" class="rounded border border-slate-600 px-2 py-0.5 text-[11px] text-slate-300 hover:bg-slate-700">Remove</button>
+                `;
+                workspaceMembersList.appendChild(item);
+            });
+        }
+
+        async function refreshWorkspaceMembers() {
+            if (!workspaceMembersList || !workspaceStatus) return;
+            const plan = String(currentEntitlements?.plan || 'free').trim().toLowerCase();
+            const signedIn = Boolean(String(currentUser?.email || '').trim());
+            if (!signedIn || plan !== 'team') {
+                workspaceStatus.textContent = signedIn ? 'Upgrade to Team to invite collaborators.' : 'Sign in to manage workspace members.';
+                renderWorkspaceMembers([]);
+                return;
+            }
+            workspaceStatus.textContent = 'Loading workspace members…';
+            try {
+                const response = await fetch('/.netlify/functions/workspace', { method: 'GET' });
+                const payload = await readJsonSafely(response);
+                if (!response.ok) {
+                    workspaceStatus.textContent = payload?.error || 'Unable to load workspace members.';
+                    return;
+                }
+                workspaceStatus.textContent = `Workspace members: ${Array.isArray(payload?.members) ? payload.members.length : 0}`;
+                renderWorkspaceMembers(payload?.members || []);
+            } catch (_error) {
+                workspaceStatus.textContent = 'Unable to load workspace members right now.';
+            }
+        }
+
+        async function updateSubscription(plan, status = 'ACTIVE', successMessage = '') {
+            if (!currentUser?.id) {
+                showError('Please sign in first.');
+                return;
+            }
+            const response = await fetch('/.netlify/functions/subscription', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plan, status, provider: 'internal' }),
+            });
+            const payload = await readJsonSafely(response);
+            if (!response.ok) {
+                showError(payload?.error || 'Unable to update your subscription.');
+                return;
+            }
+            currentEntitlements = payload?.entitlements || currentEntitlements;
+            if (billingPortalStatus) {
+                billingPortalStatus.textContent = successMessage || 'Subscription updated.';
+            }
+            updateAccountUi();
+            await refreshWorkspaceMembers();
+        }
+
+        async function openBillingPortal() {
+            if (!currentUser?.id) {
+                showError('Please sign in first.');
+                return;
+            }
+            if (billingPortalStatus) billingPortalStatus.textContent = 'Preparing billing portal…';
+            const returnUrl = encodeURIComponent(window.location.href);
+            const response = await fetch(`/.netlify/functions/subscription-billing-portal?returnUrl=${returnUrl}`, { method: 'GET' });
+            const payload = await readJsonSafely(response);
+            if (!response.ok || !payload?.billingPortalUrl) {
+                if (billingPortalStatus) billingPortalStatus.textContent = payload?.error || 'Unable to open billing portal.';
+                return;
+            }
+            if (billingPortalStatus) billingPortalStatus.textContent = 'Redirecting to billing portal…';
+            window.location.assign(payload.billingPortalUrl);
+        }
+
+        async function inviteWorkspaceMember() {
+            const email = String(workspaceInviteEmailInput?.value || '').trim().toLowerCase();
+            if (!email) {
+                showError('Enter a teammate email to send an invite.');
+                return;
+            }
+            const response = await fetch('/.netlify/functions/workspace', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, role: 'member', status: 'INVITED' }),
+            });
+            const payload = await readJsonSafely(response);
+            if (!response.ok) {
+                workspaceStatus.textContent = payload?.error || 'Unable to invite workspace member.';
+                return;
+            }
+            if (workspaceInviteEmailInput) workspaceInviteEmailInput.value = '';
+            workspaceStatus.textContent = `Invite sent to ${email}.`;
+            renderWorkspaceMembers(payload?.members || []);
         }
 
         async function refreshAccountSession() {
@@ -879,6 +1028,7 @@
                 currentEntitlements = null;
             }
             updateAccountUi();
+            await refreshWorkspaceMembers();
         }
 
         async function signInAccount() {
@@ -937,6 +1087,9 @@
             accountCodeExpiresAt = '';
             if (accountCodeInput) accountCodeInput.value = '';
             if (accountCodeStatus) accountCodeStatus.textContent = '';
+            if (billingPortalStatus) billingPortalStatus.textContent = '';
+            if (workspaceStatus) workspaceStatus.textContent = '';
+            renderWorkspaceMembers([]);
             updateAccountUi();
         }
 
@@ -1047,6 +1200,58 @@
         if (accountSignOutButton) {
             accountSignOutButton.addEventListener('click', async () => {
                 await signOutAccount();
+            });
+        }
+        if (planUpgradeProButton) {
+            planUpgradeProButton.addEventListener('click', async () => {
+                await updateSubscription('pro', 'ACTIVE', 'Pro plan activated.');
+            });
+        }
+        if (planUpgradeTeamButton) {
+            planUpgradeTeamButton.addEventListener('click', async () => {
+                await updateSubscription('team', 'ACTIVE', 'Team plan activated.');
+            });
+        }
+        if (planCancelButton) {
+            planCancelButton.addEventListener('click', async () => {
+                await updateSubscription('free', 'CANCELED', 'Plan canceled. You are now on Free.');
+            });
+        }
+        if (planReactivateButton) {
+            planReactivateButton.addEventListener('click', async () => {
+                const currentPlan = String(currentEntitlements?.plan || 'pro').trim().toLowerCase();
+                const nextPlan = currentPlan === 'team' ? 'team' : 'pro';
+                await updateSubscription(nextPlan, 'ACTIVE', `${nextPlan.toUpperCase()} plan reactivated.`);
+            });
+        }
+        if (openBillingPortalButton) {
+            openBillingPortalButton.addEventListener('click', async () => {
+                await openBillingPortal();
+            });
+        }
+        if (workspaceInviteButton) {
+            workspaceInviteButton.addEventListener('click', async () => {
+                await inviteWorkspaceMember();
+            });
+        }
+        if (workspaceMembersList) {
+            workspaceMembersList.addEventListener('click', async (event) => {
+                const target = event.target;
+                if (!(target instanceof HTMLElement)) return;
+                const email = String(target.dataset.workspaceRemove || '').trim().toLowerCase();
+                if (!email) return;
+                const response = await fetch('/.netlify/functions/workspace', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email }),
+                });
+                const payload = await readJsonSafely(response);
+                if (!response.ok) {
+                    workspaceStatus.textContent = payload?.error || 'Unable to remove workspace member.';
+                    return;
+                }
+                workspaceStatus.textContent = `Removed ${email} from workspace.`;
+                renderWorkspaceMembers(payload?.members || []);
             });
         }
         refreshAccountSession().catch(() => {});
