@@ -28,14 +28,7 @@ async function run() {
   assert.ok(html.includes("async function sendWeeklyRetentionEmail() {"));
   assert.ok(html.includes('/.netlify/functions/retention-email'));
 
-  assert.ok(html.includes('data-workspace-role'));
-  assert.ok(html.includes('data-workspace-status'));
-  assert.ok(html.includes('data-workspace-update'));
-  assert.ok(html.includes("method: 'PATCH'"));
-
   assert.ok(html.includes("trackEvent('account_subscription_updated'"));
-  assert.ok(html.includes("trackEvent('workspace_member_updated'"));
-  assert.ok(html.includes("trackEvent('workspace_member_removed'"));
   assert.ok(html.includes("const accountDashboardRefreshButton = document.getElementById('account-dashboard-refresh-button');"));
   assert.ok(html.includes("const accountDashboardExportJsonButton = document.getElementById('account-dashboard-export-json-button');"));
   assert.ok(html.includes("const accountDashboardExportCsvButton = document.getElementById('account-dashboard-export-csv-button');"));

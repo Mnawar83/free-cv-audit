@@ -2,7 +2,6 @@ const {
   getUserById,
   listUserRuns,
   getUserSubscriptions,
-  listWorkspaceMembers,
 } = require('./run-store');
 const { getUserIdFromSessionCookie } = require('./user-session-auth');
 
@@ -19,7 +18,7 @@ function parseDateMs(value) {
   return Number.isFinite(ms) ? ms : 0;
 }
 
-function buildWeeklySummary({ runs = [], subscriptions = [], workspaceMembers = [] } = {}) {
+function buildWeeklySummary({ runs = [], subscriptions = [] } = {}) {
   const weekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
   const recentRuns = runs.filter((run) => parseDateMs(run?.updated_at || run?.created_at) >= weekAgo);
   const scores = recentRuns.map((run) => Number(run?.score)).filter((v) => Number.isFinite(v));
@@ -53,9 +52,7 @@ function buildWeeklySummary({ runs = [], subscriptions = [], workspaceMembers = 
     weeklyHealthScore,
     completedRuns: recentRuns.filter((run) => String(run?.status || '').toUpperCase() === 'COMPLETED').length,
     roleSuggestions: roleSuggestions.length ? roleSuggestions : ['Prioritize measurable achievements aligned to your target role.'],
-    workspaceNudge: (workspaceMembers || []).length < 2
-      ? 'Invite a teammate to review your CV this week for higher-quality feedback.'
-      : `You have ${(workspaceMembers || []).length} collaborators. Ask one to review your latest CV update.`,
+    weeklyCadenceNudge: 'Block 10 minutes weekly to iterate your summary and quantified outcomes.',
     renewalRecap: Number.isFinite(renewalDays)
       ? `Renewal in ${renewalDays} day(s). Keep your momentum by shipping one measurable CV improvement this week.`
       : 'No renewal date on file. Keep iterating your CV health score weekly.',
@@ -73,12 +70,11 @@ exports.handler = async (event) => {
   const user = await getUserById(userId);
   if (!user?.email) return json(404, { error: 'User not found.' });
 
-  const [runs, subscriptions, workspaceMembers] = await Promise.all([
+  const [runs, subscriptions] = await Promise.all([
     listUserRuns(userId, 50),
     getUserSubscriptions(userId),
-    listWorkspaceMembers(userId),
   ]);
-  const summary = buildWeeklySummary({ runs, subscriptions, workspaceMembers });
+  const summary = buildWeeklySummary({ runs, subscriptions });
 
   const apiKey = String(process.env.RESEND_API_KEY || '').trim();
   if (!apiKey) {
@@ -101,7 +97,7 @@ exports.handler = async (event) => {
       <p><strong>Completed runs this week:</strong> ${summary.completedRuns}</p>
       <p><strong>Role-targeted suggestions:</strong></p>
       <ul>${summary.roleSuggestions.map((item) => `<li>${item}</li>`).join('')}</ul>
-      <p><strong>Workspace nudge:</strong> ${summary.workspaceNudge}</p>
+      <p><strong>Weekly cadence nudge:</strong> ${summary.weeklyCadenceNudge}</p>
       <p><strong>Renewal reminder:</strong> ${summary.renewalRecap}</p>
     `,
   });

@@ -3,7 +3,6 @@ const {
   getUserEntitlements,
   getUserSubscriptions,
   listUserRuns,
-  listWorkspaceMembers,
 } = require('./run-store');
 const { getUserIdFromSessionCookie } = require('./user-session-auth');
 
@@ -72,7 +71,7 @@ function collectWeaknesses(run = {}) {
     .filter(Boolean);
 }
 
-function buildDashboardInsights({ runs = [], subscriptions = [], workspaceMembers = [] } = {}) {
+function buildDashboardInsights({ runs = [], subscriptions = [] } = {}) {
   const now = new Date();
   const nowMs = now.getTime();
   const currentMonth = getMonthKey(nowMs);
@@ -117,13 +116,6 @@ function buildDashboardInsights({ runs = [], subscriptions = [], workspaceMember
   const hasPastDue = subscriptions.some((item) => String(item?.status || '').trim().toUpperCase() === 'PAST_DUE');
   const riskLevel = hasPastDue ? 'HIGH' : (typeof renewalDays === 'number' && renewalDays <= 7 ? 'MEDIUM' : 'LOW');
 
-  const teamSnapshot = {
-    totalMembers: Array.isArray(workspaceMembers) ? workspaceMembers.length : 0,
-    invited: (workspaceMembers || []).filter((item) => String(item?.status || '').trim().toUpperCase() === 'INVITED').length,
-    active: (workspaceMembers || []).filter((item) => String(item?.status || '').trim().toUpperCase() === 'ACTIVE').length,
-    suspended: (workspaceMembers || []).filter((item) => String(item?.status || '').trim().toUpperCase() === 'SUSPENDED').length,
-  };
-
   const mostCommonWeaknesses = Array.from(weaknessCounts.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
@@ -151,7 +143,6 @@ function buildDashboardInsights({ runs = [], subscriptions = [], workspaceMember
       previousRate: previousStats.total ? Number((previousStats.passed / previousStats.total).toFixed(2)) : 0,
     },
     mostCommonWeaknesses,
-    teamActivity: teamSnapshot,
     alerts: {
       nextRenewalAt: nextRenewal?.nextRenewalAt || null,
       renewalDays,
@@ -161,7 +152,7 @@ function buildDashboardInsights({ runs = [], subscriptions = [], workspaceMember
   };
 }
 
-function buildRetentionLoops({ runs = [], insights = null, subscriptions = [], workspaceMembers = [] } = {}) {
+function buildRetentionLoops({ runs = [], insights = null, subscriptions = [] } = {}) {
   const now = Date.now();
   const weekAgoMs = now - (7 * 24 * 60 * 60 * 1000);
   const recentRuns = runs.filter((run) => parseDateMs(run?.updated_at || run?.created_at) >= weekAgoMs);
@@ -184,10 +175,7 @@ function buildRetentionLoops({ runs = [], insights = null, subscriptions = [], w
   }
   const roleTargetedSuggestions = suggestionPool.filter(Boolean).slice(0, 3);
 
-  const memberCount = Array.isArray(workspaceMembers) ? workspaceMembers.length : 0;
-  const workspaceNudge = memberCount < 2
-    ? 'Invite a teammate to review this CV and accelerate feedback quality.'
-    : `Great collaboration momentum: ${memberCount} teammates are already in your workspace.`;
+  const weeklyCadenceNudge = 'Set a 10-minute weekly self-review block to keep CV quality trending up.';
 
   const renewalDays = Number(insights?.alerts?.renewalDays);
   const valueRecap = {
@@ -210,7 +198,7 @@ function buildRetentionLoops({ runs = [], insights = null, subscriptions = [], w
     roleTargetedSuggestions: roleTargetedSuggestions.length
       ? roleTargetedSuggestions
       : ['Focus your summary on target role outcomes and measurable impact.'],
-    workspaceNudge,
+    weeklyCadenceNudge,
     renewalReminder,
     valueRecap,
     nextRenewalAt,
@@ -228,11 +216,10 @@ exports.handler = async (event) => {
   const user = await getUserById(userId);
   if (!user) return json(404, { error: 'User not found.' });
 
-  const [entitlements, subscriptions, allRuns, workspaceMembers] = await Promise.all([
+  const [entitlements, subscriptions, allRuns] = await Promise.all([
     getUserEntitlements(userId),
     getUserSubscriptions(userId),
     listUserRuns(userId, 100),
-    listWorkspaceMembers(userId),
   ]);
 
   const subOffset = toInt(event.queryStringParameters?.subOffset, 0, 0, 10_000);
@@ -251,8 +238,8 @@ exports.handler = async (event) => {
 
   const pagedSubscriptions = filteredSubscriptions.slice(subOffset, subOffset + subLimit);
   const pagedRuns = filteredRuns.slice(runOffset, runOffset + runLimit);
-  const insights = buildDashboardInsights({ runs: allRuns, subscriptions, workspaceMembers });
-  const retention = buildRetentionLoops({ runs: allRuns, insights, subscriptions, workspaceMembers });
+  const insights = buildDashboardInsights({ runs: allRuns, subscriptions });
+  const retention = buildRetentionLoops({ runs: allRuns, insights, subscriptions });
 
   return json(200, {
     ok: true,
@@ -277,10 +264,6 @@ exports.handler = async (event) => {
       score: run.score,
       updatedAt: run.updated_at || run.created_at || null,
     })),
-    workspace: {
-      memberCount: Array.isArray(workspaceMembers) ? workspaceMembers.length : 0,
-      members: (workspaceMembers || []).slice(0, 10),
-    },
     insights,
     retention,
     pagination: {
