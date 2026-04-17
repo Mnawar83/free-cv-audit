@@ -48,6 +48,13 @@ async function run() {
   });
   assert.strictEqual(accountEventResponse.statusCode, 202);
 
+  const dashboardEventResponse = await handler({
+    httpMethod: 'POST',
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': '5.5.5.5' },
+    body: JSON.stringify({ eventName: 'account_dashboard_refreshed', context: { runCount: 1 } }),
+  });
+  assert.strictEqual(dashboardEventResponse.statusCode, 202);
+
   const missingNameResponse = await handler({
     httpMethod: 'POST',
     headers: { 'content-type': 'application/json', 'x-forwarded-for': '3.3.3.3' },

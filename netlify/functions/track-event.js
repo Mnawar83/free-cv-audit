@@ -13,6 +13,7 @@ const ALLOWED_EVENT_NAMES = new Set([
   'account_subscription_canceled',
   'account_subscription_reactivated',
   'account_billing_portal_opened',
+  'account_dashboard_refreshed',
   'workspace_member_invited',
   'workspace_member_updated',
   'workspace_member_removed',
