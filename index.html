@@ -169,6 +169,29 @@
             font-size: 14px;
             font-weight: 700;
         }
+        .onboarding-tooltip {
+            border: 1px solid rgba(59, 130, 246, 0.6);
+            background: rgba(30, 64, 175, 0.25);
+            border-radius: 0.5rem;
+            padding: 0.6rem 0.75rem;
+        }
+        .onboarding-step-badge {
+            border: 1px solid rgba(148, 163, 184, 0.45);
+            border-radius: 999px;
+            padding: 0.2rem 0.55rem;
+            font-size: 11px;
+            color: #cbd5e1;
+        }
+        .onboarding-step-badge-active {
+            border-color: rgba(59, 130, 246, 0.85);
+            color: #dbeafe;
+            background: rgba(30, 64, 175, 0.35);
+        }
+        .onboarding-step-badge-complete {
+            border-color: rgba(16, 185, 129, 0.9);
+            color: #bbf7d0;
+            background: rgba(6, 95, 70, 0.35);
+        }
         button:focus-visible,
         a:focus-visible,
         input:focus-visible {
@@ -191,6 +214,146 @@
             </a>
 
             <p class="text-lg md:text-xl text-slate-400 mt-2">Get Your Free, Instant ATS-Friendly CV Audit</p>
+            <div id="acquisition-funnel-card" class="mx-auto mt-4 max-w-3xl rounded-lg border border-blue-500/40 bg-slate-800/70 p-5 text-left">
+                <p class="text-sm font-semibold text-blue-300">3-Step ATS Funnel</p>
+                <div id="onboarding-step-badges" class="mt-2 flex flex-wrap gap-2">
+                    <span id="onboarding-step-badge-uploaded" class="onboarding-step-badge">1/3 uploaded</span>
+                    <span id="onboarding-step-badge-reviewed" class="onboarding-step-badge">2/3 reviewed</span>
+                    <span id="onboarding-step-badge-optimized" class="onboarding-step-badge">3/3 optimized</span>
+                </div>
+                <ol class="mt-3 space-y-2 text-sm text-slate-200">
+                    <li><span class="font-semibold text-white">1.</span> Upload your CV to run an instant ATS scan.</li>
+                    <li><span class="font-semibold text-white">2.</span> See immediate teaser insights and your match quality.</li>
+                    <li><span class="font-semibold text-white">3.</span> Unlock the full optimized CV + full audit with one checkout CTA.</li>
+                </ol>
+                <div class="mt-4 grid gap-2 md:grid-cols-2">
+                    <button id="funnel-start-audit-button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">Start Free Audit</button>
+                    <button id="funnel-open-account-button" class="rounded-md border border-slate-500 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700">Go to Account</button>
+                </div>
+                <div id="onboarding-funnel-tooltip" class="onboarding-tooltip mt-2 hidden text-xs text-blue-100"></div>
+                <p class="mt-2 text-xs text-slate-400">Single CTA after teaser: <span class="font-semibold text-slate-200">Get full optimized CV + full audit</span>.</p>
+                <div class="mt-4 grid gap-3 md:grid-cols-3">
+                    <div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+                        <p class="text-xs font-semibold text-slate-200">Free Teaser</p>
+                        <p class="mt-1 text-xs text-slate-400">Quick ATS snapshot before payment.</p>
+                        <ul class="mt-2 space-y-1 text-[11px] text-slate-300">
+                            <li>• Instant score preview</li>
+                            <li>• Keyword gap highlights</li>
+                        </ul>
+                        <p class="mt-2 text-[11px] text-slate-500">Used by 20k+ job seekers monthly.</p>
+                        <button id="funnel-free-cta-button" class="mt-3 w-full rounded-md border border-slate-600 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-700">Run Free Teaser</button>
+                    </div>
+                    <div class="rounded-lg border border-blue-500/50 bg-blue-900/20 p-3">
+                        <p class="text-xs font-semibold text-blue-200">Pro</p>
+                        <p class="mt-1 text-xs text-blue-100">Interview-ready rewrite + full AI audit.</p>
+                        <ul class="mt-2 space-y-1 text-[11px] text-blue-100">
+                            <li>• + Full optimized CV rewrite</li>
+                            <li>• + Unlimited ATS audits</li>
+                            <li>• + Faster turnaround</li>
+                        </ul>
+                        <p class="mt-2 text-[11px] text-blue-200/90">Top conversion plan for individual applicants.</p>
+                        <button id="funnel-pro-cta-button" class="mt-3 w-full rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500">Choose Pro</button>
+                    </div>
+                    <div class="rounded-lg border border-violet-500/50 bg-violet-900/20 p-3">
+                        <p class="text-xs font-semibold text-violet-200">Team</p>
+                        <p class="mt-1 text-xs text-violet-100">Collaborative review workflow for teams.</p>
+                        <ul class="mt-2 space-y-1 text-[11px] text-violet-100">
+                            <li>• + Team workspace seats</li>
+                            <li>• + Role-based member controls</li>
+                            <li>• + Priority queue support</li>
+                        </ul>
+                        <p class="mt-2 text-[11px] text-violet-200/90">Used by recruiters and career coaching teams.</p>
+                        <button id="funnel-team-cta-button" class="mt-3 w-full rounded-md bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-500">Choose Team</button>
+                    </div>
+                </div>
+            </div>
+            <div id="account-route-section" class="hidden mx-auto mt-4 max-w-xl">
+            <div id="account-panel" class="rounded-lg border border-slate-700 bg-slate-800/70 p-4 text-left">
+                <p class="text-sm font-semibold text-slate-200">Account (Phase 2)</p>
+                <div class="mt-2 text-right">
+                    <button id="account-back-home-button" class="rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700">Back to Funnel</button>
+                </div>
+                <p id="account-status" class="mt-1 text-xs text-slate-400">Not signed in. Free tier includes limited audits.</p>
+                <div id="onboarding-continue-card" class="mt-2 hidden rounded-md border border-blue-500/40 bg-blue-900/20 p-3">
+                    <p class="text-xs font-semibold text-blue-100">Continue where you left off</p>
+                    <p id="onboarding-continue-text" class="mt-1 text-xs text-blue-200"></p>
+                    <button id="onboarding-continue-button" class="mt-2 rounded border border-blue-300 px-3 py-1 text-[11px] font-semibold text-blue-100 hover:bg-blue-900/40">Continue</button>
+                </div>
+                <div id="onboarding-tooltip-box" class="onboarding-tooltip mt-2 hidden text-xs text-blue-100"></div>
+                <div class="mt-3 grid gap-2 md:grid-cols-[1fr_auto_auto]">
+                    <input id="account-email-input" type="email" class="w-full rounded-md border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-400" placeholder="you@example.com" />
+                    <button id="account-signin-button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">Sign In</button>
+                    <button id="account-signout-button" class="rounded-md border border-slate-500 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700">Sign Out</button>
+                </div>
+                <div class="mt-2 grid gap-2 md:grid-cols-[1fr_auto_auto]">
+                    <input id="account-code-input" type="text" inputmode="numeric" maxlength="6" class="w-full rounded-md border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-400" placeholder="Enter 6-digit code" />
+                    <button id="account-verify-button" class="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500">Verify Code</button>
+                    <button id="account-resend-button" class="rounded-md border border-slate-500 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700">Resend</button>
+                </div>
+                <p id="account-code-status" class="mt-1 text-xs text-slate-400"></p>
+                <p id="account-plan-badge" class="mt-2 text-xs text-emerald-300"></p>
+                <div class="mt-2 grid gap-2 md:grid-cols-4">
+                    <button id="plan-upgrade-pro-button" class="rounded-md border border-blue-500 px-3 py-2 text-xs font-semibold text-blue-300 hover:bg-blue-900/30">Upgrade Pro</button>
+                    <button id="plan-upgrade-team-button" class="rounded-md border border-violet-500 px-3 py-2 text-xs font-semibold text-violet-300 hover:bg-violet-900/30">Upgrade Team</button>
+                    <button id="plan-cancel-button" class="rounded-md border border-rose-500 px-3 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-900/30">Cancel Plan</button>
+                    <button id="plan-reactivate-button" class="rounded-md border border-emerald-500 px-3 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-900/30">Reactivate</button>
+                </div>
+                <div class="mt-2">
+                    <button id="open-billing-portal-button" class="rounded-md border border-slate-500 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-700">Open Billing Portal</button>
+                    <p id="billing-portal-status" class="mt-1 text-xs text-slate-400"></p>
+                </div>
+                <div class="mt-3 rounded-md border border-slate-700 p-3">
+                    <p class="text-xs font-semibold text-slate-200">Team Workspace</p>
+                    <div class="mt-2 grid gap-2 md:grid-cols-[1fr_auto]">
+                        <input id="workspace-invite-email-input" type="email" class="w-full rounded-md border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-400" placeholder="teammate@example.com" />
+                        <button id="workspace-invite-button" class="rounded-md bg-violet-600 px-4 py-2 text-xs font-semibold text-white hover:bg-violet-500">Invite</button>
+                    </div>
+                    <p id="workspace-status" class="mt-1 text-xs text-slate-400"></p>
+                    <ul id="workspace-members-list" class="mt-2 space-y-1 text-xs text-slate-300"></ul>
+                </div>
+                <div class="mt-3 rounded-md border border-slate-700 p-3">
+                    <div class="flex items-center justify-between gap-2">
+                        <p class="text-xs font-semibold text-slate-200">Account Dashboard (Phase 3)</p>
+                        <div class="flex items-center gap-2">
+                            <button id="account-dashboard-export-json-button" class="rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-700">Export JSON</button>
+                            <button id="account-dashboard-export-csv-button" class="rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-700">Export CSV</button>
+                            <button id="account-dashboard-refresh-button" class="rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-700">Refresh</button>
+                        </div>
+                    </div>
+                    <p id="account-dashboard-status" class="mt-1 text-xs text-slate-400"></p>
+                    <p id="account-dashboard-summary" class="mt-1 text-xs text-slate-300"></p>
+                    <div id="account-dashboard-insight-tiles" class="mt-2 grid gap-2 md:grid-cols-2"></div>
+                    <div class="mt-2 grid gap-2 md:grid-cols-2">
+                        <label class="text-[11px] text-slate-400">Subscription filter
+                            <select id="account-dashboard-subscriptions-filter" class="mt-1 w-full rounded border border-slate-600 bg-slate-900/70 px-2 py-1 text-xs text-slate-100">
+                                <option value="ALL">All</option>
+                                <option value="ACTIVE">Active</option>
+                                <option value="CANCELED">Canceled</option>
+                                <option value="PAST_DUE">Past due</option>
+                            </select>
+                        </label>
+                        <label class="text-[11px] text-slate-400">Run filter
+                            <select id="account-dashboard-runs-filter" class="mt-1 w-full rounded border border-slate-600 bg-slate-900/70 px-2 py-1 text-xs text-slate-100">
+                                <option value="ALL">All</option>
+                                <option value="COMPLETED">Completed</option>
+                                <option value="FAILED">Failed</option>
+                                <option value="PROCESSING">Processing</option>
+                            </select>
+                        </label>
+                    </div>
+                    <ul id="account-dashboard-subscriptions" class="mt-2 space-y-1 text-xs text-slate-300"></ul>
+                    <div class="mt-1 flex items-center justify-between">
+                        <button id="account-dashboard-subscriptions-prev-button" class="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700">Prev subs</button>
+                        <button id="account-dashboard-subscriptions-next-button" class="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700">Next subs</button>
+                    </div>
+                    <ul id="account-dashboard-runs" class="mt-2 space-y-1 text-xs text-slate-300"></ul>
+                    <div class="mt-1 flex items-center justify-between">
+                        <button id="account-dashboard-runs-prev-button" class="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700">Prev runs</button>
+                        <button id="account-dashboard-runs-next-button" class="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700">Next runs</button>
+                    </div>
+                </div>
+            </div>
+            </div>
         </header>
 
         <main class="max-w-4xl mx-auto">
@@ -276,6 +439,24 @@
                             Final CV will be emailed
                         </a>
                         <p id="download-note" class="mt-2 text-xs text-slate-500">Complete payment to start the full AI-powered audit and delivery workflow.</p>
+                        <div class="mx-auto mt-4 w-full max-w-2xl rounded-lg border border-slate-700 bg-slate-900/50 p-4 text-left">
+                            <p class="text-xs font-semibold text-slate-200">What happens after payment?</p>
+                            <ol class="mt-2 space-y-1 text-xs text-slate-300">
+                                <li><span class="font-semibold text-white">~30s:</span> payment confirmation + secure run lock.</li>
+                                <li><span class="font-semibold text-white">~2m:</span> full optimized CV + full audit processing completes and email dispatch starts.</li>
+                                <li><span class="font-semibold text-white">Fallback:</span> if email is delayed, we retry automatically and keep your access recoverable via account session.</li>
+                            </ol>
+                            <div class="mt-3 grid gap-2 md:grid-cols-3">
+                                <span class="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300">🔒 Secure checkout (PayPal/Whish/card)</span>
+                                <span class="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300">🧹 Data deletion policy available</span>
+                                <span class="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300">✅ Delivery guarantee or assisted re-send</span>
+                            </div>
+                            <p class="mt-3 text-[11px] text-slate-400">Refund/guarantee: if we fail to deliver your paid output after automated retries, contact support for assisted re-send or refund review.</p>
+                            <div class="mt-3 rounded border border-slate-700 p-3">
+                                <p class="text-[11px] font-semibold text-slate-200">FAQ</p>
+                                <p class="mt-1 text-[11px] text-slate-300"><span class="font-semibold text-white">Q:</span> “I paid, where is my file?” <span class="font-semibold text-white">A:</span> Check inbox/spam, then use Account dashboard export + support path for immediate recovery and resend tracking.</p>
+                            </div>
+                        </div>
                     </div>
 
                     <div id="revised-download-only" class="hidden mt-8 rounded-lg border border-emerald-500/50 bg-emerald-950/30 p-8 text-center">
@@ -558,7 +739,57 @@
         const auditOutput = document.getElementById('audit-output');
         const errorBox = document.getElementById('error-box');
         const errorMessage = document.getElementById('error-message');
+        const mainCard = document.getElementById('main-card');
         const headerHomeLink = document.getElementById('header-home-link');
+        const acquisitionFunnelCard = document.getElementById('acquisition-funnel-card');
+        const funnelStartAuditButton = document.getElementById('funnel-start-audit-button');
+        const funnelOpenAccountButton = document.getElementById('funnel-open-account-button');
+        const funnelFreeCtaButton = document.getElementById('funnel-free-cta-button');
+        const funnelProCtaButton = document.getElementById('funnel-pro-cta-button');
+        const funnelTeamCtaButton = document.getElementById('funnel-team-cta-button');
+        const accountRouteSection = document.getElementById('account-route-section');
+        const accountBackHomeButton = document.getElementById('account-back-home-button');
+        const accountEmailInput = document.getElementById('account-email-input');
+        const accountSignInButton = document.getElementById('account-signin-button');
+        const accountSignOutButton = document.getElementById('account-signout-button');
+        const accountCodeInput = document.getElementById('account-code-input');
+        const accountVerifyButton = document.getElementById('account-verify-button');
+        const accountResendButton = document.getElementById('account-resend-button');
+        const accountStatus = document.getElementById('account-status');
+        const accountCodeStatus = document.getElementById('account-code-status');
+        const accountPlanBadge = document.getElementById('account-plan-badge');
+        const onboardingStepBadgeUploaded = document.getElementById('onboarding-step-badge-uploaded');
+        const onboardingStepBadgeReviewed = document.getElementById('onboarding-step-badge-reviewed');
+        const onboardingStepBadgeOptimized = document.getElementById('onboarding-step-badge-optimized');
+        const onboardingContinueCard = document.getElementById('onboarding-continue-card');
+        const onboardingContinueText = document.getElementById('onboarding-continue-text');
+        const onboardingContinueButton = document.getElementById('onboarding-continue-button');
+        const onboardingTooltipBox = document.getElementById('onboarding-tooltip-box');
+        const onboardingFunnelTooltip = document.getElementById('onboarding-funnel-tooltip');
+        const planUpgradeProButton = document.getElementById('plan-upgrade-pro-button');
+        const planUpgradeTeamButton = document.getElementById('plan-upgrade-team-button');
+        const planCancelButton = document.getElementById('plan-cancel-button');
+        const planReactivateButton = document.getElementById('plan-reactivate-button');
+        const openBillingPortalButton = document.getElementById('open-billing-portal-button');
+        const billingPortalStatus = document.getElementById('billing-portal-status');
+        const workspaceInviteEmailInput = document.getElementById('workspace-invite-email-input');
+        const workspaceInviteButton = document.getElementById('workspace-invite-button');
+        const workspaceStatus = document.getElementById('workspace-status');
+        const workspaceMembersList = document.getElementById('workspace-members-list');
+        const accountDashboardRefreshButton = document.getElementById('account-dashboard-refresh-button');
+        const accountDashboardExportJsonButton = document.getElementById('account-dashboard-export-json-button');
+        const accountDashboardExportCsvButton = document.getElementById('account-dashboard-export-csv-button');
+        const accountDashboardStatus = document.getElementById('account-dashboard-status');
+        const accountDashboardSummary = document.getElementById('account-dashboard-summary');
+        const accountDashboardInsightTiles = document.getElementById('account-dashboard-insight-tiles');
+        const accountDashboardSubscriptions = document.getElementById('account-dashboard-subscriptions');
+        const accountDashboardRuns = document.getElementById('account-dashboard-runs');
+        const accountDashboardSubscriptionsFilter = document.getElementById('account-dashboard-subscriptions-filter');
+        const accountDashboardRunsFilter = document.getElementById('account-dashboard-runs-filter');
+        const accountDashboardSubscriptionsPrevButton = document.getElementById('account-dashboard-subscriptions-prev-button');
+        const accountDashboardSubscriptionsNextButton = document.getElementById('account-dashboard-subscriptions-next-button');
+        const accountDashboardRunsPrevButton = document.getElementById('account-dashboard-runs-prev-button');
+        const accountDashboardRunsNextButton = document.getElementById('account-dashboard-runs-next-button');
         
         let cvFile = null;
         let cvFileKind = '';
@@ -693,6 +924,186 @@
         let safeCvEmailTimer = null;
         let safeCvEmailAttempt = 0;
         let whishPayRetryAvailableAt = 0;
+        let currentUser = null;
+        let currentEntitlements = null;
+        let accountCodeExpiresAt = '';
+        let isAccountActionPending = false;
+        let dashboardSubOffset = 0;
+        let dashboardRunOffset = 0;
+        const DASHBOARD_PAGE_SIZE = 5;
+        const ONBOARDING_STORAGE_KEY = 'onboarding_state_v1';
+        const ONBOARDING_TOOLTIP_SEEN_KEY = 'onboarding_tooltip_seen_v1';
+        let onboardingCheckpoint = null;
+        const analyticsSessionId = (() => {
+            const key = 'analytics_session_id';
+            const generate = () => `sess_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+            const readStorage = (storage) => {
+                try {
+                    return storage.getItem(key) || '';
+                } catch (_error) {
+                    return '';
+                }
+            };
+            const writeStorage = (storage, value) => {
+                try {
+                    storage.setItem(key, value);
+                } catch (_error) {}
+            };
+            const existing = readStorage(localStorage) || readStorage(sessionStorage);
+            const next = existing || generate();
+            writeStorage(localStorage, next);
+            writeStorage(sessionStorage, next);
+            return next;
+        })();
+
+        function loadOnboardingState() {
+            const fallback = {
+                uploaded: false,
+                reviewed: false,
+                optimized: false,
+            };
+            try {
+                const raw = localStorage.getItem(ONBOARDING_STORAGE_KEY);
+                if (!raw) return fallback;
+                const parsed = JSON.parse(raw);
+                return {
+                    uploaded: Boolean(parsed?.uploaded),
+                    reviewed: Boolean(parsed?.reviewed),
+                    optimized: Boolean(parsed?.optimized),
+                };
+            } catch (_error) {
+                return fallback;
+            }
+        }
+
+        function persistOnboardingState() {
+            try {
+                localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(onboardingCheckpoint || {}));
+            } catch (_error) {}
+        }
+
+        function getOnboardingStepIndex() {
+            if (!onboardingCheckpoint?.uploaded) return 0;
+            if (!onboardingCheckpoint?.reviewed) return 1;
+            if (!onboardingCheckpoint?.optimized) return 2;
+            return 3;
+        }
+
+        function setOnboardingStep(step) {
+            if (!onboardingCheckpoint) onboardingCheckpoint = loadOnboardingState();
+            if (step === 'uploaded') onboardingCheckpoint.uploaded = true;
+            if (step === 'reviewed') onboardingCheckpoint.reviewed = true;
+            if (step === 'optimized') onboardingCheckpoint.optimized = true;
+            persistOnboardingState();
+            renderOnboardingState();
+        }
+
+        function renderOnboardingBadges() {
+            const stepIndex = getOnboardingStepIndex();
+            const badges = [
+                { element: onboardingStepBadgeUploaded, complete: onboardingCheckpoint?.uploaded, active: stepIndex === 0 },
+                { element: onboardingStepBadgeReviewed, complete: onboardingCheckpoint?.reviewed, active: stepIndex === 1 },
+                { element: onboardingStepBadgeOptimized, complete: onboardingCheckpoint?.optimized, active: stepIndex === 2 || stepIndex === 3 },
+            ];
+            badges.forEach((badge) => {
+                if (!badge.element) return;
+                badge.element.classList.toggle('onboarding-step-badge-complete', Boolean(badge.complete));
+                badge.element.classList.toggle('onboarding-step-badge-active', Boolean(badge.active && !badge.complete));
+            });
+        }
+
+        function buildContinueCta() {
+            if (!onboardingCheckpoint?.uploaded) {
+                return {
+                    label: 'Upload your CV to start Step 1.',
+                    action: () => {
+                        if (window.location.hash) {
+                            window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+                        }
+                        applySurfaceRoute({ scroll: true });
+                    },
+                };
+            }
+            if (!onboardingCheckpoint?.reviewed) {
+                return {
+                    label: 'Continue to Step 2 by running your free review.',
+                    action: () => {
+                        if (window.location.hash) {
+                            window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+                        }
+                        applySurfaceRoute({ scroll: true });
+                    },
+                };
+            }
+            if (!onboardingCheckpoint?.optimized) {
+                return {
+                    label: 'Finish Step 3 and unlock your optimized CV.',
+                    action: () => {
+                        if (resultsSection?.classList.contains('hidden')) {
+                            if (window.location.hash) {
+                                window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+                            }
+                            applySurfaceRoute({ scroll: true });
+                        } else {
+                            revisedPaymentSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    },
+                };
+            }
+            return { label: 'You completed onboarding. Explore advanced account tools anytime.', action: () => { window.location.hash = '#account'; } };
+        }
+
+        function renderOnboardingContinueCard() {
+            if (!onboardingContinueCard || !onboardingContinueText || !onboardingContinueButton) return;
+            const signedIn = Boolean(String(currentUser?.email || '').trim());
+            if (!signedIn) {
+                onboardingContinueCard.classList.add('hidden');
+                return;
+            }
+            const cta = buildContinueCta();
+            onboardingContinueText.textContent = cta.label;
+            onboardingContinueButton.onclick = () => cta.action();
+            onboardingContinueCard.classList.remove('hidden');
+        }
+
+        function renderOnboardingTooltip() {
+            const stepIndex = getOnboardingStepIndex();
+            let isFirstSession = true;
+            try {
+                isFirstSession = sessionStorage.getItem(ONBOARDING_TOOLTIP_SEEN_KEY) !== 'true';
+            } catch (_error) {
+                isFirstSession = true;
+            }
+            const tooltipMessage = stepIndex === 0
+                ? 'Tip: Start by uploading a CV file. We will track your progress as 1/3 uploaded.'
+                : stepIndex === 1
+                    ? 'Tip: Run your free review to complete 2/3 reviewed and unlock tailored recommendations.'
+                    : stepIndex === 2
+                        ? 'Tip: Unlock the optimized CV to finish 3/3 and maximize interview readiness.'
+                        : '';
+            const hasMessage = Boolean(tooltipMessage) && isFirstSession;
+            if (onboardingTooltipBox) {
+                onboardingTooltipBox.textContent = tooltipMessage;
+                onboardingTooltipBox.classList.toggle('hidden', !hasMessage || !isAccountRoute());
+            }
+            if (onboardingFunnelTooltip) {
+                onboardingFunnelTooltip.textContent = tooltipMessage;
+                onboardingFunnelTooltip.classList.toggle('hidden', !hasMessage || isAccountRoute());
+            }
+        }
+
+        function renderOnboardingState() {
+            renderOnboardingBadges();
+            renderOnboardingContinueCard();
+            renderOnboardingTooltip();
+        }
+
+        function completeFirstSessionTooltip() {
+            try {
+                sessionStorage.setItem(ONBOARDING_TOOLTIP_SEEN_KEY, 'true');
+            } catch (_error) {}
+            renderOnboardingTooltip();
+        }
 
         const auditMountParent = auditSection ? auditSection.parentElement : null;
         const auditMountAnchor = document.createComment('audit-section-anchor');
@@ -740,6 +1151,590 @@
             } catch (error) {
                 console.warn('Unable to clear local storage.', error);
             }
+        }
+
+        function isAccountRoute() {
+            return String(window.location.hash || '').trim().toLowerCase() === '#account';
+        }
+
+        function applySurfaceRoute(options = {}) {
+            const shouldScroll = Boolean(options?.scroll);
+            const accountMode = isAccountRoute();
+            if (acquisitionFunnelCard) acquisitionFunnelCard.classList.toggle('hidden', accountMode);
+            if (accountRouteSection) accountRouteSection.classList.toggle('hidden', !accountMode);
+            if (mainCard) mainCard.classList.toggle('hidden', accountMode);
+            if (accountMode && shouldScroll && accountRouteSection) {
+                accountRouteSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            if (!accountMode && shouldScroll && uploadSection) {
+                uploadSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            renderOnboardingTooltip();
+        }
+
+        async function trackEvent(eventName, context = {}) {
+            const safeEventName = String(eventName || '').trim().toLowerCase();
+            if (!safeEventName) return;
+            const payload = {
+                eventName: safeEventName,
+                sessionId: analyticsSessionId,
+                runId: String(currentRunId || '').trim() || undefined,
+                context: context && typeof context === 'object' ? context : {},
+            };
+            try {
+                await fetch('/.netlify/functions/track-event', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    keepalive: true,
+                });
+            } catch (_error) {
+                // best-effort telemetry; never block user flows
+            }
+        }
+
+        function updateAccountUi() {
+            const email = String(currentUser?.email || '').trim();
+            const plan = String(currentEntitlements?.plan || 'free').trim().toLowerCase();
+            const signedIn = Boolean(email);
+            const isTeamPlan = plan === 'team';
+            const controlsLocked = isAccountActionPending;
+            if (accountStatus) {
+                accountStatus.textContent = email
+                    ? `Signed in as ${email}`
+                    : 'Not signed in. Free tier includes limited audits.';
+            }
+            if (accountPlanBadge) {
+                if (!email) {
+                    accountPlanBadge.textContent = '';
+                } else if (plan === 'team') {
+                    accountPlanBadge.textContent = 'Plan: TEAM · Team workspace + priority queue enabled';
+                } else if (plan === 'pro') {
+                    accountPlanBadge.textContent = 'Plan: PRO · Unlimited audits enabled';
+                } else {
+                    accountPlanBadge.textContent = 'Plan: FREE · Limited audits';
+                }
+            }
+            if (accountEmailInput) {
+                accountEmailInput.value = email || accountEmailInput.value || '';
+            }
+            if (accountCodeStatus && accountCodeExpiresAt) {
+                accountCodeStatus.textContent = `Verification code sent. Expires at ${new Date(accountCodeExpiresAt).toLocaleTimeString()}.`;
+            } else if (accountCodeStatus && !email) {
+                accountCodeStatus.textContent = '';
+            }
+            if (planUpgradeProButton) {
+                planUpgradeProButton.disabled = !signedIn || plan === 'pro' || controlsLocked;
+                planUpgradeProButton.classList.toggle('opacity-60', planUpgradeProButton.disabled);
+            }
+            if (planUpgradeTeamButton) {
+                planUpgradeTeamButton.disabled = !signedIn || isTeamPlan || controlsLocked;
+                planUpgradeTeamButton.classList.toggle('opacity-60', planUpgradeTeamButton.disabled);
+            }
+            if (planCancelButton) {
+                planCancelButton.disabled = !signedIn || plan === 'free' || controlsLocked;
+                planCancelButton.classList.toggle('opacity-60', planCancelButton.disabled);
+            }
+            if (planReactivateButton) {
+                planReactivateButton.disabled = !signedIn || controlsLocked;
+                planReactivateButton.classList.toggle('opacity-60', planReactivateButton.disabled);
+            }
+            if (openBillingPortalButton) {
+                openBillingPortalButton.disabled = !signedIn || controlsLocked;
+                openBillingPortalButton.classList.toggle('opacity-60', openBillingPortalButton.disabled);
+            }
+            if (workspaceInviteEmailInput) {
+                workspaceInviteEmailInput.disabled = !signedIn || !isTeamPlan || controlsLocked;
+            }
+            if (workspaceInviteButton) {
+                workspaceInviteButton.disabled = !signedIn || !isTeamPlan || controlsLocked;
+                workspaceInviteButton.classList.toggle('opacity-60', workspaceInviteButton.disabled);
+            }
+            if (accountEmailInput) accountEmailInput.disabled = controlsLocked;
+            if (accountCodeInput) accountCodeInput.disabled = controlsLocked;
+            if (accountSignInButton) accountSignInButton.disabled = controlsLocked;
+            if (accountVerifyButton) accountVerifyButton.disabled = controlsLocked;
+            if (accountResendButton) accountResendButton.disabled = controlsLocked;
+            if (accountSignOutButton) accountSignOutButton.disabled = controlsLocked;
+            if (accountDashboardRefreshButton) accountDashboardRefreshButton.disabled = controlsLocked;
+            if (accountDashboardExportJsonButton) accountDashboardExportJsonButton.disabled = controlsLocked;
+            if (accountDashboardExportCsvButton) accountDashboardExportCsvButton.disabled = controlsLocked;
+            if (accountDashboardSubscriptionsFilter) accountDashboardSubscriptionsFilter.disabled = controlsLocked;
+            if (accountDashboardRunsFilter) accountDashboardRunsFilter.disabled = controlsLocked;
+            if (accountDashboardSubscriptionsPrevButton) accountDashboardSubscriptionsPrevButton.disabled = controlsLocked;
+            if (accountDashboardSubscriptionsNextButton) accountDashboardSubscriptionsNextButton.disabled = controlsLocked;
+            if (accountDashboardRunsPrevButton) accountDashboardRunsPrevButton.disabled = controlsLocked;
+            if (accountDashboardRunsNextButton) accountDashboardRunsNextButton.disabled = controlsLocked;
+            if (signedIn && (plan === 'pro' || plan === 'team')) {
+                setOnboardingStep('optimized');
+            }
+            renderOnboardingContinueCard();
+        }
+
+        async function runAccountAction(task) {
+            if (isAccountActionPending) return;
+            isAccountActionPending = true;
+            updateAccountUi();
+            try {
+                await task();
+            } finally {
+                isAccountActionPending = false;
+                updateAccountUi();
+            }
+        }
+
+        function renderWorkspaceMembers(members = []) {
+            if (!workspaceMembersList) return;
+            workspaceMembersList.innerHTML = '';
+            if (!Array.isArray(members) || members.length === 0) {
+                const placeholder = document.createElement('li');
+                placeholder.className = 'text-slate-500';
+                placeholder.textContent = 'No workspace members yet.';
+                workspaceMembersList.appendChild(placeholder);
+                return;
+            }
+            members.forEach((member) => {
+                const email = String(member?.email || '').trim().toLowerCase();
+                if (!email) return;
+                const status = String(member?.status || 'INVITED').trim().toUpperCase();
+                const role = String(member?.role || 'member').trim().toLowerCase();
+                const item = document.createElement('li');
+                item.className = 'space-y-2 rounded border border-slate-700 px-2 py-2';
+                item.dataset.workspaceEmail = email;
+                item.innerHTML = `
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="truncate">${email}</span>
+                        <span class="text-slate-500 text-[11px]">Current: ${role.toUpperCase()} · ${status}</span>
+                    </div>
+                    <div class="grid gap-2 md:grid-cols-[1fr_1fr_auto_auto]">
+                        <select data-workspace-role class="rounded border border-slate-600 bg-slate-900/70 px-2 py-1 text-[11px] text-slate-100">
+                            <option value="member"${role === 'member' ? ' selected' : ''}>Member</option>
+                            <option value="admin"${role === 'admin' ? ' selected' : ''}>Admin</option>
+                        </select>
+                        <select data-workspace-status class="rounded border border-slate-600 bg-slate-900/70 px-2 py-1 text-[11px] text-slate-100">
+                            <option value="INVITED"${status === 'INVITED' ? ' selected' : ''}>Invited</option>
+                            <option value="ACTIVE"${status === 'ACTIVE' ? ' selected' : ''}>Active</option>
+                            <option value="SUSPENDED"${status === 'SUSPENDED' ? ' selected' : ''}>Suspended</option>
+                        </select>
+                        <button type="button" data-workspace-update="${email}" class="rounded border border-emerald-700 px-2 py-1 text-[11px] text-emerald-300 hover:bg-emerald-900/30">Save</button>
+                        <button type="button" data-workspace-remove="${email}" class="rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700">Remove</button>
+                    </div>
+                `;
+                workspaceMembersList.appendChild(item);
+            });
+        }
+
+        async function refreshWorkspaceMembers() {
+            if (!workspaceMembersList || !workspaceStatus) return;
+            const plan = String(currentEntitlements?.plan || 'free').trim().toLowerCase();
+            const signedIn = Boolean(String(currentUser?.email || '').trim());
+            if (!signedIn || plan !== 'team') {
+                workspaceStatus.textContent = signedIn ? 'Upgrade to Team to invite collaborators.' : 'Sign in to manage workspace members.';
+                renderWorkspaceMembers([]);
+                return;
+            }
+            workspaceStatus.textContent = 'Loading workspace members…';
+            try {
+                const response = await fetch('/.netlify/functions/workspace', { method: 'GET' });
+                const payload = await readJsonSafely(response);
+                if (!response.ok) {
+                    workspaceStatus.textContent = payload?.error || 'Unable to load workspace members.';
+                    return;
+                }
+                workspaceStatus.textContent = `Workspace members: ${Array.isArray(payload?.members) ? payload.members.length : 0}`;
+                renderWorkspaceMembers(payload?.members || []);
+            } catch (_error) {
+                workspaceStatus.textContent = 'Unable to load workspace members right now.';
+            }
+        }
+
+        function renderDashboardList(element, items = [], emptyText = '') {
+            if (!element) return;
+            element.innerHTML = '';
+            if (!Array.isArray(items) || items.length === 0) {
+                const emptyItem = document.createElement('li');
+                emptyItem.className = 'text-slate-500';
+                emptyItem.textContent = emptyText;
+                element.appendChild(emptyItem);
+                return;
+            }
+            items.forEach((value) => {
+                const item = document.createElement('li');
+                item.textContent = value;
+                element.appendChild(item);
+            });
+        }
+
+        function escapeHtml(value) {
+            return String(value || '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        }
+
+        function formatTrendDelta(delta) {
+            const numericDelta = Number(delta || 0);
+            if (numericDelta > 0) return `↑ ${numericDelta}`;
+            if (numericDelta < 0) return `↓ ${Math.abs(numericDelta)}`;
+            return '↔ 0';
+        }
+
+        function renderInsightTiles(insights = {}) {
+            if (!accountDashboardInsightTiles) return;
+            const timeHours = Number(insights?.timeSavedThisMonthHours || 0).toFixed(1);
+            const completedTrend = insights?.completedRunsTrend || {};
+            const passRate = insights?.passRateTrend || {};
+            const passPercent = `${Math.round(Number(passRate?.rate || 0) * 100)}%`;
+            const previousPassPercent = `${Math.round(Number(passRate?.previousRate || 0) * 100)}%`;
+            const weaknesses = Array.isArray(insights?.mostCommonWeaknesses) ? insights.mostCommonWeaknesses : [];
+            const weaknessText = weaknesses.length
+                ? weaknesses.slice(0, 3).map((item) => `${escapeHtml(item.label)} (${item.count})`).join(' · ')
+                : 'No recurring weakness data yet.';
+            const team = insights?.teamActivity || {};
+            const alerts = insights?.alerts || {};
+            const renewalDays = Number.isFinite(Number(alerts?.renewalDays)) ? Number(alerts.renewalDays) : null;
+            const renewalText = renewalDays == null
+                ? 'No renewal date on file'
+                : (renewalDays < 0 ? `Renewal overdue by ${Math.abs(renewalDays)} day(s)` : `Renews in ${renewalDays} day(s)`);
+            const riskTone = String(alerts?.riskLevel || 'LOW').toUpperCase();
+            const riskClass = riskTone === 'HIGH' ? 'text-rose-300' : riskTone === 'MEDIUM' ? 'text-amber-300' : 'text-emerald-300';
+
+            accountDashboardInsightTiles.innerHTML = `
+                <div class="rounded-md border border-emerald-500/40 bg-emerald-900/20 p-3">
+                    <p class="text-[11px] uppercase tracking-wide text-emerald-200">Time Saved This Month</p>
+                    <p class="mt-1 text-lg font-semibold text-emerald-100">${timeHours} hrs</p>
+                    <p class="mt-1 text-[11px] text-emerald-200">Based on completed runs this month.</p>
+                </div>
+                <div class="rounded-md border border-blue-500/40 bg-blue-900/20 p-3">
+                    <p class="text-[11px] uppercase tracking-wide text-blue-200">Runs & Pass Trend</p>
+                    <p class="mt-1 text-sm font-semibold text-blue-100">${completedTrend.completed || 0} completed (${formatTrendDelta(completedTrend.delta)})</p>
+                    <p class="mt-1 text-[11px] text-blue-200">Pass ≥ ${passRate.passThreshold || 75}: ${passPercent} (prev ${previousPassPercent})</p>
+                </div>
+                <div class="rounded-md border border-violet-500/40 bg-violet-900/20 p-3 md:col-span-2">
+                    <p class="text-[11px] uppercase tracking-wide text-violet-200">Most Common CV Weaknesses</p>
+                    <p class="mt-1 text-xs text-violet-100">${weaknessText}</p>
+                </div>
+                <div class="rounded-md border border-slate-600 bg-slate-900/60 p-3">
+                    <p class="text-[11px] uppercase tracking-wide text-slate-300">Team Activity Snapshot</p>
+                    <p class="mt-1 text-xs text-slate-200">${Number(team.totalMembers || 0)} members · ${Number(team.active || 0)} active · ${Number(team.invited || 0)} invited · ${Number(team.suspended || 0)} suspended</p>
+                </div>
+                <div class="rounded-md border border-amber-500/40 bg-amber-900/20 p-3">
+                    <p class="text-[11px] uppercase tracking-wide text-amber-200">Billing Alert</p>
+                    <p class="mt-1 text-xs ${riskClass}">${renewalText}</p>
+                    <p class="mt-1 text-[11px] text-amber-100">Risk level: ${escapeHtml(riskTone)}${alerts?.hasPastDue ? ' · past due detected' : ''}</p>
+                </div>
+            `;
+        }
+
+        async function refreshAccountDashboard() {
+            if (!accountDashboardStatus) return;
+            if (!currentUser?.id) {
+                accountDashboardStatus.textContent = 'Sign in to view your dashboard.';
+                if (accountDashboardSummary) accountDashboardSummary.textContent = '';
+                if (accountDashboardInsightTiles) accountDashboardInsightTiles.innerHTML = '';
+                renderDashboardList(accountDashboardSubscriptions, [], 'No subscriptions yet.');
+                renderDashboardList(accountDashboardRuns, [], 'No linked runs yet.');
+                return;
+            }
+            accountDashboardStatus.textContent = 'Loading dashboard…';
+            const subStatus = String(accountDashboardSubscriptionsFilter?.value || 'ALL').trim().toUpperCase();
+            const runStatus = String(accountDashboardRunsFilter?.value || 'ALL').trim().toUpperCase();
+            const query = new URLSearchParams({
+                subOffset: String(dashboardSubOffset),
+                subLimit: String(DASHBOARD_PAGE_SIZE),
+                subStatus,
+                runOffset: String(dashboardRunOffset),
+                runLimit: String(DASHBOARD_PAGE_SIZE),
+                runStatus,
+            });
+            const response = await fetch(`/.netlify/functions/account-dashboard?${query.toString()}`, { method: 'GET' });
+            const payload = await readJsonSafely(response);
+            if (!response.ok) {
+                accountDashboardStatus.textContent = payload?.error || 'Unable to load dashboard.';
+                return;
+            }
+            const plan = String(payload?.entitlements?.plan || 'free').toUpperCase();
+            const runCount = Array.isArray(payload?.recentRuns) ? payload.recentRuns.length : 0;
+            const subCount = Array.isArray(payload?.subscriptions) ? payload.subscriptions.length : 0;
+            const workspaceMembers = Number(payload?.workspace?.memberCount || 0);
+            if (runCount > 0) {
+                setOnboardingStep('uploaded');
+                setOnboardingStep('reviewed');
+            }
+            const hasActivePaidPlan = String(payload?.entitlements?.plan || 'free').toLowerCase() === 'pro'
+                || String(payload?.entitlements?.plan || 'free').toLowerCase() === 'team';
+            if (hasActivePaidPlan) {
+                setOnboardingStep('optimized');
+            }
+            accountDashboardStatus.textContent = 'Dashboard updated.';
+            if (accountDashboardSummary) {
+                const renewal = String(payload?.insights?.alerts?.nextRenewalAt || payload?.subscriptions?.[0]?.nextRenewalAt || '').trim();
+                const lastPayment = String(payload?.subscriptions?.[0]?.lastSuccessfulPaymentAt || '').trim();
+                const renewalText = renewal ? ` · Next renewal ${new Date(renewal).toLocaleDateString()}` : '';
+                const paymentText = lastPayment ? ` · Last payment ${new Date(lastPayment).toLocaleDateString()}` : '';
+                accountDashboardSummary.textContent = `Plan ${plan} · ${subCount} subscriptions in view · ${runCount} runs in view · ${workspaceMembers} workspace members${paymentText}${renewalText} · Decision-focused insights ready`;
+            }
+            renderInsightTiles(payload?.insights || {});
+            renderDashboardList(
+                accountDashboardSubscriptions,
+                (payload?.subscriptions || []).map((item) => {
+                    const renewal = item?.nextRenewalAt ? ` · renews ${new Date(item.nextRenewalAt).toLocaleDateString()}` : '';
+                    const paid = item?.lastSuccessfulPaymentAt ? ` · paid ${new Date(item.lastSuccessfulPaymentAt).toLocaleDateString()}` : '';
+                    return `${String(item.plan || 'free').toUpperCase()} · ${item.status || 'UNKNOWN'} · ${item.provider || 'internal'}${paid}${renewal}`;
+                }),
+                'No subscriptions yet.',
+            );
+            renderDashboardList(
+                accountDashboardRuns,
+                (payload?.recentRuns || []).map((run) => `${run.runId} · ${String(run.status || 'unknown').toUpperCase()}${Number.isFinite(Number(run.score)) ? ` · score ${run.score}` : ''}`),
+                'No linked runs yet.',
+            );
+            if (accountDashboardSubscriptionsPrevButton) accountDashboardSubscriptionsPrevButton.disabled = Number(payload?.pagination?.subscriptions?.offset || 0) <= 0;
+            if (accountDashboardSubscriptionsNextButton) accountDashboardSubscriptionsNextButton.disabled = payload?.pagination?.subscriptions?.nextOffset == null;
+            if (accountDashboardRunsPrevButton) accountDashboardRunsPrevButton.disabled = Number(payload?.pagination?.runs?.offset || 0) <= 0;
+            if (accountDashboardRunsNextButton) accountDashboardRunsNextButton.disabled = payload?.pagination?.runs?.nextOffset == null;
+            trackEvent('account_dashboard_refreshed', { runCount, subCount, workspaceMembers }).catch(() => {});
+        }
+
+        async function exportAccountActivity(format = 'json') {
+            if (!currentUser?.id) {
+                showError('Please sign in first.');
+                return;
+            }
+            const safeFormat = String(format || 'json').trim().toLowerCase() === 'csv' ? 'csv' : 'json';
+            const response = await fetch(`/.netlify/functions/account-activity-export?format=${safeFormat}`, { method: 'GET' });
+            if (!response.ok) {
+                const payload = await readJsonSafely(response);
+                showError(payload?.error || 'Unable to export account activity.');
+                return;
+            }
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `account-activity.${safeFormat}`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            trackEvent('account_activity_exported', { format: safeFormat }).catch(() => {});
+        }
+
+        async function updateSubscription(plan, status = 'ACTIVE', successMessage = '') {
+            if (!currentUser?.id) {
+                showError('Please sign in first.');
+                return;
+            }
+            if (billingPortalStatus) billingPortalStatus.textContent = 'Updating subscription…';
+            const response = await fetch('/.netlify/functions/subscription', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plan, status, provider: 'internal' }),
+            });
+            const payload = await readJsonSafely(response);
+            if (!response.ok) {
+                showError(payload?.error || 'Unable to update your subscription.');
+                return;
+            }
+            currentEntitlements = payload?.entitlements || currentEntitlements;
+            if (billingPortalStatus) {
+                billingPortalStatus.textContent = successMessage || 'Subscription updated.';
+            }
+            trackEvent('account_subscription_updated', { plan, status }).catch(() => {});
+            updateAccountUi();
+            await refreshWorkspaceMembers();
+        }
+
+        function shouldUseExternalCheckout() {
+            const host = String(window.location?.hostname || '').toLowerCase();
+            return host && host !== 'localhost' && host !== '127.0.0.1';
+        }
+
+        async function beginPlanCheckout(plan) {
+            const returnUrl = encodeURIComponent(window.location.href);
+            const response = await fetch(`/.netlify/functions/subscription-checkout?plan=${encodeURIComponent(plan)}&returnUrl=${returnUrl}`, { method: 'GET' });
+            const payload = await readJsonSafely(response);
+            if (!response.ok || !payload?.checkoutUrl) {
+                const unavailable = payload?.code === 'CHECKOUT_NOT_CONFIGURED';
+                if (unavailable && !shouldUseExternalCheckout()) {
+                    await updateSubscription(plan, 'ACTIVE', `${plan.toUpperCase()} plan activated.`);
+                    return;
+                }
+                throw new Error(payload?.error || 'Checkout is unavailable right now.');
+            }
+            trackEvent('account_checkout_started', { plan }).catch(() => {});
+            window.location.assign(payload.checkoutUrl);
+        }
+
+        async function handleFunnelPlanSelection(plan) {
+            const safePlan = String(plan || '').trim().toLowerCase() === 'team' ? 'team' : 'pro';
+            if (!currentUser?.id) {
+                window.location.hash = 'account';
+                applySurfaceRoute({ scroll: true });
+                if (accountStatus) {
+                    accountStatus.textContent = `Sign in to continue with ${safePlan.toUpperCase()} checkout.`;
+                }
+                if (accountEmailInput) accountEmailInput.focus();
+                return;
+            }
+            await beginPlanCheckout(safePlan);
+        }
+
+        async function resolveReactivationPlan() {
+            if (!currentUser?.id) return 'pro';
+            try {
+                const response = await fetch('/.netlify/functions/subscription', { method: 'GET' });
+                const payload = await readJsonSafely(response);
+                if (!response.ok) return 'pro';
+                const subscriptions = Array.isArray(payload?.subscriptions) ? payload.subscriptions : [];
+                const latestPaid = subscriptions.find((item) => {
+                    const plan = String(item?.plan || '').trim().toLowerCase();
+                    return plan === 'team' || plan === 'pro';
+                });
+                const plan = String(latestPaid?.plan || '').trim().toLowerCase();
+                return plan === 'team' ? 'team' : 'pro';
+            } catch (_error) {
+                return 'pro';
+            }
+        }
+
+        async function openBillingPortal() {
+            if (!currentUser?.id) {
+                showError('Please sign in first.');
+                return;
+            }
+            if (billingPortalStatus) billingPortalStatus.textContent = 'Preparing billing portal…';
+            const returnUrl = encodeURIComponent(window.location.href);
+            const response = await fetch(`/.netlify/functions/subscription-billing-portal?returnUrl=${returnUrl}`, { method: 'GET' });
+            const payload = await readJsonSafely(response);
+            if (!response.ok || !payload?.billingPortalUrl) {
+                if (billingPortalStatus) billingPortalStatus.textContent = payload?.error || 'Unable to open billing portal.';
+                return;
+            }
+            if (billingPortalStatus) billingPortalStatus.textContent = 'Redirecting to billing portal…';
+            trackEvent('account_billing_portal_opened', { plan: currentEntitlements?.plan || 'free' }).catch(() => {});
+            window.location.assign(payload.billingPortalUrl);
+        }
+
+        async function inviteWorkspaceMember() {
+            const email = String(workspaceInviteEmailInput?.value || '').trim().toLowerCase();
+            if (!email) {
+                showError('Enter a teammate email to send an invite.');
+                return;
+            }
+            const response = await fetch('/.netlify/functions/workspace', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, role: 'member', status: 'INVITED' }),
+            });
+            const payload = await readJsonSafely(response);
+            if (!response.ok) {
+                workspaceStatus.textContent = payload?.error || 'Unable to invite workspace member.';
+                return;
+            }
+            if (workspaceInviteEmailInput) workspaceInviteEmailInput.value = '';
+            workspaceStatus.textContent = `Invite sent to ${email}.`;
+            trackEvent('workspace_member_invited', { email }).catch(() => {});
+            renderWorkspaceMembers(payload?.members || []);
+        }
+
+        async function refreshAccountSession() {
+            try {
+                const sessionResponse = await fetch('/.netlify/functions/user-session', { method: 'GET' });
+                if (!sessionResponse.ok) {
+                    currentUser = null;
+                    currentEntitlements = null;
+                    dashboardSubOffset = 0;
+                    dashboardRunOffset = 0;
+                    updateAccountUi();
+                    return;
+                }
+                const sessionPayload = await readJsonSafely(sessionResponse);
+                currentUser = sessionPayload?.user || null;
+                const subResponse = await fetch('/.netlify/functions/subscription', { method: 'GET' });
+                const subPayload = await readJsonSafely(subResponse);
+                currentEntitlements = subResponse.ok ? (subPayload?.entitlements || null) : null;
+            } catch (_error) {
+                currentUser = null;
+                currentEntitlements = null;
+            }
+            updateAccountUi();
+            await refreshWorkspaceMembers();
+            await refreshAccountDashboard();
+        }
+
+        async function signInAccount() {
+            const email = String(accountEmailInput?.value || '').trim().toLowerCase();
+            if (!email) {
+                showError('Please enter your email to sign in.');
+                return;
+            }
+            const response = await fetch('/.netlify/functions/user-session-request-code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email }),
+            });
+            const payload = await readJsonSafely(response);
+            if (!response.ok) {
+                showError(payload?.error || 'Unable to sign in right now.');
+                return;
+            }
+            accountCodeExpiresAt = String(payload?.expiresAt || '');
+            if (accountCodeStatus) {
+                const debugCode = payload?.debugCode ? ` Debug code: ${payload.debugCode}` : '';
+                accountCodeStatus.textContent = `Code sent to ${email}.${debugCode}`;
+            }
+            hideError();
+        }
+
+        async function verifyAccountCode() {
+            const email = String(accountEmailInput?.value || '').trim().toLowerCase();
+            const code = String(accountCodeInput?.value || '').trim();
+            if (!email || !code) {
+                showError('Please enter both email and verification code.');
+                return;
+            }
+            const response = await fetch('/.netlify/functions/user-session-verify-code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, code }),
+            });
+            const payload = await readJsonSafely(response);
+            if (!response.ok) {
+                showError(payload?.error || 'Verification failed.');
+                return;
+            }
+            currentUser = payload?.user || null;
+            accountCodeExpiresAt = '';
+            if (accountCodeInput) accountCodeInput.value = '';
+            if (accountCodeStatus) accountCodeStatus.textContent = 'Verification successful.';
+            await refreshAccountSession();
+            hideError();
+        }
+
+        async function signOutAccount() {
+            await fetch('/.netlify/functions/user-session', { method: 'DELETE' });
+            currentUser = null;
+            currentEntitlements = null;
+            accountCodeExpiresAt = '';
+            dashboardSubOffset = 0;
+            dashboardRunOffset = 0;
+            if (accountCodeInput) accountCodeInput.value = '';
+            if (accountCodeStatus) accountCodeStatus.textContent = '';
+            if (billingPortalStatus) billingPortalStatus.textContent = '';
+            if (workspaceStatus) workspaceStatus.textContent = '';
+            renderWorkspaceMembers([]);
+            await refreshAccountDashboard();
+            updateAccountUi();
+        }
+
+        function canStartAudit() {
+            const plan = String(currentEntitlements?.plan || 'free').trim().toLowerCase();
+            if (plan === 'pro' || plan === 'team') return true;
+            const freeAuditCount = Number(localStorage.getItem('free_audit_count') || '0') || 0;
+            return freeAuditCount < 3;
         }
 
         const storedCvText = getStoredValue('cvText');
@@ -824,6 +1819,184 @@
         if (paymentModal) paymentModal.addEventListener('click', (event) => {
             if (event.target === paymentModal) closePaymentModal();
         });
+        if (accountSignInButton) {
+            accountSignInButton.addEventListener('click', async () => {
+                await runAccountAction(signInAccount);
+            });
+        }
+        if (accountVerifyButton) {
+            accountVerifyButton.addEventListener('click', async () => {
+                await runAccountAction(verifyAccountCode);
+            });
+        }
+        if (accountResendButton) {
+            accountResendButton.addEventListener('click', async () => {
+                await runAccountAction(signInAccount);
+            });
+        }
+        if (accountSignOutButton) {
+            accountSignOutButton.addEventListener('click', async () => {
+                await runAccountAction(signOutAccount);
+            });
+        }
+        if (planUpgradeProButton) {
+            planUpgradeProButton.addEventListener('click', async () => {
+                await runAccountAction(async () => {
+                    try {
+                        await beginPlanCheckout('pro');
+                    } catch (error) {
+                        showError(error.message || 'Unable to start Pro checkout.');
+                    }
+                });
+            });
+        }
+        if (planUpgradeTeamButton) {
+            planUpgradeTeamButton.addEventListener('click', async () => {
+                await runAccountAction(async () => {
+                    try {
+                        await beginPlanCheckout('team');
+                    } catch (error) {
+                        showError(error.message || 'Unable to start Team checkout.');
+                    }
+                });
+            });
+        }
+        if (planCancelButton) {
+            planCancelButton.addEventListener('click', async () => {
+                await runAccountAction(async () => {
+                    await updateSubscription('free', 'CANCELED', 'Plan canceled. You are now on Free.');
+                    trackEvent('account_subscription_canceled', { plan: currentEntitlements?.plan || 'free' }).catch(() => {});
+                });
+            });
+        }
+        if (planReactivateButton) {
+            planReactivateButton.addEventListener('click', async () => {
+                await runAccountAction(async () => {
+                    const nextPlan = await resolveReactivationPlan();
+                    await updateSubscription(nextPlan, 'ACTIVE', `${nextPlan.toUpperCase()} plan reactivated.`);
+                    trackEvent('account_subscription_reactivated', { plan: nextPlan }).catch(() => {});
+                });
+            });
+        }
+        if (openBillingPortalButton) {
+            openBillingPortalButton.addEventListener('click', async () => {
+                await runAccountAction(openBillingPortal);
+            });
+        }
+        if (workspaceInviteButton) {
+            workspaceInviteButton.addEventListener('click', async () => {
+                await runAccountAction(inviteWorkspaceMember);
+            });
+        }
+        if (workspaceInviteEmailInput) {
+            workspaceInviteEmailInput.addEventListener('keydown', async (event) => {
+                if (event.key !== 'Enter') return;
+                event.preventDefault();
+                await runAccountAction(inviteWorkspaceMember);
+            });
+        }
+        if (accountDashboardRefreshButton) {
+            accountDashboardRefreshButton.addEventListener('click', async () => {
+                await runAccountAction(refreshAccountDashboard);
+            });
+        }
+        if (accountDashboardExportJsonButton) {
+            accountDashboardExportJsonButton.addEventListener('click', async () => {
+                await runAccountAction(async () => {
+                    await exportAccountActivity('json');
+                });
+            });
+        }
+        if (accountDashboardExportCsvButton) {
+            accountDashboardExportCsvButton.addEventListener('click', async () => {
+                await runAccountAction(async () => {
+                    await exportAccountActivity('csv');
+                });
+            });
+        }
+        if (accountDashboardSubscriptionsFilter) {
+            accountDashboardSubscriptionsFilter.addEventListener('change', async () => {
+                dashboardSubOffset = 0;
+                await runAccountAction(refreshAccountDashboard);
+            });
+        }
+        if (accountDashboardRunsFilter) {
+            accountDashboardRunsFilter.addEventListener('change', async () => {
+                dashboardRunOffset = 0;
+                await runAccountAction(refreshAccountDashboard);
+            });
+        }
+        if (accountDashboardSubscriptionsPrevButton) {
+            accountDashboardSubscriptionsPrevButton.addEventListener('click', async () => {
+                dashboardSubOffset = Math.max(0, dashboardSubOffset - DASHBOARD_PAGE_SIZE);
+                await runAccountAction(refreshAccountDashboard);
+            });
+        }
+        if (accountDashboardSubscriptionsNextButton) {
+            accountDashboardSubscriptionsNextButton.addEventListener('click', async () => {
+                dashboardSubOffset += DASHBOARD_PAGE_SIZE;
+                await runAccountAction(refreshAccountDashboard);
+            });
+        }
+        if (accountDashboardRunsPrevButton) {
+            accountDashboardRunsPrevButton.addEventListener('click', async () => {
+                dashboardRunOffset = Math.max(0, dashboardRunOffset - DASHBOARD_PAGE_SIZE);
+                await runAccountAction(refreshAccountDashboard);
+            });
+        }
+        if (accountDashboardRunsNextButton) {
+            accountDashboardRunsNextButton.addEventListener('click', async () => {
+                dashboardRunOffset += DASHBOARD_PAGE_SIZE;
+                await runAccountAction(refreshAccountDashboard);
+            });
+        }
+        if (workspaceMembersList) {
+            workspaceMembersList.addEventListener('click', async (event) => {
+                await runAccountAction(async () => {
+                    const target = event.target;
+                    if (!(target instanceof HTMLElement)) return;
+                    const email = String(target.dataset.workspaceRemove || '').trim().toLowerCase();
+                    const updateEmail = String(target.dataset.workspaceUpdate || '').trim().toLowerCase();
+                    if (updateEmail) {
+                        const memberRow = target.closest('[data-workspace-email]');
+                        if (!(memberRow instanceof HTMLElement)) return;
+                        const roleField = memberRow.querySelector('[data-workspace-role]');
+                        const statusField = memberRow.querySelector('[data-workspace-status]');
+                        const role = String(roleField?.value || 'member').trim().toLowerCase();
+                        const status = String(statusField?.value || 'INVITED').trim().toUpperCase();
+                        const updateResponse = await fetch('/.netlify/functions/workspace', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email: updateEmail, role, status }),
+                        });
+                        const updatePayload = await readJsonSafely(updateResponse);
+                        if (!updateResponse.ok) {
+                            workspaceStatus.textContent = updatePayload?.error || 'Unable to update workspace member.';
+                            return;
+                        }
+                        workspaceStatus.textContent = `Updated ${updateEmail}.`;
+                        trackEvent('workspace_member_updated', { email: updateEmail, role, status }).catch(() => {});
+                        renderWorkspaceMembers(updatePayload?.members || []);
+                        return;
+                    }
+                    if (!email) return;
+                    const response = await fetch('/.netlify/functions/workspace', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email }),
+                    });
+                    const payload = await readJsonSafely(response);
+                    if (!response.ok) {
+                        workspaceStatus.textContent = payload?.error || 'Unable to remove workspace member.';
+                        return;
+                    }
+                    workspaceStatus.textContent = `Removed ${email} from workspace.`;
+                    trackEvent('workspace_member_removed', { email }).catch(() => {});
+                    renderWorkspaceMembers(payload?.members || []);
+                });
+            });
+        }
+        refreshAccountSession().catch(() => {});
 
         if (linkedinEmailInput) {
             linkedinEmailInput.value = localStorage.getItem('cv_email') || '';
@@ -850,6 +2023,11 @@
         }
 
         function setPaidState(type, value) {
+            const wasPaid = type === 'cv'
+                ? hasPaidCV
+                : type === 'linkedin'
+                    ? hasPaidLinkedIn
+                    : hasPaidCoverLetter;
             if (type === 'cv') {
                 hasPaidCV = value;
             } else if (type === 'linkedin') {
@@ -859,6 +2037,12 @@
             }
             syncPaidSessionState();
             syncAuditVisibility();
+            if (type === 'cv' && value) {
+                setOnboardingStep('optimized');
+            }
+            if (!wasPaid && value) {
+                trackEvent('payment_succeeded', { productType: type });
+            }
         }
 
         function warmUpCheckoutExperience() {
@@ -1377,6 +2561,8 @@
                 fileNameDisplay.textContent = file.name;
                 auditButton.disabled = false;
                 hideError();
+                setOnboardingStep('uploaded');
+                trackEvent('cv_file_selected', { fileKind, fileSizeBytes: Number(file.size) || 0 });
             } else {
                 cvFile = null;
                 cvFileKind = '';
@@ -1499,14 +2685,83 @@
         if (shouldStartFreshVisit()) {
             resetRunStateForNewAudit({ clearAuditArtifacts: true });
         }
+        onboardingCheckpoint = loadOnboardingState();
+        renderOnboardingState();
+        trackEvent('landing_viewed');
+        applySurfaceRoute({ scroll: false });
+
+        if (funnelStartAuditButton) {
+            funnelStartAuditButton.addEventListener('click', () => {
+                completeFirstSessionTooltip();
+                if (window.location.hash) {
+                    window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+                }
+                applySurfaceRoute({ scroll: true });
+            });
+        }
+
+        if (funnelFreeCtaButton) {
+            funnelFreeCtaButton.addEventListener('click', () => {
+                completeFirstSessionTooltip();
+                if (window.location.hash) {
+                    window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+                }
+                applySurfaceRoute({ scroll: true });
+            });
+        }
+
+        if (funnelProCtaButton) {
+            funnelProCtaButton.addEventListener('click', async () => {
+                await runAccountAction(async () => {
+                    try {
+                        await handleFunnelPlanSelection('pro');
+                    } catch (error) {
+                        showError(error.message || 'Unable to start Pro checkout.');
+                    }
+                });
+            });
+        }
+
+        if (funnelTeamCtaButton) {
+            funnelTeamCtaButton.addEventListener('click', async () => {
+                await runAccountAction(async () => {
+                    try {
+                        await handleFunnelPlanSelection('team');
+                    } catch (error) {
+                        showError(error.message || 'Unable to start Team checkout.');
+                    }
+                });
+            });
+        }
+
+        if (funnelOpenAccountButton) {
+            funnelOpenAccountButton.addEventListener('click', () => {
+                completeFirstSessionTooltip();
+                window.location.hash = 'account';
+                applySurfaceRoute({ scroll: true });
+            });
+        }
+
+        if (accountBackHomeButton) {
+            accountBackHomeButton.addEventListener('click', () => {
+                window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+                applySurfaceRoute({ scroll: true });
+            });
+        }
+
+        window.addEventListener('hashchange', () => {
+            applySurfaceRoute({ scroll: false });
+        });
 
         if (headerHomeLink) {
             headerHomeLink.addEventListener('click', (event) => {
                 event.preventDefault();
+                window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
                 resetRunStateForNewAudit({ clearAuditArtifacts: true });
                 loadingSection.classList.add('hidden');
                 resultsSection.classList.add('hidden');
                 uploadSection.classList.remove('hidden');
+                applySurfaceRoute({ scroll: false });
                 auditOutput.innerHTML = '';
                 hideError();
                 try {
@@ -1563,6 +2818,11 @@
         
         auditButton.addEventListener('click', async () => {
             if (!cvFile) return;
+            if (!canStartAudit()) {
+                showError('Free audit limit reached. Sign in and upgrade to Pro for unlimited audits.');
+                return;
+            }
+            trackEvent('audit_started', { fileKind: cvFileKind || 'unknown' });
 
             uploadSection.classList.add('hidden');
             loadingSection.classList.remove('hidden');
@@ -1607,6 +2867,13 @@
                 initializePayPalButtons();
                 initializeWhishPayCheckout();
                 warmUpCheckoutExperience();
+                trackEvent('audit_completed', { fileKind: cvFileKind || 'unknown' });
+                setOnboardingStep('reviewed');
+                const plan = String(currentEntitlements?.plan || 'free').trim().toLowerCase();
+                if (plan !== 'pro' && plan !== 'team') {
+                    const currentCount = Number(localStorage.getItem('free_audit_count') || '0') || 0;
+                    localStorage.setItem('free_audit_count', String(currentCount + 1));
+                }
 
             } catch (error) {
                 if (error.name === 'AbortError') {
@@ -1617,6 +2884,7 @@
                 loadingSection.classList.add('hidden');
                 uploadSection.classList.remove('hidden');
                 showError(error.message || "An unexpected error occurred during the audit.");
+                trackEvent('audit_failed', { message: String(error?.message || 'unknown').slice(0, 180) });
             }
         });
 
