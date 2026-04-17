@@ -169,6 +169,29 @@
             font-size: 14px;
             font-weight: 700;
         }
+        .onboarding-tooltip {
+            border: 1px solid rgba(59, 130, 246, 0.6);
+            background: rgba(30, 64, 175, 0.25);
+            border-radius: 0.5rem;
+            padding: 0.6rem 0.75rem;
+        }
+        .onboarding-step-badge {
+            border: 1px solid rgba(148, 163, 184, 0.45);
+            border-radius: 999px;
+            padding: 0.2rem 0.55rem;
+            font-size: 11px;
+            color: #cbd5e1;
+        }
+        .onboarding-step-badge-active {
+            border-color: rgba(59, 130, 246, 0.85);
+            color: #dbeafe;
+            background: rgba(30, 64, 175, 0.35);
+        }
+        .onboarding-step-badge-complete {
+            border-color: rgba(16, 185, 129, 0.9);
+            color: #bbf7d0;
+            background: rgba(6, 95, 70, 0.35);
+        }
         button:focus-visible,
         a:focus-visible,
         input:focus-visible {
@@ -193,6 +216,11 @@
             <p class="text-lg md:text-xl text-slate-400 mt-2">Get Your Free, Instant ATS-Friendly CV Audit</p>
             <div id="acquisition-funnel-card" class="mx-auto mt-4 max-w-3xl rounded-lg border border-blue-500/40 bg-slate-800/70 p-5 text-left">
                 <p class="text-sm font-semibold text-blue-300">3-Step ATS Funnel</p>
+                <div id="onboarding-step-badges" class="mt-2 flex flex-wrap gap-2">
+                    <span id="onboarding-step-badge-uploaded" class="onboarding-step-badge">1/3 uploaded</span>
+                    <span id="onboarding-step-badge-reviewed" class="onboarding-step-badge">2/3 reviewed</span>
+                    <span id="onboarding-step-badge-optimized" class="onboarding-step-badge">3/3 optimized</span>
+                </div>
                 <ol class="mt-3 space-y-2 text-sm text-slate-200">
                     <li><span class="font-semibold text-white">1.</span> Upload your CV to run an instant ATS scan.</li>
                     <li><span class="font-semibold text-white">2.</span> See immediate teaser insights and your match quality.</li>
@@ -202,6 +230,7 @@
                     <button id="funnel-start-audit-button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">Start Free Audit</button>
                     <button id="funnel-open-account-button" class="rounded-md border border-slate-500 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700">Go to Account</button>
                 </div>
+                <div id="onboarding-funnel-tooltip" class="onboarding-tooltip mt-2 hidden text-xs text-blue-100"></div>
                 <p class="mt-2 text-xs text-slate-400">Single CTA after teaser: <span class="font-semibold text-slate-200">Get full optimized CV + full audit</span>.</p>
                 <div class="mt-4 grid gap-3 md:grid-cols-3">
                     <div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
@@ -245,6 +274,12 @@
                     <button id="account-back-home-button" class="rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700">Back to Funnel</button>
                 </div>
                 <p id="account-status" class="mt-1 text-xs text-slate-400">Not signed in. Free tier includes limited audits.</p>
+                <div id="onboarding-continue-card" class="mt-2 hidden rounded-md border border-blue-500/40 bg-blue-900/20 p-3">
+                    <p class="text-xs font-semibold text-blue-100">Continue where you left off</p>
+                    <p id="onboarding-continue-text" class="mt-1 text-xs text-blue-200"></p>
+                    <button id="onboarding-continue-button" class="mt-2 rounded border border-blue-300 px-3 py-1 text-[11px] font-semibold text-blue-100 hover:bg-blue-900/40">Continue</button>
+                </div>
+                <div id="onboarding-tooltip-box" class="onboarding-tooltip mt-2 hidden text-xs text-blue-100"></div>
                 <div class="mt-3 grid gap-2 md:grid-cols-[1fr_auto_auto]">
                     <input id="account-email-input" type="email" class="w-full rounded-md border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-400" placeholder="you@example.com" />
                     <button id="account-signin-button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">Sign In</button>
@@ -723,6 +758,14 @@
         const accountStatus = document.getElementById('account-status');
         const accountCodeStatus = document.getElementById('account-code-status');
         const accountPlanBadge = document.getElementById('account-plan-badge');
+        const onboardingStepBadgeUploaded = document.getElementById('onboarding-step-badge-uploaded');
+        const onboardingStepBadgeReviewed = document.getElementById('onboarding-step-badge-reviewed');
+        const onboardingStepBadgeOptimized = document.getElementById('onboarding-step-badge-optimized');
+        const onboardingContinueCard = document.getElementById('onboarding-continue-card');
+        const onboardingContinueText = document.getElementById('onboarding-continue-text');
+        const onboardingContinueButton = document.getElementById('onboarding-continue-button');
+        const onboardingTooltipBox = document.getElementById('onboarding-tooltip-box');
+        const onboardingFunnelTooltip = document.getElementById('onboarding-funnel-tooltip');
         const planUpgradeProButton = document.getElementById('plan-upgrade-pro-button');
         const planUpgradeTeamButton = document.getElementById('plan-upgrade-team-button');
         const planCancelButton = document.getElementById('plan-cancel-button');
@@ -888,6 +931,9 @@
         let dashboardSubOffset = 0;
         let dashboardRunOffset = 0;
         const DASHBOARD_PAGE_SIZE = 5;
+        const ONBOARDING_STORAGE_KEY = 'onboarding_state_v1';
+        const ONBOARDING_TOOLTIP_SEEN_KEY = 'onboarding_tooltip_seen_v1';
+        let onboardingCheckpoint = null;
         const analyticsSessionId = (() => {
             const key = 'analytics_session_id';
             const generate = () => `sess_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
@@ -909,6 +955,155 @@
             writeStorage(sessionStorage, next);
             return next;
         })();
+
+        function loadOnboardingState() {
+            const fallback = {
+                uploaded: false,
+                reviewed: false,
+                optimized: false,
+            };
+            try {
+                const raw = localStorage.getItem(ONBOARDING_STORAGE_KEY);
+                if (!raw) return fallback;
+                const parsed = JSON.parse(raw);
+                return {
+                    uploaded: Boolean(parsed?.uploaded),
+                    reviewed: Boolean(parsed?.reviewed),
+                    optimized: Boolean(parsed?.optimized),
+                };
+            } catch (_error) {
+                return fallback;
+            }
+        }
+
+        function persistOnboardingState() {
+            try {
+                localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(onboardingCheckpoint || {}));
+            } catch (_error) {}
+        }
+
+        function getOnboardingStepIndex() {
+            if (!onboardingCheckpoint?.uploaded) return 0;
+            if (!onboardingCheckpoint?.reviewed) return 1;
+            if (!onboardingCheckpoint?.optimized) return 2;
+            return 3;
+        }
+
+        function setOnboardingStep(step) {
+            if (!onboardingCheckpoint) onboardingCheckpoint = loadOnboardingState();
+            if (step === 'uploaded') onboardingCheckpoint.uploaded = true;
+            if (step === 'reviewed') onboardingCheckpoint.reviewed = true;
+            if (step === 'optimized') onboardingCheckpoint.optimized = true;
+            persistOnboardingState();
+            renderOnboardingState();
+        }
+
+        function renderOnboardingBadges() {
+            const stepIndex = getOnboardingStepIndex();
+            const badges = [
+                { element: onboardingStepBadgeUploaded, complete: onboardingCheckpoint?.uploaded, active: stepIndex === 0 },
+                { element: onboardingStepBadgeReviewed, complete: onboardingCheckpoint?.reviewed, active: stepIndex === 1 },
+                { element: onboardingStepBadgeOptimized, complete: onboardingCheckpoint?.optimized, active: stepIndex === 2 || stepIndex === 3 },
+            ];
+            badges.forEach((badge) => {
+                if (!badge.element) return;
+                badge.element.classList.toggle('onboarding-step-badge-complete', Boolean(badge.complete));
+                badge.element.classList.toggle('onboarding-step-badge-active', Boolean(badge.active && !badge.complete));
+            });
+        }
+
+        function buildContinueCta() {
+            if (!onboardingCheckpoint?.uploaded) {
+                return {
+                    label: 'Upload your CV to start Step 1.',
+                    action: () => {
+                        if (window.location.hash) {
+                            window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+                        }
+                        applySurfaceRoute({ scroll: true });
+                    },
+                };
+            }
+            if (!onboardingCheckpoint?.reviewed) {
+                return {
+                    label: 'Continue to Step 2 by running your free review.',
+                    action: () => {
+                        if (window.location.hash) {
+                            window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+                        }
+                        applySurfaceRoute({ scroll: true });
+                    },
+                };
+            }
+            if (!onboardingCheckpoint?.optimized) {
+                return {
+                    label: 'Finish Step 3 and unlock your optimized CV.',
+                    action: () => {
+                        if (resultsSection?.classList.contains('hidden')) {
+                            if (window.location.hash) {
+                                window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+                            }
+                            applySurfaceRoute({ scroll: true });
+                        } else {
+                            revisedPaymentSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    },
+                };
+            }
+            return { label: 'You completed onboarding. Explore advanced account tools anytime.', action: () => { window.location.hash = '#account'; } };
+        }
+
+        function renderOnboardingContinueCard() {
+            if (!onboardingContinueCard || !onboardingContinueText || !onboardingContinueButton) return;
+            const signedIn = Boolean(String(currentUser?.email || '').trim());
+            if (!signedIn) {
+                onboardingContinueCard.classList.add('hidden');
+                return;
+            }
+            const cta = buildContinueCta();
+            onboardingContinueText.textContent = cta.label;
+            onboardingContinueButton.onclick = () => cta.action();
+            onboardingContinueCard.classList.remove('hidden');
+        }
+
+        function renderOnboardingTooltip() {
+            const stepIndex = getOnboardingStepIndex();
+            let isFirstSession = true;
+            try {
+                isFirstSession = sessionStorage.getItem(ONBOARDING_TOOLTIP_SEEN_KEY) !== 'true';
+            } catch (_error) {
+                isFirstSession = true;
+            }
+            const tooltipMessage = stepIndex === 0
+                ? 'Tip: Start by uploading a CV file. We will track your progress as 1/3 uploaded.'
+                : stepIndex === 1
+                    ? 'Tip: Run your free review to complete 2/3 reviewed and unlock tailored recommendations.'
+                    : stepIndex === 2
+                        ? 'Tip: Unlock the optimized CV to finish 3/3 and maximize interview readiness.'
+                        : '';
+            const hasMessage = Boolean(tooltipMessage) && isFirstSession;
+            if (onboardingTooltipBox) {
+                onboardingTooltipBox.textContent = tooltipMessage;
+                onboardingTooltipBox.classList.toggle('hidden', !hasMessage || !isAccountRoute());
+            }
+            if (onboardingFunnelTooltip) {
+                onboardingFunnelTooltip.textContent = tooltipMessage;
+                onboardingFunnelTooltip.classList.toggle('hidden', !hasMessage || isAccountRoute());
+            }
+        }
+
+        function renderOnboardingState() {
+            renderOnboardingBadges();
+            renderOnboardingContinueCard();
+            renderOnboardingTooltip();
+        }
+
+        function completeFirstSessionTooltip() {
+            try {
+                sessionStorage.setItem(ONBOARDING_TOOLTIP_SEEN_KEY, 'true');
+            } catch (_error) {}
+            renderOnboardingTooltip();
+        }
 
         const auditMountParent = auditSection ? auditSection.parentElement : null;
         const auditMountAnchor = document.createComment('audit-section-anchor');
@@ -974,6 +1169,7 @@
             if (!accountMode && shouldScroll && uploadSection) {
                 uploadSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
+            renderOnboardingTooltip();
         }
 
         async function trackEvent(eventName, context = {}) {
@@ -1069,6 +1265,10 @@
             if (accountDashboardSubscriptionsNextButton) accountDashboardSubscriptionsNextButton.disabled = controlsLocked;
             if (accountDashboardRunsPrevButton) accountDashboardRunsPrevButton.disabled = controlsLocked;
             if (accountDashboardRunsNextButton) accountDashboardRunsNextButton.disabled = controlsLocked;
+            if (signedIn && (plan === 'pro' || plan === 'team')) {
+                setOnboardingStep('optimized');
+            }
+            renderOnboardingContinueCard();
         }
 
         async function runAccountAction(task) {
@@ -1259,6 +1459,15 @@
             const runCount = Array.isArray(payload?.recentRuns) ? payload.recentRuns.length : 0;
             const subCount = Array.isArray(payload?.subscriptions) ? payload.subscriptions.length : 0;
             const workspaceMembers = Number(payload?.workspace?.memberCount || 0);
+            if (runCount > 0) {
+                setOnboardingStep('uploaded');
+                setOnboardingStep('reviewed');
+            }
+            const hasActivePaidPlan = String(payload?.entitlements?.plan || 'free').toLowerCase() === 'pro'
+                || String(payload?.entitlements?.plan || 'free').toLowerCase() === 'team';
+            if (hasActivePaidPlan) {
+                setOnboardingStep('optimized');
+            }
             accountDashboardStatus.textContent = 'Dashboard updated.';
             if (accountDashboardSummary) {
                 const renewal = String(payload?.insights?.alerts?.nextRenewalAt || payload?.subscriptions?.[0]?.nextRenewalAt || '').trim();
@@ -1828,6 +2037,9 @@
             }
             syncPaidSessionState();
             syncAuditVisibility();
+            if (type === 'cv' && value) {
+                setOnboardingStep('optimized');
+            }
             if (!wasPaid && value) {
                 trackEvent('payment_succeeded', { productType: type });
             }
@@ -2349,6 +2561,7 @@
                 fileNameDisplay.textContent = file.name;
                 auditButton.disabled = false;
                 hideError();
+                setOnboardingStep('uploaded');
                 trackEvent('cv_file_selected', { fileKind, fileSizeBytes: Number(file.size) || 0 });
             } else {
                 cvFile = null;
@@ -2472,11 +2685,14 @@
         if (shouldStartFreshVisit()) {
             resetRunStateForNewAudit({ clearAuditArtifacts: true });
         }
+        onboardingCheckpoint = loadOnboardingState();
+        renderOnboardingState();
         trackEvent('landing_viewed');
         applySurfaceRoute({ scroll: false });
 
         if (funnelStartAuditButton) {
             funnelStartAuditButton.addEventListener('click', () => {
+                completeFirstSessionTooltip();
                 if (window.location.hash) {
                     window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
                 }
@@ -2486,6 +2702,7 @@
 
         if (funnelFreeCtaButton) {
             funnelFreeCtaButton.addEventListener('click', () => {
+                completeFirstSessionTooltip();
                 if (window.location.hash) {
                     window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
                 }
@@ -2519,6 +2736,7 @@
 
         if (funnelOpenAccountButton) {
             funnelOpenAccountButton.addEventListener('click', () => {
+                completeFirstSessionTooltip();
                 window.location.hash = 'account';
                 applySurfaceRoute({ scroll: true });
             });
@@ -2650,6 +2868,7 @@
                 initializeWhishPayCheckout();
                 warmUpCheckoutExperience();
                 trackEvent('audit_completed', { fileKind: cvFileKind || 'unknown' });
+                setOnboardingStep('reviewed');
                 const plan = String(currentEntitlements?.plan || 'free').trim().toLowerCase();
                 if (plan !== 'pro' && plan !== 'team') {
                     const currentCount = Number(localStorage.getItem('free_audit_count') || '0') || 0;
