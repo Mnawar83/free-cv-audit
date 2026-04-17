@@ -138,6 +138,7 @@ function getDefaultStore() {
     subscriptions: {},
     entitlements: {},
     userSessionCodes: {},
+    workspaceMembers: {},
     runs: {},
     emailDownloads: {},
     emailDeliveries: {},
@@ -726,6 +727,63 @@ async function getUserEntitlements(userId) {
   if (!safeUserId) return null;
   const { store } = await readStoreWithMeta();
   return store.entitlements?.[safeUserId] || null;
+}
+
+async function listWorkspaceMembers(ownerUserId) {
+  const safeOwnerId = String(ownerUserId || '').trim();
+  if (!safeOwnerId) return [];
+  const { store } = await readStoreWithMeta();
+  const members = Array.isArray(store.workspaceMembers?.[safeOwnerId]) ? store.workspaceMembers[safeOwnerId] : [];
+  return members.slice().sort((a, b) => {
+    const aTime = new Date(a?.updated_at || a?.created_at || 0).getTime();
+    const bTime = new Date(b?.updated_at || b?.created_at || 0).getTime();
+    return bTime - aTime;
+  });
+}
+
+async function upsertWorkspaceMember(ownerUserId, memberEmail, role = 'member', status = 'INVITED') {
+  return mutateStore((store) => {
+    const safeOwnerId = String(ownerUserId || '').trim();
+    const safeEmail = normalizeEmail(memberEmail);
+    if (!safeOwnerId || !safeEmail) throw new Error('ownerUserId and memberEmail are required.');
+    const safeRole = String(role || 'member').trim().toLowerCase() === 'admin' ? 'admin' : 'member';
+    const safeStatus = String(status || 'INVITED').trim().toUpperCase();
+    store.workspaceMembers = store.workspaceMembers && typeof store.workspaceMembers === 'object'
+      ? store.workspaceMembers
+      : {};
+    const members = Array.isArray(store.workspaceMembers[safeOwnerId]) ? store.workspaceMembers[safeOwnerId] : [];
+    const existingIndex = members.findIndex((item) => normalizeEmail(item?.email) === safeEmail);
+    const existing = existingIndex >= 0 ? members[existingIndex] : { email: safeEmail, created_at: new Date().toISOString() };
+    const next = {
+      ...existing,
+      email: safeEmail,
+      role: safeRole,
+      status: safeStatus,
+      updated_at: new Date().toISOString(),
+    };
+    if (existingIndex >= 0) {
+      members[existingIndex] = next;
+    } else {
+      members.push(next);
+    }
+    store.workspaceMembers[safeOwnerId] = members;
+    return { value: next };
+  });
+}
+
+async function removeWorkspaceMember(ownerUserId, memberEmail) {
+  return mutateStore((store) => {
+    const safeOwnerId = String(ownerUserId || '').trim();
+    const safeEmail = normalizeEmail(memberEmail);
+    if (!safeOwnerId || !safeEmail) throw new Error('ownerUserId and memberEmail are required.');
+    store.workspaceMembers = store.workspaceMembers && typeof store.workspaceMembers === 'object'
+      ? store.workspaceMembers
+      : {};
+    const members = Array.isArray(store.workspaceMembers[safeOwnerId]) ? store.workspaceMembers[safeOwnerId] : [];
+    const filtered = members.filter((item) => normalizeEmail(item?.email) !== safeEmail);
+    store.workspaceMembers[safeOwnerId] = filtered;
+    return { value: { removed: members.length !== filtered.length } };
+  });
 }
 
 async function saveUserSessionCode(email, code, expiresAt, metadata = {}) {
@@ -1469,6 +1527,7 @@ module.exports = {
   getUserById,
   getUserEntitlements,
   getUserSubscriptions,
+  listWorkspaceMembers,
   consumeUserSessionCode,
   incrementArtifactTokenDownload,
   isWebhookEventProcessed,
@@ -1489,8 +1548,10 @@ module.exports = {
   upsertUserByEmail,
   upsertSubscription,
   saveUserSessionCode,
+  upsertWorkspaceMember,
   upsertRun,
   linkRunToUser,
+  removeWorkspaceMember,
   refreshUserEntitlements,
   updateRun,
 };
