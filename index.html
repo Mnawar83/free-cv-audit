@@ -192,7 +192,7 @@
 
             <p class="text-lg md:text-xl text-slate-400 mt-2">Get Your Free, Instant ATS-Friendly CV Audit</p>
             <div id="account-panel" class="mx-auto mt-4 max-w-xl rounded-lg border border-slate-700 bg-slate-800/70 p-4 text-left">
-                <p class="text-sm font-semibold text-slate-200">Account (Phase 1)</p>
+                <p class="text-sm font-semibold text-slate-200">Account (Phase 2)</p>
                 <p id="account-status" class="mt-1 text-xs text-slate-400">Not signed in. Free tier includes limited audits.</p>
                 <div class="mt-3 grid gap-2 md:grid-cols-[1fr_auto_auto]">
                     <input id="account-email-input" type="email" class="w-full rounded-md border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-400" placeholder="you@example.com" />
@@ -953,6 +953,7 @@
                 showError('Please sign in first.');
                 return;
             }
+            if (billingPortalStatus) billingPortalStatus.textContent = 'Updating subscription…';
             const response = await fetch('/.netlify/functions/subscription', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -969,6 +970,24 @@
             }
             updateAccountUi();
             await refreshWorkspaceMembers();
+        }
+
+        async function resolveReactivationPlan() {
+            if (!currentUser?.id) return 'pro';
+            try {
+                const response = await fetch('/.netlify/functions/subscription', { method: 'GET' });
+                const payload = await readJsonSafely(response);
+                if (!response.ok) return 'pro';
+                const subscriptions = Array.isArray(payload?.subscriptions) ? payload.subscriptions : [];
+                const latestPaid = subscriptions.find((item) => {
+                    const plan = String(item?.plan || '').trim().toLowerCase();
+                    return plan === 'team' || plan === 'pro';
+                });
+                const plan = String(latestPaid?.plan || '').trim().toLowerCase();
+                return plan === 'team' ? 'team' : 'pro';
+            } catch (_error) {
+                return 'pro';
+            }
         }
 
         async function openBillingPortal() {
@@ -1219,8 +1238,7 @@
         }
         if (planReactivateButton) {
             planReactivateButton.addEventListener('click', async () => {
-                const currentPlan = String(currentEntitlements?.plan || 'pro').trim().toLowerCase();
-                const nextPlan = currentPlan === 'team' ? 'team' : 'pro';
+                const nextPlan = await resolveReactivationPlan();
                 await updateSubscription(nextPlan, 'ACTIVE', `${nextPlan.toUpperCase()} plan reactivated.`);
             });
         }
