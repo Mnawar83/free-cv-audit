@@ -7,7 +7,6 @@ async function run() {
   const html = fs.readFileSync(indexPath, 'utf8');
 
   assert.ok(html.includes("const planUpgradeProButton = document.getElementById('plan-upgrade-pro-button');"));
-  assert.ok(html.includes("const planUpgradeTeamButton = document.getElementById('plan-upgrade-team-button');"));
   assert.ok(html.includes("const accountPromoCodeInput = document.getElementById('account-promo-code-input');"));
   assert.ok(html.includes("const accountOpenPricingButton = document.getElementById('account-open-pricing-button');"));
   assert.ok(html.includes("const winbackCard = document.getElementById('winback-card');"));
@@ -52,7 +51,6 @@ async function run() {
   assert.ok(html.includes('id="funnel-start-audit-button"'));
   assert.ok(html.includes('id="funnel-free-cta-button"'));
   assert.ok(html.includes('id="funnel-pro-cta-button"'));
-  assert.ok(html.includes('id="funnel-team-cta-button"'));
   assert.ok(html.includes('id="funnel-open-account-button"'));
   assert.ok(html.includes('id="onboarding-step-badge-uploaded"'));
   assert.ok(html.includes('id="onboarding-step-badge-reviewed"'));

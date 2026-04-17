@@ -646,7 +646,7 @@ async function listUserRuns(userId, limit = 20) {
 
 function normalizePlan(value) {
   const safePlan = String(value || '').trim().toLowerCase();
-  if (safePlan === 'team') return 'team';
+  if (safePlan === 'team') return 'pro';
   if (safePlan === 'pro') return 'pro';
   return 'free';
 }
@@ -654,13 +654,12 @@ function normalizePlan(value) {
 function deriveEntitlementsFromSubscriptions(subscriptions = []) {
   const normalized = Array.isArray(subscriptions) ? subscriptions : [];
   const active = normalized.filter((item) => String(item?.status || '').toUpperCase() === 'ACTIVE');
-  const hasTeam = active.some((item) => normalizePlan(item?.plan) === 'team');
-  const hasPro = hasTeam || active.some((item) => normalizePlan(item?.plan) === 'pro');
+  const hasPro = active.some((item) => normalizePlan(item?.plan) === 'pro');
   return {
-    plan: hasTeam ? 'team' : hasPro ? 'pro' : 'free',
+    plan: hasPro ? 'pro' : 'free',
     canUseUnlimitedAudits: hasPro,
-    canUseTeamWorkspace: hasTeam,
-    canUsePriorityQueue: hasTeam,
+    canUseTeamWorkspace: hasPro,
+    canUsePriorityQueue: hasPro,
     activeSubscriptionCount: active.length,
     updated_at: new Date().toISOString(),
   };

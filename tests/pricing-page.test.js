@@ -7,7 +7,6 @@ async function run() {
   const html = fs.readFileSync(pagePath, 'utf8');
 
   assert.ok(html.includes('id="pro"'));
-  assert.ok(html.includes('id="team"'));
   assert.ok(html.includes('id="pricing-billing-cycle"'));
   assert.ok(html.includes('id="pricing-promo-code"'));
   assert.ok(html.includes('id="pricing-apply-promo"'));

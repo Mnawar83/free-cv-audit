@@ -11,7 +11,7 @@ function json(statusCode, payload) {
 
 function normalizePlan(value) {
   const safe = String(value || '').trim().toLowerCase();
-  if (safe === 'team') return 'team';
+  if (safe === 'team') return 'pro';
   if (safe === 'pro') return 'pro';
   return '';
 }
@@ -37,9 +37,7 @@ function appendQueryParam(url, key, value) {
 }
 
 function resolveConfiguredUrl(plan) {
-  const planSpecific = plan === 'team'
-    ? String(process.env.SUBSCRIPTION_TEAM_CHECKOUT_URL || '').trim()
-    : String(process.env.SUBSCRIPTION_PRO_CHECKOUT_URL || '').trim();
+  const planSpecific = String(process.env.SUBSCRIPTION_PRO_CHECKOUT_URL || '').trim();
   if (planSpecific) return planSpecific;
   return String(process.env.SUBSCRIPTION_CHECKOUT_URL_TEMPLATE || '').trim();
 }
@@ -53,7 +51,7 @@ exports.handler = async (event) => {
   if (!userId) return json(401, { error: 'No active user session.' });
 
   const plan = normalizePlan(event.queryStringParameters?.plan);
-  if (!plan) return json(400, { error: 'Unsupported plan.', supportedPlans: ['pro', 'team'] });
+  if (!plan) return json(400, { error: 'Unsupported plan.', supportedPlans: ['pro'] });
   const billingCycle = normalizeBillingCycle(event.queryStringParameters?.billingCycle || process.env.SUBSCRIPTION_DEFAULT_BILLING_CYCLE);
   const experiment = normalizeExperiment(event.queryStringParameters?.exp || process.env.SUBSCRIPTION_EXPERIMENT_DEFAULT);
   const promoCode = String(event.queryStringParameters?.promo || '').trim().toUpperCase();

@@ -43,7 +43,7 @@ async function run() {
   const teamResponse = await subscription.handler({
     httpMethod: 'POST',
     headers: { 'content-type': 'application/json', cookie },
-    body: JSON.stringify({ plan: 'team', status: 'ACTIVE', provider: 'internal' }),
+    body: JSON.stringify({ plan: 'pro', status: 'ACTIVE', provider: 'internal' }),
   });
   assert.strictEqual(teamResponse.statusCode, 200);
 

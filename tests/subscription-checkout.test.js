@@ -37,7 +37,7 @@ async function run() {
     httpMethod: 'GET',
     headers: { cookie },
     queryStringParameters: {
-      plan: 'team',
+      plan: 'pro',
       returnUrl: 'https://app.example.com/account',
       billingCycle: 'annual',
       exp: 'annual_default',
@@ -47,11 +47,11 @@ async function run() {
   assert.strictEqual(checkoutResponse.statusCode, 200);
   const payload = JSON.parse(checkoutResponse.body || '{}');
   assert.strictEqual(payload.ok, true);
-  assert.strictEqual(payload.plan, 'team');
+  assert.strictEqual(payload.plan, 'pro');
   assert.strictEqual(payload.billingCycle, 'annual');
   assert.strictEqual(payload.experiment, 'annual_default');
   assert.strictEqual(payload.promoCode, 'WELCOME20');
-  assert.ok(payload.checkoutUrl.includes('plan=team'));
+  assert.ok(payload.checkoutUrl.includes('plan=pro'));
   assert.ok(payload.checkoutUrl.includes('return=https%3A%2F%2Fapp.example.com%2Faccount'));
   assert.ok(payload.checkoutUrl.includes('billingCycle=annual'));
   assert.ok(payload.checkoutUrl.includes('exp=annual_default'));

@@ -22,7 +22,7 @@ function resolveUserId(event, body = {}) {
 
 function normalizePlan(value) {
   const safePlan = String(value || '').trim().toLowerCase();
-  if (safePlan === 'team') return 'team';
+  if (safePlan === 'team') return 'pro';
   if (safePlan === 'pro') return 'pro';
   return 'free';
 }

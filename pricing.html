@@ -36,18 +36,6 @@
       <button data-plan="pro" class="pricing-cta mt-4 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold">Upgrade to Pro</button>
     </section>
 
-    <section id="team" class="mt-6 rounded-xl border border-violet-500/40 bg-violet-950/20 p-5">
-      <p class="text-xs uppercase tracking-wide text-violet-300">Team</p>
-      <h2 class="mt-1 text-2xl font-semibold">For recruiters and coaching teams</h2>
-      <p class="mt-2 text-sm text-violet-100">Everything in Pro plus collaboration workflows.</p>
-      <ul class="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-200">
-        <li>Shared workspace member controls</li>
-        <li>Priority support and queueing</li>
-        <li>Team performance visibility</li>
-      </ul>
-      <button data-plan="team" class="pricing-cta mt-4 rounded-md bg-violet-600 px-4 py-2 text-sm font-semibold">Upgrade to Team</button>
-    </section>
-
     <p id="pricing-status" class="mt-6 text-sm text-slate-300"></p>
   </main>
 
@@ -99,7 +87,7 @@
     }
 
     async function beginCheckout(plan) {
-      const safePlan = String(plan || '').trim().toLowerCase() === 'team' ? 'team' : 'pro';
+      const safePlan = 'pro';
       const billingCycle = String(billingCycleInput.value || 'monthly').trim().toLowerCase() === 'annual' ? 'annual' : 'monthly';
       const promoCode = String(promoCodeInput.value || '').trim().toUpperCase();
       const experiment = resolveExperimentVariant();

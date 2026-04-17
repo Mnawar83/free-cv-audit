@@ -43,7 +43,7 @@ async function run() {
   const subResponse = await subscription.handler({
     httpMethod: 'POST',
     headers: { 'content-type': 'application/json', cookie },
-    body: JSON.stringify({ plan: 'team', status: 'ACTIVE', provider: 'internal' }),
+    body: JSON.stringify({ plan: 'pro', status: 'ACTIVE', provider: 'internal' }),
   });
   assert.strictEqual(subResponse.statusCode, 200);
   const canceledSubResponse = await subscription.handler({
@@ -99,7 +99,7 @@ async function run() {
   const payload = JSON.parse(dashboardResponse.body || '{}');
   assert.strictEqual(payload.ok, true);
   assert.strictEqual(payload.user.userId, userId);
-  assert.strictEqual(payload.entitlements.plan, 'team');
+  assert.strictEqual(payload.entitlements.plan, 'pro');
   assert.strictEqual(payload.workspace.memberCount, 1);
   assert.strictEqual(payload.subscriptions.length, 3);
   assert.strictEqual(payload.recentRuns.length, 2);

@@ -47,14 +47,14 @@ async function run() {
     body: JSON.stringify({
       subscriptionId: 'sub_whish_1',
       userId: user.user_id,
-      plan: 'team',
+      plan: 'pro',
       status: 'active',
     }),
   });
   assert.strictEqual(whishResponse.statusCode, 200);
 
   const entitlements = await runStore.getUserEntitlements(user.user_id);
-  assert.strictEqual(entitlements.plan, 'team');
+  assert.strictEqual(entitlements.plan, 'pro');
 
   console.log('provider subscription webhooks test passed');
 }
