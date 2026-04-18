@@ -12,6 +12,8 @@ const {
 const { triggerEmailQueueProcessing } = require('./queue-trigger');
 const crypto = require('crypto');
 const { badRequest, parseJsonBody } = require('./http-400');
+const { enforceRateLimit, validateCsrfOrigin } = require('./request-guards');
+const { isValidEmail, isValidUrl, normalizeBase64Pdf } = require('./utils/validation');
 const QUALITY_FLOOR_DISABLED_VALUES = new Set(['0', 'false', 'off', 'no']);
 
 function isQualityFloorEnabled() {
@@ -90,13 +92,6 @@ function createIdempotencyKey({ email, runId, isResend }) {
     .createHash('sha256')
     .update(`${email}|${runId}|${isResend ? 'resend' : 'first'}`)
     .digest('hex');
-}
-
-function normalizeBase64Pdf(value) {
-  const raw = String(value || '').trim().replace(/\s+/g, '');
-  if (!raw) return '';
-  if (!/^[A-Za-z0-9+/=]+$/.test(raw)) return '';
-  return raw;
 }
 
 function isArtifactTokenUsable(tokenRecord) {
@@ -205,6 +200,11 @@ exports.handler = async (event) => {
   }
 
   try {
+    const csrfError = validateCsrfOrigin(event);
+    if (csrfError) return json(403, { error: `csrf validation failed: ${csrfError}` });
+    if (await enforceRateLimit(event, { keyPrefix: 'send-cv-email', windowMsEnv: 'SEND_CV_EMAIL_RATE_LIMIT_WINDOW_MS', maxEnv: 'SEND_CV_EMAIL_RATE_LIMIT_MAX', defaults: { windowMs: 60_000, max: 10 } })) {
+      return json(429, { error: 'Too many requests. Please try again shortly.' });
+    }
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
       console.log('[fulfillment][email] send-blocked reason=missing_resend_api_key');
@@ -224,8 +224,8 @@ exports.handler = async (event) => {
     const clientPdfBase64 = toSafeText(payload.pdfBase64);
     const clientCvText = toSafeText(payload.cvText);
 
-    if (!email) return badRequest({ event, functionName, route, message: 'Missing email.', payload, missingFields: ['email'] });
-    if (!cvUrl) return badRequest({ event, functionName, route, message: 'Missing CV file URL.', payload, missingFields: ['cvUrl'] });
+    if (!email || !isValidEmail(email)) return badRequest({ event, functionName, route, message: 'Valid email is required.', payload, invalidFields: ['email'] });
+    if (!cvUrl || !isValidUrl(cvUrl)) return badRequest({ event, functionName, route, message: 'A valid CV URL is required.', payload, invalidFields: ['cvUrl'] });
     if (!runId) return badRequest({ event, functionName, route, message: 'Missing runId for CV delivery.', payload, missingFields: ['runId'] });
 
     // ---- Fast path: fulfillment queue already resolved all artifacts ----

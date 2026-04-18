@@ -35,6 +35,10 @@ exports.handler = async function handler(event) {
 
   const store = getStore(STORE_NAME);
 
+  if (event.httpMethod === 'GET' && String(event.path || '').endsWith('/health')) {
+    return jsonResponse(200, { ok: true });
+  }
+
   if (event.httpMethod === 'GET') {
     try {
       const result = await store.getWithMetadata(STORE_KEY, { type: 'json' });

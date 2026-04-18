@@ -2,6 +2,8 @@ const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { LINKEDIN_UPSELL_STATUS, createRunId, getRun, upsertRun } = require('./run-store');
 const { buildPdfBuffer, buildPdfBufferFromStructuredCv, buildPdfBufferLenient, normalizeToCvTemplateText } = require('./pdf-builder');
 const { structuredCvToTemplateText, tryExtractStructuredCv } = require('./cv-schema');
+const { badRequest, parseJsonBody } = require('./http-400');
+const { enforceRateLimit, validateCsrfOrigin } = require('./request-guards');
 
 const PDF_FILENAME = 'revised-cv.pdf';
 const QUALITY_FLOOR_DISABLED_VALUES = new Set(['0', 'false', 'off', 'no']);
@@ -193,6 +195,21 @@ exports.handler = async (event) => {
   }
 
   try {
+
+  const csrfError = validateCsrfOrigin(event);
+  if (csrfError) {
+    return { statusCode: 403, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: `csrf validation failed: ${csrfError}` }) };
+  }
+
+  if (await enforceRateLimit(event, {
+    keyPrefix: 'generate-pdf',
+    windowMsEnv: 'GENERATE_PDF_RATE_LIMIT_WINDOW_MS',
+    maxEnv: 'GENERATE_PDF_RATE_LIMIT_MAX',
+    defaults: { windowMs: 60_000, max: 20 },
+  })) {
+    return { statusCode: 429, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Too many requests. Please try again shortly.' }) };
+  }
+
     let isGetRequest = false;
     let getRunData = null;
     const qualityFloorMode = isQualityFloorEnabled();
@@ -238,7 +255,9 @@ exports.handler = async (event) => {
       incomingRunId = event.queryStringParameters?.runId;
       existingRun = getRunData;
     } else {
-      const body = JSON.parse(event.body || '{}');
+      const parsed = parseJsonBody(event, { functionName: 'generate-pdf', route: '/.netlify/functions/generate-pdf' });
+      if (!parsed.ok) return parsed.response;
+      const body = parsed.body || {};
       incomingRunId = body.runId;
       var forceRegenerate = Boolean(body.forceRegenerate);
       var cvText = body.cvText;
@@ -278,7 +297,11 @@ exports.handler = async (event) => {
     const candidateModels = getGoogleAiCandidateModels();
 
     if (!resolvedCvText) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'cvText is required' }) };
+      return badRequest({ event, functionName: 'generate-pdf', route: '/.netlify/functions/generate-pdf', message: 'cvText is required', missingFields: ['cvText'] });
+    }
+    const maxCvBytes = Math.max(1_024, Number(process.env.MAX_CV_TEXT_BYTES || 50 * 1024));
+    if (Buffer.byteLength(resolvedCvText, 'utf8') > maxCvBytes) {
+      return badRequest({ event, functionName: 'generate-pdf', route: '/.netlify/functions/generate-pdf', message: `cvText exceeds maximum allowed size (${maxCvBytes} bytes).`, invalidFields: ['cvText'] });
     }
 
     const apiKey = process.env.GOOGLE_AI_API_KEY;

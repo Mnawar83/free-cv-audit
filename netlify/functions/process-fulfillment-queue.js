@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { isValidEmail, isValidUrl, normalizeBase64Pdf } = require('./utils/validation');
 const {
   claimFulfillmentJob,
   completeFulfillmentJob,
@@ -40,13 +41,6 @@ function buildError(message, statusCode, options = {}) {
   error.statusCode = statusCode;
   if (options.transient) error.transient = true;
   return error;
-}
-
-function normalizeBase64Pdf(value) {
-  const raw = String(value || '').trim().replace(/\s+/g, '');
-  if (!raw) return '';
-  if (!/^[A-Za-z0-9+/=]+$/.test(raw)) return '';
-  return raw;
 }
 
 function prepareFinalPdfArtifact(run = {}, generatedPdfBase64 = '') {

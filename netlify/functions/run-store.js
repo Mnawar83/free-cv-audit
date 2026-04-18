@@ -55,7 +55,6 @@ function isProductionRuntime() {
   return process.env.CONTEXT === 'production';
 }
 
-let hasLoggedProductionFallbackWarning = false;
 
 function canResolveNetlifyBlobsModule() {
   const lookupPaths = require.resolve.paths('@netlify/blobs') || [];
@@ -116,18 +115,22 @@ function hasNativeBlobs() {
   return nativeBlobsAvailable;
 }
 
+function assertDurableStoreConfiguration() {
+  if (!isProductionRuntime()) return;
+  const missing = [];
+  if (!RUN_STORE_DURABLE_URL) missing.push('RUN_STORE_DURABLE_URL');
+  if (!RUN_STORE_DURABLE_TOKEN) missing.push('RUN_STORE_DURABLE_TOKEN');
+  if (missing.length) {
+    throw new Error(`Durable run store is required in production. Missing: ${missing.join(', ')}`);
+  }
+}
+
+assertDurableStoreConfiguration();
+
 function shouldUseDurableStore() {
   if (RESOLVED_RUN_STORE_DURABLE_URL) {
     return true;
   }
-
-  if (isProductionRuntime() && !hasLoggedProductionFallbackWarning) {
-    hasLoggedProductionFallbackWarning = true;
-    console.warn(
-      'RUN_STORE_DURABLE_URL is not configured in production. Falling back to local file store; run persistence may be temporary.',
-    );
-  }
-
   return false;
 }
 
@@ -1502,6 +1505,22 @@ async function getOperationalStats() {
   };
 }
 
+
+async function checkDurableStoreHealth() {
+  if (!RESOLVED_RUN_STORE_DURABLE_URL) {
+    throw new Error('RUN_STORE_DURABLE_URL is not configured.');
+  }
+  const healthUrl = new URL('/health', RESOLVED_RUN_STORE_DURABLE_URL).toString();
+  const response = await fetch(healthUrl, {
+    method: 'GET',
+    headers: getDurableHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Durable store health check failed (${response.status}).`);
+  }
+  return true;
+}
+
 module.exports = {
   COVER_LETTER_PRICE_USD,
   COVER_LETTER_STATUS,
@@ -1538,6 +1557,7 @@ module.exports = {
   listUserRuns,
   pruneOperationalData,
   takeRateLimitSlot,
+  checkDurableStoreHealth,
   createArtifactToken,
   createFulfillment,
   claimFulfillmentJob,

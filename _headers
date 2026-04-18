@@ -1,0 +1,5 @@
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com https://www.paypal.com https://www.sandbox.paypal.com; connect-src 'self' https://api.resend.com https://api-m.sandbox.paypal.com https://api-m.paypal.com https://api.whish.money; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-src https://www.paypal.com https://www.sandbox.paypal.com; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY

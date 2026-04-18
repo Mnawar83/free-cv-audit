@@ -1,5 +1,6 @@
 const { badRequest, parseJsonBody } = require('./http-400');
 const { getUserById, upsertUserByEmail } = require('./run-store');
+const { isValidEmail, isValidUrl, normalizeBase64Pdf } = require('./utils/validation');
 const {
   createUserSessionCookie,
   clearUserSessionCookie,
@@ -13,10 +14,6 @@ function json(statusCode, payload, headers = {}) {
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(payload),
   };
-}
-
-function isValidEmail(value) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
 }
 
 function normalizeName(value) {
