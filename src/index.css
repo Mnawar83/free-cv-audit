@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-slate-950 text-slate-100 font-sans antialiased;
+}
+
+.sr-only-focusable:focus {
+  @apply not-sr-only fixed left-4 top-4 z-50 rounded bg-slate-900 px-4 py-2;
+}
