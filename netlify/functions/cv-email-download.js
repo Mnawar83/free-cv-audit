@@ -1,13 +1,8 @@
 const { getEmailDownloadSnapshot } = require('./email-download-store');
 const { buildPdfBuffer, pdfResponse } = require('./pdf-builder');
 const { getArtifactToken, getRun, incrementArtifactTokenDownload, takeRateLimitSlot } = require('./run-store');
-
-function normalizeBase64Pdf(value) {
-  const raw = String(value || '').trim().replace(/\s+/g, '');
-  if (!raw) return '';
-  if (!/^[A-Za-z0-9+/=]+$/.test(raw)) return '';
-  return raw;
-}
+const { validateCsrfOrigin } = require('./request-guards');
+const { isValidEmail, isValidUrl, normalizeBase64Pdf } = require('./utils/validation');
 
 function getClientKey(event, token) {
   const forwarded = String(event.headers?.['x-forwarded-for'] || event.headers?.['X-Forwarded-For'] || '').split(',')[0].trim();
@@ -79,7 +74,12 @@ exports.handler = async (event) => {
     }
 
     if (pdfBase64) {
-      await incrementArtifactTokenDownload(token).catch(() => null);
+      try {
+        await incrementArtifactTokenDownload(token);
+      } catch (error) {
+        console.error('[cv-email-download] failed to increment token download count', { token, error: error?.message || error });
+        return htmlErrorResponse(500, 'Unable to update secure download state. Please try again.');
+      }
       return {
         statusCode: 200,
         headers: {
@@ -93,7 +93,12 @@ exports.handler = async (event) => {
     }
 
     const pdfBuffer = buildPdfBuffer(snapshot.revised_cv_text);
-    await incrementArtifactTokenDownload(token).catch(() => null);
+    try {
+      await incrementArtifactTokenDownload(token);
+    } catch (error) {
+      console.error('[cv-email-download] failed to increment token download count after PDF build', { token, error: error?.message || error });
+      return htmlErrorResponse(500, 'Unable to update secure download state. Please try again.');
+    }
     const generated = pdfResponse(pdfBuffer, 'revised-cv.pdf', true);
     generated.headers = {
       ...generated.headers,

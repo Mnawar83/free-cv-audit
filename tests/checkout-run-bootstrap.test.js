@@ -40,15 +40,19 @@ async function run() {
   clearModule('../netlify/functions/paypal-create-order');
   const paypalCreateOrder = require('../netlify/functions/paypal-create-order').handler;
   const paypalRunId = 'run_bootstrap_paypal';
+  const paypalMissingRunResponse = await paypalCreateOrder({
+    httpMethod: 'POST',
+    body: JSON.stringify({ runId: paypalRunId, email: 'paypal@example.com' }),
+  });
+  assert.strictEqual(paypalMissingRunResponse.statusCode, 404);
+
+  await runStore.upsertRun(paypalRunId, { original_cv_text: 'CV text' });
   const paypalResponse = await paypalCreateOrder({
     httpMethod: 'POST',
     body: JSON.stringify({ runId: paypalRunId, email: 'paypal@example.com' }),
   });
   assert.strictEqual(paypalResponse.statusCode, 200);
   assert.strictEqual(paypalFetchCalls, 2);
-  const paypalRun = await runStore.getRun(paypalRunId);
-  assert.ok(paypalRun, 'PayPal checkout should bootstrap missing run records.');
-  assert.strictEqual(paypalRun.checkout_provider_hint, 'paypal');
 
   global.fetch = async (url) => {
     if (String(url).includes('/payment/whish')) {
@@ -65,16 +69,20 @@ async function run() {
   clearModule('../netlify/functions/whishpay-create-payment');
   const whishpayCreatePayment = require('../netlify/functions/whishpay-create-payment').handler;
   const whishRunId = 'run_bootstrap_whish';
+  const whishMissingRunResponse = await whishpayCreatePayment({
+    httpMethod: 'POST',
+    body: JSON.stringify({ runId: whishRunId, email: 'whish@example.com' }),
+  });
+  assert.strictEqual(whishMissingRunResponse.statusCode, 404);
+
+  await runStore.upsertRun(whishRunId, { original_cv_text: 'CV text' });
   const whishResponse = await whishpayCreatePayment({
     httpMethod: 'POST',
     body: JSON.stringify({ runId: whishRunId, email: 'whish@example.com' }),
   });
   assert.strictEqual(whishResponse.statusCode, 200);
-  const whishRun = await runStore.getRun(whishRunId);
-  assert.ok(whishRun, 'Whish checkout should bootstrap missing run records.');
-  assert.strictEqual(whishRun.checkout_provider_hint, 'whishpay');
 
-  console.log('checkout run bootstrap test passed');
+  console.log('checkout run existence validation test passed');
 }
 
 run().catch((error) => {

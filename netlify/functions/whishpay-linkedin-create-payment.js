@@ -10,7 +10,7 @@ const { LINKEDIN_UPSELL_STATUS, getRun, updateRun } = require('./run-store');
 const { badRequest, parseJsonBody } = require('./http-400');
 
 function generateExternalId() {
-  return crypto.randomInt(1_000_000_000_000, 9_999_999_999_999);
+  return crypto.randomUUID();
 }
 
 function appendExternalId(urlString, externalId) {

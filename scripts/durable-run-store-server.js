@@ -60,6 +60,11 @@ function collectBody(req) {
 
 const server = http.createServer(async (req, res) => {
   try {
+    if ((req.method || '') === 'GET' && (req.url || '').startsWith('/health')) {
+      json(res, 200, { ok: true });
+      return;
+    }
+
     if (!['GET', 'PUT'].includes(req.method || '')) {
       json(res, 405, { error: 'Method Not Allowed' }, { Allow: 'GET, PUT' });
       return;

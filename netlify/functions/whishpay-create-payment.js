@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { isValidEmail, isValidUrl } = require('./utils/validation');
 
 const {
   WHISHPAY_AMOUNT,
@@ -13,14 +14,18 @@ const {
   createFulfillmentAccessToken,
   getFulfillmentByProviderOrderId,
   getRun,
-  updateFulfillment,
-  upsertRun,
+  updateFulfillment
 } = require('./run-store');
 const { hasSessionSecretConfigured, createFulfillmentSessionCookie } = require('./fulfillment-auth');
 const { badRequest, parseJsonBody } = require('./http-400');
+const { enforceRateLimit, validateCsrfOrigin } = require('./request-guards');
 
 function generateExternalId() {
-  return crypto.randomInt(1_000_000_000_000, 9_999_999_999_999);
+  return crypto.randomUUID();
+}
+
+function resolveCallbackUrl(candidate, fallback) {
+  return isValidUrl(candidate) ? candidate : fallback;
 }
 
 function appendExternalId(urlString, externalId) {
@@ -33,6 +38,30 @@ function appendExternalId(urlString, externalId) {
   }
 }
 
+
+function retryDelayMs(attempt) {
+  const base = 250 * (2 ** attempt);
+  const jitter = Math.floor(Math.random() * 200);
+  return base + jitter;
+}
+
+async function fetchWithRetry(url, options, retries = 2) {
+  let lastResponse = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch(url, options);
+      lastResponse = response;
+      if (response.ok || ![429, 500, 502, 503, 504].includes(response.status) || attempt === retries) {
+        return response;
+      }
+    } catch (error) {
+      if (attempt === retries) throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, retryDelayMs(attempt)));
+  }
+  return lastResponse;
+}
+
 exports.handler = async (event) => {
   const functionName = 'whishpay-create-payment';
   const route = '/.netlify/functions/whishpay-create-payment';
@@ -43,6 +72,11 @@ exports.handler = async (event) => {
   }
 
   try {
+    const csrfError = validateCsrfOrigin(event);
+    if (csrfError) return { statusCode: 403, body: JSON.stringify({ error: `csrf validation failed: ${csrfError}` }) };
+    if (await enforceRateLimit(event, { keyPrefix: 'whishpay-create-payment', windowMsEnv: 'PAYMENT_RATE_LIMIT_WINDOW_MS', maxEnv: 'PAYMENT_RATE_LIMIT_MAX', defaults: { windowMs: 60_000, max: 20 } })) {
+      return { statusCode: 429, body: JSON.stringify({ error: 'Too many requests. Please try again shortly.' }) };
+    }
     const sessionSecretAvailable = hasSessionSecretConfigured();
     const functionStart = Date.now();
     console.info('[timing] whishpay-create-payment start', { at: functionStart });
@@ -55,8 +89,8 @@ exports.handler = async (event) => {
     if (!runId) {
       return badRequest({ event, functionName, route, message: 'Missing runId.', payload, missingFields: ['runId'] });
     }
-    if (!email) {
-      return badRequest({ event, functionName, route, message: 'Missing email.', payload, missingFields: ['email'] });
+    if (!email || !isValidEmail(email)) {
+      return badRequest({ event, functionName, route, message: 'Valid email is required.', payload, invalidFields: ['email'] });
     }
     let run = await getRun(runId);
     if (!run) {
@@ -66,14 +100,7 @@ exports.handler = async (event) => {
         run = await getRun(runId);
       }
       if (!run) {
-        await upsertRun(runId, {
-          checkout_initialized_at: new Date().toISOString(),
-          checkout_provider_hint: 'whishpay',
-        });
-        run = await getRun(runId);
-        if (!run) {
-          console.warn('Run bootstrap write completed, but immediate read is still unavailable. Continuing checkout.', { runId });
-        }
+        return { statusCode: 404, body: JSON.stringify({ error: 'Run not found.' }) };
       }
     }
     const amount = WHISHPAY_AMOUNT;
@@ -81,24 +108,24 @@ exports.handler = async (event) => {
     const externalId = generateExternalId();
     const invoice = payload.invoice || 'Revised CV download';
     const successCallbackUrl = appendExternalId(
-      payload.successCallbackUrl || WHISHPAY_WEBSITE_URL,
+      resolveCallbackUrl(payload.successCallbackUrl, WHISHPAY_WEBSITE_URL),
       externalId,
     );
     const failureCallbackUrl = appendExternalId(
-      payload.failureCallbackUrl || WHISHPAY_WEBSITE_URL,
+      resolveCallbackUrl(payload.failureCallbackUrl, WHISHPAY_WEBSITE_URL),
       externalId,
     );
     const successRedirectUrl = appendExternalId(
-      payload.successRedirectUrl || WHISHPAY_WEBSITE_URL,
+      resolveCallbackUrl(payload.successRedirectUrl, WHISHPAY_WEBSITE_URL),
       externalId,
     );
     const failureRedirectUrl = appendExternalId(
-      payload.failureRedirectUrl || WHISHPAY_WEBSITE_URL,
+      resolveCallbackUrl(payload.failureRedirectUrl, WHISHPAY_WEBSITE_URL),
       externalId,
     );
 
     const providerStart = Date.now();
-    const response = await fetch(getWhishPayCreateUrl(), {
+    const response = await fetchWithRetry(getWhishPayCreateUrl(), {
       method: 'POST',
       headers: getWhishPayHeaders(),
       body: JSON.stringify({

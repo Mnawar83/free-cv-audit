@@ -8,11 +8,36 @@ const {
   createFulfillmentAccessToken,
   getFulfillmentByProviderOrderId,
   getRun,
-  updateFulfillment,
-  upsertRun,
+  updateFulfillment
 } = require('./run-store');
 const { hasSessionSecretConfigured, createFulfillmentSessionCookie } = require('./fulfillment-auth');
 const { badRequest, parseJsonBody } = require('./http-400');
+const { enforceRateLimit, validateCsrfOrigin } = require('./request-guards');
+const { isValidEmail } = require('./utils/validation');
+
+
+function retryDelayMs(attempt) {
+  const base = 250 * (2 ** attempt);
+  const jitter = Math.floor(Math.random() * 200);
+  return base + jitter;
+}
+
+async function fetchWithRetry(url, options, retries = 2) {
+  let lastResponse = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch(url, options);
+      lastResponse = response;
+      if (response.ok || ![429, 500, 502, 503, 504].includes(response.status) || attempt === retries) {
+        return response;
+      }
+    } catch (error) {
+      if (attempt === retries) throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, retryDelayMs(attempt)));
+  }
+  return lastResponse;
+}
 
 exports.handler = async (event) => {
   const functionName = 'paypal-create-order';
@@ -24,6 +49,11 @@ exports.handler = async (event) => {
   }
 
   try {
+    const csrfError = validateCsrfOrigin(event);
+    if (csrfError) return { statusCode: 403, body: JSON.stringify({ error: `csrf validation failed: ${csrfError}` }) };
+    if (await enforceRateLimit(event, { keyPrefix: 'paypal-create-order', windowMsEnv: 'PAYMENT_RATE_LIMIT_WINDOW_MS', maxEnv: 'PAYMENT_RATE_LIMIT_MAX', defaults: { windowMs: 60_000, max: 20 } })) {
+      return { statusCode: 429, body: JSON.stringify({ error: 'Too many requests. Please try again shortly.' }) };
+    }
     const sessionSecretAvailable = hasSessionSecretConfigured();
     const parsed = parseJsonBody(event, { functionName, route });
     if (!parsed.ok) return parsed.response;
@@ -33,8 +63,8 @@ exports.handler = async (event) => {
     if (!runId) {
       return badRequest({ event, functionName, route, message: 'Missing runId.', payload, missingFields: ['runId'] });
     }
-    if (!email) {
-      return badRequest({ event, functionName, route, message: 'Missing email.', payload, missingFields: ['email'] });
+    if (!email || !isValidEmail(email)) {
+      return badRequest({ event, functionName, route, message: 'Valid email is required.', payload, invalidFields: ['email'] });
     }
     let run = await getRun(runId);
     if (!run) {
@@ -44,15 +74,7 @@ exports.handler = async (event) => {
         run = await getRun(runId);
       }
       if (!run) {
-        await upsertRun(runId, {
-          checkout_initialized_at: new Date().toISOString(),
-          checkout_provider_hint: 'paypal',
-          fulfillment_status: 'payment_pending',
-        });
-        run = await getRun(runId);
-        if (!run) {
-          console.warn('Run bootstrap write completed, but immediate read is still unavailable. Continuing checkout.', { runId });
-        }
+        return { statusCode: 404, body: JSON.stringify({ error: 'Run not found.' }) };
       }
     }
 
@@ -61,7 +83,7 @@ exports.handler = async (event) => {
     const { accessToken, baseUrl } = await getPayPalAccessToken();
 
     const providerStart = Date.now();
-    const response = await fetch(`${baseUrl}/v2/checkout/orders`, {
+    const response = await fetchWithRetry(`${baseUrl}/v2/checkout/orders`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,

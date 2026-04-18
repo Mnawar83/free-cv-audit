@@ -1,5 +1,6 @@
 const { badRequest, parseJsonBody } = require('./http-400');
 const { saveUserSessionCode, takeRateLimitSlot } = require('./run-store');
+const { isValidEmail, isValidUrl, normalizeBase64Pdf } = require('./utils/validation');
 
 function json(statusCode, payload) {
   return {
@@ -7,10 +8,6 @@ function json(statusCode, payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   };
-}
-
-function isValidEmail(value) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
 }
 
 function createCode() {

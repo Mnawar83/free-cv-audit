@@ -1,6 +1,8 @@
 const { buildGoogleAiUrl, getGoogleAiCandidateModels } = require('./google-ai');
 const { createRunId, getUserEntitlements, linkRunToUser, listUserRuns, upsertRun } = require('./run-store');
 const { badRequest, parseJsonBody } = require('./http-400');
+const { enforceRateLimit, validateCsrfOrigin } = require('./request-guards');
+const { assertEnvVars } = require('./config');
 const { getUserIdFromSessionCookie } = require('./user-session-auth');
 
 const AUDIT_SYSTEM_PROMPT = `You are a senior ATS CV auditor for Work Waves Career Services.
@@ -78,6 +80,21 @@ exports.handler = async (event) => {
     return { statusCode: 405, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Method Not Allowed' }) };
   }
 
+
+  const csrfError = validateCsrfOrigin(event);
+  if (csrfError) {
+    return { statusCode: 403, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: `csrf validation failed: ${csrfError}` }) };
+  }
+
+  if (await enforceRateLimit(event, {
+    keyPrefix: 'audit',
+    windowMsEnv: 'AUDIT_RATE_LIMIT_WINDOW_MS',
+    maxEnv: 'AUDIT_RATE_LIMIT_MAX',
+    defaults: { windowMs: 60_000, max: 10 },
+  })) {
+    return { statusCode: 429, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Too many requests. Please try again shortly.' }) };
+  }
+
   const parsed = parseJsonBody(event, { functionName, route });
   if (!parsed.ok) return parsed.response;
   const parsedBody = parsed.body;
@@ -89,6 +106,17 @@ exports.handler = async (event) => {
       || parsedBody?.text
       || ''
     );
+    const maxCvBytes = Math.max(1_024, Number(process.env.MAX_CV_TEXT_BYTES || 50 * 1024));
+    if (Buffer.byteLength(cvText, 'utf8') > maxCvBytes) {
+      return badRequest({
+        event,
+        functionName,
+        route,
+        message: `cvText exceeds maximum allowed size (${maxCvBytes} bytes).`,
+        payload: parsedBody,
+        invalidFields: ['cvText'],
+      });
+    }
     if (!cvText.trim()) {
       return badRequest({
         event,
@@ -104,8 +132,8 @@ exports.handler = async (event) => {
       const entitlements = await getUserEntitlements(userId);
       const hasUnlimitedAudits = Boolean(entitlements?.canUseUnlimitedAudits);
       if (!hasUnlimitedAudits) {
-        const existingRuns = await listUserRuns(userId, 1000);
         const freeAuditLimit = Math.max(1, Number(process.env.FREE_TIER_AUDIT_LIMIT || 3));
+        const existingRuns = await listUserRuns(userId, freeAuditLimit);
         if (existingRuns.length >= freeAuditLimit) {
           return {
             statusCode: 402,
@@ -120,6 +148,7 @@ exports.handler = async (event) => {
     }
     const runId = createRunId();
 
+    assertEnvVars(['GOOGLE_AI_API_KEY'], 'audit');
     const apiKey = process.env.GOOGLE_AI_API_KEY;
     if (!apiKey) {
       return {
