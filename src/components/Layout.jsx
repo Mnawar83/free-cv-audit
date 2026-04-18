@@ -10,7 +10,6 @@ export default function Layout({ children }) {
           <div className="flex gap-4 text-sm">
             <NavLink to="/" className="hover:text-blue-300">Home</NavLink>
             <NavLink to="/results" className="hover:text-blue-300">Results</NavLink>
-            <NavLink to="/account/sign-in" className="hover:text-blue-300">Account</NavLink>
           </div>
         </nav>
       </header>
